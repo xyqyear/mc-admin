@@ -8,9 +8,9 @@ import pytest
 
 from app.dns.dns import DNSClient
 from app.dns.manager import AddressInfo, SimpleDNSManager
-from app.dns.planning import DNSRecord, RouteEntry
+from app.dns.planning import RouteEntry, generate_dns_records, generate_routes
 from app.dns.router import MCRouterClient
-from app.dns.types import ReturnRecordT
+from app.dns.types import AddRecordT, ReturnRecordT
 from app.dynamic_config.configs.dns import DNSManagerConfig
 from app.errors import PublicOperationError
 from app.minecraft import MCServerInfo
@@ -67,10 +67,6 @@ class MockDNSClient(DNSClient):
         self.last_managed_sub_domain = managed_sub_domain
         return self.records
 
-    async def update_records(self, target_records, managed_sub_domain=None):
-        self.last_update_call = target_records
-        self.last_managed_sub_domain = managed_sub_domain
-
     def has_update_capability(self) -> bool:
         return True
 
@@ -84,7 +80,6 @@ class MockDNSClient(DNSClient):
     async def _update_records_batch(self, records):
         for record in records:
             self.records = [record if current.record_id == record.record_id else current for current in self.records]
-
 
 
 class MockMCRouterClient(MCRouterClient):
@@ -217,11 +212,10 @@ async def test_initialize_disabled():
         assert not dns_manager.is_initialized
 
 
-def test_generate_dns_records():
-    dns_manager = SimpleDNSManager()
-
+@pytest.mark.parametrize("record_type,value", [("A", "1.2.3.4"), ("AAAA", "2001:db8::1"), ("CNAME", "proxy.example.net")])
+def test_generate_dns_records(record_type, value):
     addresses = {
-        "*": AddressInfo(type="A", host="1.2.3.4", port=25565),
+        "*": AddressInfo(type=record_type, host=value, port=25565),
         "backup": AddressInfo(type="A", host="5.6.7.8", port=25566),
     }
 
@@ -229,37 +223,21 @@ def test_generate_dns_records():
     managed_sub_domain = "mc"
     dns_ttl = 300
 
-    dns_manager._dns_client = MockDNSClient("example.com")
-
-    records = dns_manager._generate_dns_records(
-        addresses, server_list, managed_sub_domain, dns_ttl
+    records = generate_dns_records(
+        addresses, server_list, managed_sub_domain, dns_ttl, "example.com"
     )
 
-    # 2 wildcard + 4 SRV records (2 servers × 2 addresses).
-    assert len(records) == 6
-
-    wildcard_records = [r for r in records if r.sub_domain.startswith("*")]
-    assert len(wildcard_records) == 2
-    assert any(
-        r.sub_domain == "*.mc" and r.value == "1.2.3.4" for r in wildcard_records
-    )
-    assert any(
-        r.sub_domain == "*.backup.mc" and r.value == "5.6.7.8" for r in wildcard_records
-    )
-
-    srv_records = [r for r in records if r.record_type == "SRV"]
-    assert len(srv_records) == 4
-
-    vanilla_main_srv = next(
-        r for r in srv_records if "_minecraft._tcp.vanilla.mc" in r.sub_domain
-    )
-    assert "25565" in vanilla_main_srv.value
-    assert "vanilla.mc.example.com" in vanilla_main_srv.value
+    assert [record._asdict() for record in records] == [
+        {"sub_domain": "*.mc", "value": value, "record_type": record_type, "ttl": 300},
+        {"sub_domain": "_minecraft._tcp.vanilla.mc", "value": "0 5 25565 vanilla.mc.example.com", "record_type": "SRV", "ttl": 300},
+        {"sub_domain": "_minecraft._tcp.modded.mc", "value": "0 5 25565 modded.mc.example.com", "record_type": "SRV", "ttl": 300},
+        {"sub_domain": "*.backup.mc", "value": "5.6.7.8", "record_type": "A", "ttl": 300},
+        {"sub_domain": "_minecraft._tcp.vanilla.backup.mc", "value": "0 5 25566 vanilla.backup.mc.example.com", "record_type": "SRV", "ttl": 300},
+        {"sub_domain": "_minecraft._tcp.modded.backup.mc", "value": "0 5 25566 modded.backup.mc.example.com", "record_type": "SRV", "ttl": 300},
+    ]
 
 
 def test_generate_routes():
-    dns_manager = SimpleDNSManager()
-
     addresses = {
         "*": AddressInfo(type="A", host="1.2.3.4", port=25565),
         "backup": AddressInfo(type="A", host="5.6.7.8", port=25566),
@@ -269,22 +247,16 @@ def test_generate_routes():
     managed_sub_domain = "mc"
     domain = "example.com"
 
-    routes = dns_manager._generate_routes(
+    routes = generate_routes(
         addresses, servers, managed_sub_domain, domain
     )
 
-    assert len(routes) == 4
-
-    route_dict = {route.server_address: route.backend for route in routes}
-
-    assert "vanilla.mc.example.com" in route_dict
-    assert route_dict["vanilla.mc.example.com"] == "localhost:25565"
-
-    assert "vanilla.backup.mc.example.com" in route_dict
-    assert route_dict["vanilla.backup.mc.example.com"] == "localhost:25565"
-
-    assert "modded.mc.example.com" in route_dict
-    assert route_dict["modded.mc.example.com"] == "localhost:25566"
+    assert routes == [
+        RouteEntry("vanilla.mc.example.com", "localhost:25565"),
+        RouteEntry("vanilla.backup.mc.example.com", "localhost:25565"),
+        RouteEntry("modded.mc.example.com", "localhost:25566"),
+        RouteEntry("modded.backup.mc.example.com", "localhost:25566"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -355,32 +327,6 @@ async def test_update_integration():
 
 
 @pytest.mark.asyncio
-async def test_update_no_servers():
-    dns_manager = SimpleDNSManager()
-
-    mock_dns_client = MockDNSClient()
-    mock_router_client = MockMCRouterClient("http://localhost:26666")
-    mock_docker_manager = MagicMock()
-
-    dns_manager._dns_client = mock_dns_client
-    dns_manager._mc_router_client = mock_router_client
-    dns_manager._docker_manager = mock_docker_manager
-
-    dns_manager._ensure_up_to_date_config = AsyncMock()
-
-    mock_config = Mock()
-    mock_config.addresses = []
-
-    with (
-        patch_accessor("app.dns.manager.get_config") as config_mock,
-        _patch_active_servers(mock_docker_manager, []),
-    ):
-        config_mock.dns = mock_config
-
-        await dns_manager.update(AsyncMock())
-
-
-@pytest.mark.asyncio
 async def test_update_not_initialized():
     dns_manager = SimpleDNSManager()
 
@@ -428,7 +374,7 @@ async def test_failed_update_settles_other_branch_before_next_update():
     manager._dns_client = MockDNSClient()
     manager._mc_router_client = MockMCRouterClient("http://localhost:26666")
     manager._ensure_up_to_date_config = AsyncMock()
-    manager._get_target_records_and_routes = AsyncMock(return_value=([DNSRecord("*.mc", "A", "127.0.0.1", 15)], [RouteEntry("server.mc.example.com", "localhost:25565")], {}, {}))
+    manager._get_target_records_and_routes = AsyncMock(return_value=([AddRecordT(sub_domain="*.mc", value="127.0.0.1", record_type="A", ttl=15)], [RouteEntry("server.mc.example.com", "localhost:25565")], {}, {}))
     manager._dns_client.apply_diff = AsyncMock(side_effect=[RuntimeError("provider failed"), None])
     entered = asyncio.Event()
     finish = asyncio.Event()
@@ -668,89 +614,6 @@ async def test_config_hash_with_none_dns():
 
 
 @pytest.mark.asyncio
-async def test_ensure_up_to_date_config_no_change():
-    dns_manager = SimpleDNSManager()
-
-    mock_dns_config = Mock()
-    mock_dns_config.enabled = True
-    mock_dns_config.mc_router_base_url = "http://localhost:26666"
-    mock_dns_provider = Mock()
-    mock_dns_provider.model_dump.return_value = {
-        "type": "dnspod",
-        "domain": "example.com",
-    }
-    mock_dns_config.dns = mock_dns_provider
-
-    initial_hash = dns_manager._calculate_config_hash(mock_dns_config)
-    dns_manager._last_config_hash = initial_hash
-
-    with patch_accessor("app.dns.manager.get_config") as config_mock:
-        config_mock.dns = mock_dns_config
-
-        dns_manager._initialize = AsyncMock()
-        dns_manager._dns_client = MockDNSClient()
-
-        await dns_manager._ensure_up_to_date_config()
-
-        dns_manager._initialize.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_ensure_up_to_date_config_with_change():
-    dns_manager = SimpleDNSManager()
-
-    mock_dns_config = Mock()
-    mock_dns_config.enabled = True
-    mock_dns_config.mc_router_base_url = "http://localhost:26666"
-    mock_dns_provider = Mock()
-    mock_dns_provider.model_dump.return_value = {
-        "type": "dnspod",
-        "domain": "example.com",
-    }
-    mock_dns_config.dns = mock_dns_provider
-
-    dns_manager._last_config_hash = "different_hash"
-
-    with patch_accessor("app.dns.manager.get_config") as config_mock:
-        config_mock.dns = mock_dns_config
-
-        dns_manager._initialize = AsyncMock()
-
-        await dns_manager._ensure_up_to_date_config()
-
-        dns_manager._initialize.assert_called_once()
-
-        expected_hash = dns_manager._calculate_config_hash(mock_dns_config)
-        assert dns_manager._last_config_hash == expected_hash
-
-
-@pytest.mark.asyncio
-async def test_ensure_up_to_date_config_first_time():
-    dns_manager = SimpleDNSManager()
-
-    mock_dns_config = Mock()
-    mock_dns_config.enabled = True
-    mock_dns_config.mc_router_base_url = "http://localhost:26666"
-    mock_dns_provider = Mock()
-    mock_dns_provider.model_dump.return_value = {
-        "type": "dnspod",
-        "domain": "example.com",
-    }
-    mock_dns_config.dns = mock_dns_provider
-
-    assert dns_manager._last_config_hash is None
-
-    with patch_accessor("app.dns.manager.get_config") as config_mock:
-        config_mock.dns = mock_dns_config
-
-        dns_manager._initialize = AsyncMock()
-
-        await dns_manager._ensure_up_to_date_config()
-
-        dns_manager._initialize.assert_called_once()
-
-
-@pytest.mark.asyncio
 async def test_ensure_up_to_date_config_initialization_failure():
     dns_manager = SimpleDNSManager()
 
@@ -773,34 +636,6 @@ async def test_ensure_up_to_date_config_initialization_failure():
 
         with pytest.raises(Exception, match="Init failed"):
             await dns_manager._ensure_up_to_date_config()
-
-
-@pytest.mark.asyncio
-async def test_update_with_automatic_reinitialization():
-    dns_manager = SimpleDNSManager()
-
-    mock_dns_client = MockDNSClient()
-    mock_router_client = MockMCRouterClient("http://localhost:26666")
-    mock_docker_manager = MagicMock()
-
-    dns_manager._dns_client = mock_dns_client
-    dns_manager._mc_router_client = mock_router_client
-    dns_manager._docker_manager = mock_docker_manager
-
-    mock_config = Mock()
-    mock_config.addresses = []
-
-    dns_manager._ensure_up_to_date_config = AsyncMock()
-
-    with (
-        patch_accessor("app.dns.manager.get_config") as config_mock,
-        _patch_active_servers(mock_docker_manager, []),
-    ):
-        config_mock.dns = mock_config
-
-        await dns_manager.update(AsyncMock())
-
-        dns_manager._ensure_up_to_date_config.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ from .manager import CronManager
 
 
 class RestartScheduler:
-    """Pick restart times that don't collide with active backup or other restart cron jobs."""
+    """Pick restart slots around active and paused backup/restart jobs."""
 
     def __init__(
         self, cron_manager: CronManager, restart_start_time: time = time(6, 0)
@@ -37,7 +37,7 @@ class RestartScheduler:
     async def get_restart_time_slots(
         self, exclude_server_id: str | None = None
     ) -> set[tuple[int, int]]:
-        """``(hour, minute)`` pairs already taken by active restart_server jobs."""
+        """``(hour, minute)`` pairs reserved by active or paused restart jobs."""
         restart_jobs = await self.cron_manager.get_all_cronjobs(
             identifier="restart_server",
             status=[CronJobStatus.ACTIVE, CronJobStatus.PAUSED],
@@ -134,26 +134,11 @@ class RestartScheduler:
 
     async def generate_restart_cron(
         self,
-        day_pattern: str = "*",
-        month_pattern: str = "*",
-        weekday_pattern: str = "*",
         exclude_server_id: str | None = None,
     ) -> str:
         hour, minute = await self.find_next_available_restart_time(exclude_server_id)
 
-        return f"{minute} {hour} {day_pattern} {month_pattern} {weekday_pattern}"
-
-    async def check_time_conflict(
-        self, hour: int, minute: int, exclude_server_id: str | None = None
-    ) -> bool:
-        """Whether ``(hour, minute)`` collides with any active backup or other restart slot."""
-        backup_minutes = await self.get_backup_minutes()
-        restart_time_slots = await self.get_restart_time_slots(exclude_server_id)
-
-        if minute in backup_minutes:
-            return True
-
-        return (hour, minute) in restart_time_slots
+        return f"{minute} {hour} * * *"
 
 
 def get_restart_scheduler() -> RestartScheduler:

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +9,7 @@ from tencentcloud.common.exception.tencent_cloud_sdk_exception import (
 
 from app.dns.dns import AddRecordT
 from app.dns.dnspod import DNSPodClient
+from app.dns.utils import diff_dns_records
 
 
 class MockDNSPodResponse:
@@ -18,34 +20,14 @@ class MockDNSPodResponse:
         return json.dumps(self._response_data)
 
 
-class MockDNSPodRequest:
-    def from_json_string(self, json_str: str) -> None:
-        pass
-
-
 @pytest.fixture
 def mock_dnspod_client():
     with patch("app.dns.dnspod.dnspod_client.DnspodClient") as mock_client:
         mock_instance = MagicMock()
         mock_client.return_value = mock_instance
 
-        with (
-            patch("app.dns.dnspod.models.DescribeDomainListRequest") as mock_domain_req,
-            patch("app.dns.dnspod.models.DescribeRecordListRequest") as mock_record_req,
-            patch("app.dns.dnspod.models.ModifyRecordBatchRequest") as mock_modify_req,
-            patch("app.dns.dnspod.models.DeleteRecordBatchRequest") as mock_delete_req,
-            patch("app.dns.dnspod.models.CreateRecordBatchRequest") as mock_create_req,
-        ):
-            mock_domain_req.return_value = MockDNSPodRequest()
-            mock_record_req.return_value = MockDNSPodRequest()
-            mock_modify_req.return_value = MockDNSPodRequest()
-            mock_delete_req.return_value = MockDNSPodRequest()
-            mock_create_req.return_value = MockDNSPodRequest()
-
-            client = DNSPodClient("example.com", "test_id", "test_key")
-            client._client = mock_instance
-
-            yield client, mock_instance
+        client = DNSPodClient("example.com", "test_id", "test_key")
+        yield client, mock_instance
 
 
 @pytest.mark.asyncio
@@ -144,11 +126,22 @@ async def test_dnspod_client_add_records(mock_dnspod_client):
 
     mock_instance.CreateRecordBatch.return_value = MockDNSPodResponse({})
 
-    records = [AddRecordT(sub_domain="test", value="1.1.1.1", record_type="A", ttl=600)]
+    records = [
+        AddRecordT(sub_domain="test", value="1.1.1.1", record_type="A", ttl=600),
+        AddRecordT(sub_domain="_minecraft._tcp.survival", value="0 5 25566 target.example.com", record_type="SRV", ttl=300),
+    ]
 
     await client.add_records(records)
 
-    mock_instance.CreateRecordBatch.assert_called_once()
+    requests = mock_instance.CreateRecordBatch.call_args_list
+    assert len(requests) == 1
+    assert json.loads(requests[0].args[0].to_json_string()) == {
+        "DomainIdList": ["12345"],
+        "RecordList": [
+            {"SubDomain": "test", "RecordType": "A", "Value": "1.1.1.1", "TTL": 600, "RecordLine": None, "RecordLineId": None, "MX": None},
+            {"SubDomain": "_minecraft._tcp.survival", "RecordType": "SRV", "Value": "0 5 25566 target.example.com", "TTL": 300, "RecordLine": None, "RecordLineId": None, "MX": None},
+        ],
+    }
 
 
 @pytest.mark.asyncio
@@ -161,14 +154,9 @@ async def test_dnspod_client_remove_records(mock_dnspod_client):
 
     await client.remove_records(record_ids)
 
-    mock_instance.DeleteRecordBatch.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_dnspod_client_has_no_update_capability():
-    with patch("app.dns.dnspod.dnspod_client.DnspodClient"):
-        client = DNSPodClient("example.com", "test_id", "test_key")
-        assert not client.has_update_capability()
+    requests = mock_instance.DeleteRecordBatch.call_args_list
+    assert len(requests) == 1
+    assert json.loads(requests[0].args[0].to_json_string()) == {"RecordIdList": [1, 2, 3]}
 
 
 @pytest.mark.asyncio
@@ -259,3 +247,40 @@ async def test_dnspod_client_sleep_after_remove(mock_dnspod_client):
         await client.remove_records([1, 2])
 
         mock_sleep.assert_called_once_with(2)
+
+
+async def test_changed_record_replacement_waits_for_delete_propagation(mock_dnspod_client, monkeypatch):
+    client, sdk = mock_dnspod_client
+    client._domain_id = 12345
+    sdk.DescribeRecordList.return_value = MockDNSPodResponse({"RecordList": [
+        {"Name": "*.mc", "RecordId": 17, "Type": "A", "TTL": 120, "Value": "192.0.2.1"},
+    ]})
+    sdk.DeleteRecordBatch.return_value = MockDNSPodResponse({})
+    sdk.CreateRecordBatch.return_value = MockDNSPodResponse({})
+    propagation_started = asyncio.Event()
+    release_propagation = asyncio.Event()
+
+    async def propagation_delay(seconds):
+        assert seconds == 2
+        propagation_started.set()
+        await release_propagation.wait()
+
+    monkeypatch.setattr("app.dns.dnspod.asyncio.sleep", propagation_delay)
+    current = await client.list_records()
+    target = [AddRecordT(sub_domain="*.mc", value="192.0.2.2", record_type="A", ttl=600)]
+    writing = asyncio.create_task(client.apply_diff(diff_dns_records(current, target)))
+    try:
+        await asyncio.wait_for(propagation_started.wait(), 2)
+        assert not writing.done()
+        sdk.CreateRecordBatch.assert_not_called()
+        assert json.loads(sdk.DeleteRecordBatch.call_args.args[0].to_json_string()) == {"RecordIdList": [17]}
+        release_propagation.set()
+        await asyncio.wait_for(writing, 2)
+        assert json.loads(sdk.CreateRecordBatch.call_args.args[0].to_json_string()) == {
+            "DomainIdList": ["12345"],
+            "RecordList": [{"SubDomain": "*.mc", "RecordType": "A", "Value": "192.0.2.2", "TTL": 600, "RecordLine": None, "RecordLineId": None, "MX": None}],
+        }
+        assert sdk.DeleteRecordBatch.call_count == sdk.CreateRecordBatch.call_count == 1
+    finally:
+        release_propagation.set()
+        await asyncio.gather(writing, return_exceptions=True)

@@ -92,7 +92,6 @@ async def test_get_dns_status_success(client, mock_admin_user):
         # Mock DNS manager
         dns_manager_mock.is_initialized = True
 
-        # Mock get_current_diff to return tuple (dns_diff, router_diff)
         mock_dns_diff = RecordDiff(
             records_to_add=[], records_to_remove=[], records_to_update=[]
         )

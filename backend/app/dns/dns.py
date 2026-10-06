@@ -1,8 +1,7 @@
 import asyncio
 
-from ..operations.finalization import finalize
 from .types import AddRecordListT, AddRecordT, RecordIdListT, RecordListT
-from .utils import RecordDiff, diff_dns_records
+from .utils import RecordDiff
 
 
 class DNSClient:
@@ -58,33 +57,6 @@ class DNSClient:
 
         return relevant_records
 
-    async def update_records(
-        self, target_records: AddRecordListT, managed_sub_domain: str | None = None
-    ):
-        """
-        Update DNS records to match target state by comparing current and target records.
-
-        This is the common implementation that works for both providers.
-        Individual providers can override this if they need custom behavior.
-
-        Args:
-            target_records: Target state for DNS records
-            managed_sub_domain: The subdomain we manage. If provided, only relevant records will be compared.
-        """
-        if not target_records:
-            return
-
-        # Get current records from DNS provider
-        # Use filtered records if managed_sub_domain is provided for safety
-        if managed_sub_domain:
-            current_records = await self.list_relevant_records(managed_sub_domain)
-        else:
-            current_records = await self.list_records()
-
-        # Calculate differences
-        diff = diff_dns_records(current_records, target_records)
-
-        await finalize(self.apply_diff(diff))
 
     async def apply_diff(self, diff: RecordDiff) -> None:
         limit = asyncio.Semaphore(4)
@@ -108,7 +80,7 @@ class DNSClient:
                     await self._update_records_batch([record])
                 else:
                     await self.remove_records([record.record_id])
-                    await self.add_records([AddRecordT(record.sub_domain, record.value, record.record_type, record.ttl)])
+                    await self.add_records([AddRecordT(sub_domain=record.sub_domain, value=record.value, record_type=record.record_type, ttl=record.ttl)])
 
         async def replace(name: str, records: AddRecordListT) -> None:
             conflicts = [old for old in diff.conflicting_records if old.sub_domain == name]
@@ -153,30 +125,3 @@ class DNSClient:
     async def remove_records(self, record_ids: RecordIdListT): ...
 
     async def add_records(self, records: AddRecordListT): ...
-
-    async def get_records_diff(
-        self, target_records: AddRecordListT, managed_sub_domain: str | None = None
-    ):
-        """
-        Get differences between current DNS records and target records without applying changes.
-
-        This method provides a preview of what changes would be made during an update
-        without actually performing the update operations.
-
-        Args:
-            target_records: Target state for DNS records
-            managed_sub_domain: The subdomain we manage. If provided, only relevant records will be compared.
-
-        Returns:
-            RecordDiff with lists of records that would be added, removed, and updated
-        """
-        # Get current records from DNS provider
-        # Use filtered records if managed_sub_domain is provided for safety
-        if managed_sub_domain:
-            current_records = await self.list_relevant_records(managed_sub_domain)
-        else:
-            current_records = await self.list_records()
-
-        # Calculate and return differences without applying
-        # Even if target_records is empty, we still need to check for removals
-        return diff_dns_records(current_records, target_records)

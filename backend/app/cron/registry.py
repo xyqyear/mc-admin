@@ -23,59 +23,6 @@ class CronRegistry:
         # identifier -> CronJobRegistration
         self._cronjobs: dict[str, CronJobRegistration] = {}
 
-    def register(
-        self,
-        schema_cls: type[BaseConfigSchema],
-        identifier: str | None = None,
-        description: str = "",
-        is_system: bool = False,
-        default_cron: str | None = None,
-        default_second: str | None = None,
-        default_params: BaseConfigSchema | None = None,
-        default_name: str | None = None,
-    ):
-        """
-        Decorator to register a cron job function.
-
-        Args:
-            schema_cls: The Pydantic schema class for cron job parameters
-            identifier: CronJob identifier (defaults to function name)
-            description: Human-readable description of the cron job
-
-        Returns:
-            Decorated cron job function
-
-        Example:
-            ```python
-            class ServerRestartParams(BaseConfigSchema):
-                server_id: str
-
-            @cron_registry.register(
-                schema_cls=ServerRestartParams,
-                identifier="restart_server",
-                description="Restart a Minecraft server"
-            )
-            async def restart_server_cronjob(context: ExecutionContext):
-                server_id = context.params.server_id
-                context.log(f"Restarting server: {server_id}")
-                # Restart logic here...
-            ```
-        """
-
-        def decorator(func: AsyncCronJobFunction) -> AsyncCronJobFunction:
-            return self.register_func(
-                func=func,
-                schema_cls=schema_cls,
-                identifier=identifier,
-                description=description,
-                is_system=is_system,
-                default_cron=default_cron,
-                default_second=default_second,
-                default_params=default_params,
-                default_name=default_name,
-            )
-
-        return decorator
 
     def register_func(
         self,

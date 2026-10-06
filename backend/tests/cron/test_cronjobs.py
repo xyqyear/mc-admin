@@ -15,11 +15,6 @@ class SampleCronJobParams(BaseConfigSchema):
     delay_seconds: int = 0
 
 
-@test_cron_registry.register(
-    schema_cls=SampleCronJobParams,
-    identifier="test_cronjob",
-    description="Simple test cron job",
-)
 async def sample_cronjob(context: ExecutionContext):
     params: SampleCronJobParams = cast(SampleCronJobParams, context.params)
 
@@ -31,3 +26,5 @@ async def sample_cronjob(context: ExecutionContext):
         await asyncio.sleep(params.delay_seconds)
 
     context.log("Test cron job finished")
+
+test_cron_registry.register_func(func=sample_cronjob, schema_cls=SampleCronJobParams, identifier="test_cronjob", description="Simple test cron job")

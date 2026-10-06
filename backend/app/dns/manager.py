@@ -5,7 +5,6 @@ import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import replace
-from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,15 +22,13 @@ from .planning import (
     AddressInfo,
     ConnectivityObservation,
     DesiredConnectivity,
-    DNSRecord,
     RouteDiff,
-    RouteEntry,
     diff_routes,
     generate_dns_records,
     generate_routes,
 )
 from .router import MCRouterClient
-from .types import AddRecordT, RecordListT
+from .types import RecordListT
 from .utils import RecordDiff, diff_dns_records
 
 
@@ -174,7 +171,7 @@ class SimpleDNSManager:
         if not addresses or not servers:
             return None, None, None, None
 
-        target_dns_records = self._generate_dns_records(
+        target_dns_records = generate_dns_records(
             addresses,
             list(servers.keys()),
             dns_config.managed_sub_domain,
@@ -182,7 +179,7 @@ class SimpleDNSManager:
             self._dns_client.get_domain() if self._dns_client is not None else dns_config.dns.domain,
         )
 
-        target_routes = self._generate_routes(
+        target_routes = generate_routes(
             addresses,
             servers,
             dns_config.managed_sub_domain,
@@ -239,8 +236,7 @@ class SimpleDNSManager:
         except Exception as exc:  # noqa: BLE001 - Unknown server inventory cannot authorize writes.
             log_safe_error(exc, "DNS server inventory observation failed")
             return ConnectivityObservation(None, None, issues=("服务器列表状态未知，已保留现有网络配置，请稍后重试",))
-        target_records = [AddRecordT(record.sub_domain, record.value, record.record_type, record.ttl) for record in records or []]
-        desired = DesiredConnectivity(tuple(target_records), tuple(routes or []), self._unknown_servers)
+        desired = DesiredConnectivity(tuple(records or []), tuple(routes or []), self._unknown_servers)
         empty = desired.empty
         target_routes = {route.server_address: route.backend for route in desired.routes}
         issues = []
@@ -254,7 +250,7 @@ class SimpleDNSManager:
                 current = await self._dns_client.list_relevant_records(dns_config.managed_sub_domain)
                 if empty:
                     return RecordDiff([], [], [])
-                diff = diff_dns_records(current, target_records)
+                diff = diff_dns_records(current, list(desired.records))
                 return diff if desired.allow_removals else diff._replace(records_to_remove=[])
             except Exception as exc:  # noqa: BLE001 - Failed observations must remain unknown.
                 log_safe_error(exc, "DNS record observation failed")
@@ -295,54 +291,6 @@ class SimpleDNSManager:
 
         return addresses
 
-    def _generate_dns_records(
-        self,
-        addresses: dict[str, AddressInfo],
-        server_list: list[str],
-        managed_sub_domain: str,
-        dns_ttl: int,
-        domain: str | None = None,
-    ) -> list[DNSRecord]:
-        domain = domain if domain is not None else (self._dns_client.get_domain() if self._dns_client is not None else self._configuration().dns.domain)
-        return generate_dns_records(addresses, server_list, managed_sub_domain, dns_ttl, domain)
-
-    def _generate_routes(
-        self,
-        addresses: dict[str, AddressInfo],
-        servers: dict[str, int],
-        managed_sub_domain: str,
-        domain: str,
-    ) -> list[RouteEntry]:
-        return generate_routes(addresses, servers, managed_sub_domain, domain)
-
-    async def _update_dns_records(
-        self, target_records: list[DNSRecord], managed_sub_domain: str
-    ):
-        if not self._dns_client:
-            return
-
-        target_add_records = [
-            AddRecordT(
-                sub_domain=record.sub_domain,
-                value=record.value,
-                record_type=record.record_type,
-                ttl=record.ttl,
-            )
-            for record in target_records
-        ]
-
-        await self._dns_client.update_records(
-            target_add_records, managed_sub_domain
-        )
-
-    async def _update_mc_router(self, target_routes: list[RouteEntry]):
-        if not self._mc_router_client:
-            return
-
-        routes_dict = {route.server_address: route.backend for route in target_routes}
-
-        get_logger().info(f"Updating MC Router with {len(routes_dict)} routes")
-        await self._mc_router_client.override_routes(routes_dict)
 
     async def close(self):
         async with self._update_lock:
@@ -386,22 +334,6 @@ class SimpleDNSManager:
                 raise RuntimeError("DNS manager not initialized")
             return await self._mc_router_client.get_routes()
 
-    async def get_current_diff(self, db: AsyncSession):
-        """Compute the pending changes against DNS provider and MC Router for UI display."""
-        async with self._update_lock:
-            dns_config = self._configuration()
-            await self._ensure_up_to_date_config(dns_config)
-            return await self._get_current_diff(db, dns_config)
-
-    async def _get_current_diff(self, db: AsyncSession, dns_config: DNSManagerConfig):
-        if not self.is_initialized:
-            raise RuntimeError("DNS manager not initialized")
-        observed = await self._observe(db, dns_config)
-        if observed.empty_desired:
-            raise ValueError("No addresses or servers found for diff calculation")
-        if observed.dns_diff is None or observed.router_diff is None:
-            raise PublicOperationError("网络状态未知，请检查连接后重试")
-        return observed.dns_diff, observed.router_diff.as_dict()
 
     @property
     def is_initialized(self) -> bool:
@@ -413,4 +345,4 @@ class SimpleDNSManager:
 
 
 def get_dns_manager() -> SimpleDNSManager:
-    return cast(SimpleDNSManager, current_runtime().dns_manager)
+    return current_runtime().dns_manager

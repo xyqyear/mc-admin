@@ -5,6 +5,7 @@ import pytest
 from app.dns.dns import AddRecordT
 from app.dns.huawei import HuaweiDNSClient
 from app.dns.types import ReturnRecordT
+from app.dns.utils import RecordDiff, diff_dns_records
 
 
 class MockZoneInfo:
@@ -168,22 +169,6 @@ async def test_huawei_client_list_records(mock_huawei_client):
 
 
 @pytest.mark.asyncio
-async def test_huawei_client_has_update_capability():
-    with patch("app.dns.huawei.DnsClient") as mock_dns_client_class:
-        mock_builder = MagicMock()
-        mock_dns_client_class.new_builder.return_value = mock_builder
-        mock_builder.with_credentials.return_value = mock_builder
-        mock_builder.with_region.return_value = mock_builder
-        mock_builder.build.return_value = MagicMock()
-
-        with patch("app.dns.huawei.DnsRegion") as mock_region:
-            mock_region.value_of.return_value = "cn-south-1"
-
-            client = HuaweiDNSClient("example.com", "test_ak", "test_sk")
-            assert client.has_update_capability()
-
-
-@pytest.mark.asyncio
 async def test_huawei_client_update_records(mock_huawei_client):
     client, mock_instance = mock_huawei_client
     client._zone_id = "zone123"
@@ -191,8 +176,8 @@ async def test_huawei_client_update_records(mock_huawei_client):
     from app.dns.dns import AddRecordT
 
     target_records = [
-        AddRecordT("test", "2.2.2.2", "A", 600),
-        AddRecordT("srv", "0 5 25566 target.example.com", "SRV", 300),
+        AddRecordT(sub_domain="test", value="2.2.2.2", record_type="A", ttl=600),
+        AddRecordT(sub_domain="srv", value="0 5 25566 target.example.com", record_type="SRV", ttl=300),
     ]
 
     from unittest.mock import AsyncMock
@@ -202,7 +187,7 @@ async def test_huawei_client_update_records(mock_huawei_client):
         ReturnRecordT(sub_domain="srv", value="0 5 25565 target.example.com", record_id="srv-id", record_type="SRV", ttl=60),
     ])
 
-    await client.update_records(target_records)
+    await client.apply_diff(diff_dns_records(await client.list_records(), target_records))
 
     updates = mock_instance.batch_update_record_set_with_line.call_args_list
     assert len(updates) == 2
@@ -230,7 +215,11 @@ async def test_huawei_client_remove_records(mock_huawei_client):
 
     await client.remove_records(record_ids)
 
-    mock_instance.batch_delete_record_set_with_line.assert_called_once()
+    requests = mock_instance.batch_delete_record_set_with_line.call_args_list
+    assert len(requests) == 1
+    request = requests[0].args[0]
+    assert request.zone_id == "zone123"
+    assert request.body.recordset_ids == ["rec1", "rec2", "rec3"]
 
 
 @pytest.mark.asyncio
@@ -250,7 +239,16 @@ async def test_huawei_client_add_records(mock_huawei_client):
 
     await client.add_records(records)
 
-    assert mock_instance.create_record_set.call_count == 2
+    actual = {}
+    for call in mock_instance.create_record_set.call_args_list:
+        request = call.args[0]
+        assert request.zone_id == "zone123"
+        assert request.body.name not in actual
+        actual[request.body.name] = (request.body.type, request.body.records, request.body.ttl)
+    assert actual == {
+        "test.example.com.": ("A", ["1.1.1.1"], 600),
+        "srv.example.com.": ("SRV", ["0 5 25565 target.example.com"], 300),
+    }
 
 
 @pytest.mark.asyncio
@@ -258,7 +256,7 @@ async def test_huawei_client_empty_operations(mock_huawei_client):
     client, mock_instance = mock_huawei_client
     client._zone_id = "zone123"
 
-    await client.update_records([])
+    await client.apply_diff(RecordDiff([], [], []))
     mock_instance.batch_update_record_set_with_line.assert_not_called()
 
     await client.remove_records([])
@@ -283,16 +281,6 @@ async def test_huawei_client_default_region():
             HuaweiDNSClient("example.com", "test_ak", "test_sk", None)
 
             mock_region.value_of.assert_called_with("cn-south-1")
-
-
-@pytest.mark.asyncio
-async def test_huawei_client_lock_property(mock_huawei_client):
-    client, _ = mock_huawei_client
-
-    lock = client.lock
-    assert lock is not None
-    assert hasattr(lock, "acquire")
-    assert hasattr(lock, "release")
 
 
 @pytest.mark.asyncio

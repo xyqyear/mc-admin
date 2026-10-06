@@ -1,4 +1,4 @@
-"""RestartScheduler tests: cron parsing, conflict detection, slot search."""
+"""RestartScheduler parsing and slot selection against persisted jobs."""
 from datetime import time
 
 import pytest
@@ -34,22 +34,16 @@ def restart_scheduler(fresh_cron_manager):
     return RestartScheduler(fresh_cron_manager, restart_start_time=time(6, 0))
 
 
-@test_cron_registry.register(
-    schema_cls=SampleCronJobParams,
-    identifier="backup",
-    description="测试备份任务",
-)
 async def backup_cronjob(context):
     context.log("Running backup task")
 
+test_cron_registry.register_func(func=backup_cronjob, schema_cls=SampleCronJobParams, identifier="backup", description="测试备份任务")
 
-@test_cron_registry.register(
-    schema_cls=SampleCronJobParams,
-    identifier="restart_server",
-    description="测试服务器重启任务",
-)
+
 async def restart_server_cronjob(context):
     context.log("Running server restart task")
+
+test_cron_registry.register_func(func=restart_server_cronjob, schema_cls=SampleCronJobParams, identifier="restart_server", description="测试服务器重启任务")
 
 
 class TestRestartScheduler:
@@ -349,45 +343,26 @@ class TestRestartScheduler:
         assert month == "*"
         assert weekday == "*"
 
-    async def test_generate_restart_cron_custom_patterns(self, restart_scheduler):
-        cron_expr = await restart_scheduler.generate_restart_cron(
-            day_pattern="1", month_pattern="*/2", weekday_pattern="1-5"
-        )
-        parts = cron_expr.split()
-        _minute, _hour, day, month, weekday = parts
-
-        assert day == "1"
-        assert month == "*/2"
-        assert weekday == "1-5"
-
-    async def test_check_time_conflict(self, restart_scheduler, fresh_cron_manager):
+    async def test_find_available_slot_respects_backups_and_independent_restarts(self, restart_scheduler, fresh_cron_manager):
         params = SampleCronJobParams(message="Test")
 
         await fresh_cron_manager.create_cronjob(
             identifier="backup",
             params=params,
-            cron="30 * * * *",
-            name="Backup at minute 30",
+            cron="0 * * * *",
+            name="Backup at minute 0",
         )
 
         await fresh_cron_manager.create_cronjob(
             identifier="restart_server",
             params=params,
-            cron="25 6 * * *",
+            cron="5 6 * * *",
             name="restart-server1",
         )
 
-        assert await restart_scheduler.check_time_conflict(6, 30) is True
-        assert await restart_scheduler.check_time_conflict(6, 25) is True
-        assert await restart_scheduler.check_time_conflict(8, 25) is False
-        assert await restart_scheduler.check_time_conflict(6, 20) is False
-
-        assert (
-            await restart_scheduler.check_time_conflict(
-                6, 25, exclude_server_id="server1"
-            )
-            is True
-        )
+        assert await restart_scheduler.find_next_available_restart_time() == (6, 10)
+        assert await restart_scheduler.find_next_available_restart_time(exclude_server_id="server1") == (6, 10)
+        assert await RestartScheduler(fresh_cron_manager, restart_start_time=time(8, 5)).find_next_available_restart_time() == (8, 5)
 
     async def test_custom_restart_start_time(self, fresh_cron_manager):
         custom_scheduler = RestartScheduler(
@@ -421,4 +396,18 @@ class TestRestartScheduler:
         backup_minutes = await restart_scheduler.get_backup_minutes()
         assert 0 in backup_minutes
 
-        assert await restart_scheduler.check_time_conflict(6, 0) is True
+        assert await restart_scheduler.find_next_available_restart_time() == (6, 5)
+
+    async def test_find_available_slot_rolls_to_next_day(self, fresh_cron_manager):
+        await fresh_cron_manager.create_cronjob(
+            identifier="restart_server", params=SampleCronJobParams(), cron="55 23 * * *", name="Late restart",
+        )
+        scheduler = RestartScheduler(fresh_cron_manager, restart_start_time=time(23, 58))
+        assert await scheduler.find_next_available_restart_time() == (0, 0)
+
+    async def test_all_slots_occupied_retains_unrounded_start(self, fresh_cron_manager):
+        await fresh_cron_manager.create_cronjob(
+            identifier="backup", params=SampleCronJobParams(), cron="* * * * *", name="Every minute reserved",
+        )
+        scheduler = RestartScheduler(fresh_cron_manager, restart_start_time=time(9, 23))
+        assert await scheduler.find_next_available_restart_time() == (9, 23)

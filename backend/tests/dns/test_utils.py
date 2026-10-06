@@ -1,7 +1,8 @@
-"""DNS utility tests."""
+import pytest
 
-from app.dns import AddRecordT, ReturnRecordT
-from app.dns.utils import RecordKey, diff_dns_records
+from app.dns.types import AddRecordT, ReturnRecordT
+from app.dns.utils import RecordDiff, RecordKey, diff_dns_records
+from tests.dns.test_reconciliation import StatefulDNS
 
 
 def test_record_key():
@@ -16,175 +17,59 @@ def test_record_key():
     assert key != key3
 
 
-def test_diff_dns_records_no_changes():
-    old_records = [ReturnRecordT("test.example.com", "1.2.3.4", "123", "A", 300)]
-
-    new_records = [AddRecordT("test.example.com", "1.2.3.4", "A", 300)]
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert len(diff.records_to_add) == 0
-    assert len(diff.records_to_remove) == 0
-    assert len(diff.records_to_update) == 0
+ADDRESS = ReturnRecordT(sub_domain="*.mc", value="192.0.2.1", record_id="address", record_type="A", ttl=300)
+UNCHANGED = AddRecordT(sub_domain="*.mc", value="192.0.2.1", record_type="A", ttl=300)
+NEW_ADDRESS = AddRecordT(sub_domain="*.mc", value="192.0.2.2", record_type="A", ttl=600)
+UPDATED_ADDRESS = ReturnRecordT(sub_domain="*.mc", value="192.0.2.2", record_id="address", record_type="A", ttl=600)
+SRV = AddRecordT(sub_domain="_minecraft._tcp.survival.mc", value="0 5 25565 survival.mc.example.com", record_type="SRV", ttl=300)
+OLD = ReturnRecordT(sub_domain="*.old.mc", value="192.0.2.3", record_id="old", record_type="A", ttl=300)
+NEW = AddRecordT(sub_domain="*.new.mc", value="192.0.2.4", record_type="A", ttl=300)
 
 
-def test_diff_dns_records_add_new():
-    old_records = []
-
-    new_records = [
-        AddRecordT("test.example.com", "1.2.3.4", "A", 300),
-        AddRecordT("test2.example.com", "5.6.7.8", "A", 600),
-    ]
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert len(diff.records_to_add) == 2
-    assert len(diff.records_to_remove) == 0
-    assert len(diff.records_to_update) == 0
-
-    add_subdomains = {r.sub_domain for r in diff.records_to_add}
-    assert "test.example.com" in add_subdomains
-    assert "test2.example.com" in add_subdomains
-
-
-def test_diff_dns_records_remove_old():
-    old_records = [
-        ReturnRecordT("test.example.com", "1.2.3.4", "123", "A", 300),
-        ReturnRecordT("test2.example.com", "5.6.7.8", "456", "A", 600),
-    ]
-
-    new_records = []
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert len(diff.records_to_add) == 0
-    assert len(diff.records_to_remove) == 2
-    assert len(diff.records_to_update) == 0
-
-    assert "123" in diff.records_to_remove
-    assert "456" in diff.records_to_remove
-
-
-def test_diff_dns_records_update_existing():
-    old_records = [ReturnRecordT("test.example.com", "1.2.3.4", "123", "A", 300)]
-
-    new_records = [AddRecordT("test.example.com", "5.6.7.8", "A", 600)]
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert len(diff.records_to_add) == 0
-    assert len(diff.records_to_remove) == 0
-    assert len(diff.records_to_update) == 1
-
-    updated = diff.records_to_update[0]
-    assert updated.sub_domain == "test.example.com"
-    assert updated.value == "5.6.7.8"
-    assert updated.record_id == "123"
-    assert updated.record_type == "A"
-    assert updated.ttl == 600
+@pytest.mark.parametrize(
+    "current,target,expected",
+    [
+        pytest.param([], [], RecordDiff([], [], []), id="empty"),
+        pytest.param([], [UNCHANGED, SRV], RecordDiff([UNCHANGED, SRV], [], []), id="add-address-and-srv"),
+        pytest.param([ADDRESS, OLD], [], RecordDiff([], ["address", "old"], []), id="remove-two"),
+        pytest.param([ADDRESS], [NEW_ADDRESS], RecordDiff([], [], [UPDATED_ADDRESS]), id="update-value-and-ttl-keeps-id"),
+        pytest.param([ADDRESS], [UNCHANGED], RecordDiff([], [], []), id="unchanged"),
+        pytest.param([ADDRESS, OLD], [NEW_ADDRESS, NEW], RecordDiff([NEW], ["old"], [UPDATED_ADDRESS]), id="mixed"),
+        pytest.param([ADDRESS], [], RecordDiff([], ["address"], []), id="empty-target-diff"),
+        pytest.param(
+            [ADDRESS], [NEW_ADDRESS._replace(ttl=300)],
+            RecordDiff([], [], [UPDATED_ADDRESS._replace(ttl=300)]), id="update-value-only",
+        ),
+        pytest.param(
+            [ADDRESS], [NEW_ADDRESS._replace(value="192.0.2.1")],
+            RecordDiff([], [], [UPDATED_ADDRESS._replace(value="192.0.2.1")]), id="update-ttl-only",
+        ),
+        pytest.param(
+            [ADDRESS, ReturnRecordT(sub_domain="*.mc", value="target.example.net", record_id="cname", record_type="CNAME", ttl=300)],
+            [NEW_ADDRESS, AddRecordT(sub_domain="*.mc", value="target.example.net", record_type="CNAME", ttl=300)],
+            RecordDiff([], [], [UPDATED_ADDRESS]), id="same-name-different-types",
+        ),
+        pytest.param(
+            [ReturnRecordT(sub_domain="_minecraft._tcp.survival.mc", value="0 5 25565 survival.mc.example.com", record_id="srv", record_type="SRV", ttl=300)],
+            [AddRecordT(sub_domain="_minecraft._tcp.survival.mc", value="0 5 25566 survival.mc.example.com", record_type="SRV", ttl=300)],
+            RecordDiff([], [], [ReturnRecordT(sub_domain="_minecraft._tcp.survival.mc", value="0 5 25566 survival.mc.example.com", record_id="srv", record_type="SRV", ttl=300)]), id="srv-value-keeps-id",
+        ),
+    ],
+)
+def test_record_differences_are_pure_and_complete(current, target, expected):
+    original_current = list(current)
+    original_target = list(target)
+    assert diff_dns_records(current, target) == expected
+    assert current == original_current and target == original_target
 
 
-def test_diff_dns_records_update_value_only():
-    old_records = [ReturnRecordT("test.example.com", "1.2.3.4", "123", "A", 300)]
-
-    new_records = [AddRecordT("test.example.com", "5.6.7.8", "A", 300)]
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert diff.records_to_add == []
-    assert diff.records_to_remove == []
-    assert len(diff.records_to_update) == 1
-    updated = diff.records_to_update[0]
-    assert updated.value == "5.6.7.8"
-    assert updated.ttl == 300
-
-
-def test_diff_dns_records_update_ttl_only():
-    old_records = [ReturnRecordT("test.example.com", "1.2.3.4", "123", "A", 300)]
-
-    new_records = [AddRecordT("test.example.com", "1.2.3.4", "A", 600)]
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert len(diff.records_to_update) == 1
-    updated = diff.records_to_update[0]
-    assert updated.value == "1.2.3.4"
-    assert updated.ttl == 600
-
-
-def test_diff_dns_records_mixed_operations():
-    old_records = [
-        ReturnRecordT("keep.example.com", "1.1.1.1", "111", "A", 300),
-        ReturnRecordT("update.example.com", "2.2.2.2", "222", "A", 300),
-        ReturnRecordT("remove.example.com", "3.3.3.3", "333", "A", 300),
-    ]
-
-    new_records = [
-        AddRecordT("keep.example.com", "1.1.1.1", "A", 300),
-        AddRecordT("update.example.com", "2.2.2.9", "A", 600),
-        AddRecordT("add.example.com", "4.4.4.4", "A", 300),
-    ]
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert len(diff.records_to_add) == 1
-    assert diff.records_to_add[0].sub_domain == "add.example.com"
-
-    assert len(diff.records_to_remove) == 1
-    assert "333" in diff.records_to_remove
-
-    assert len(diff.records_to_update) == 1
-    updated = diff.records_to_update[0]
-    assert updated.sub_domain == "update.example.com"
-    assert updated.value == "2.2.2.9"
-    assert updated.ttl == 600
-    assert updated.record_id == "222"
-
-
-def test_diff_dns_records_different_record_types():
-    old_records = [
-        ReturnRecordT("test.example.com", "1.2.3.4", "123", "A", 300),
-        ReturnRecordT("test.example.com", "test.example.com.", "456", "CNAME", 300),
-    ]
-
-    new_records = [
-        AddRecordT("test.example.com", "5.6.7.8", "A", 300),
-        AddRecordT("test.example.com", "test.example.com.", "CNAME", 300),
-    ]
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert len(diff.records_to_add) == 0
-    assert len(diff.records_to_remove) == 0
-    assert len(diff.records_to_update) == 1
-
-    updated = diff.records_to_update[0]
-    assert updated.record_type == "A"
-    assert updated.value == "5.6.7.8"
-
-
-def test_diff_dns_records_srv_records():
-    old_records = [
-        ReturnRecordT(
-            "_minecraft._tcp.server1.mc.example.com",
-            "0 5 25565 server1.mc.example.com",
-            "123",
-            "SRV",
-            300,
-        )
-    ]
-
-    new_records = [
-        AddRecordT(
-            "_minecraft._tcp.server1.mc.example.com",
-            "0 5 25566 server1.mc.example.com",
-            "SRV",
-            300,
-        )
-    ]
-
-    diff = diff_dns_records(old_records, new_records)
-
-    assert len(diff.records_to_update) == 1
-    updated = diff.records_to_update[0]
-    assert "25566" in updated.value
+async def test_managed_filtering_excludes_unrelated_records_without_writes():
+    provider = StatefulDNS()
+    unrelated = ReturnRecordT(sub_domain="www", value="192.0.2.5", record_id="unrelated", record_type="A", ttl=300)
+    managed_srv = ReturnRecordT(sub_domain="_minecraft._tcp.survival.mc", value="0 5 25565 survival.mc.example.com", record_id="srv", record_type="SRV", ttl=300)
+    provider.records = [ADDRESS, unrelated, managed_srv]
+    observed = await provider.list_relevant_records("mc")
+    assert observed == [ADDRESS, managed_srv]
+    assert diff_dns_records(observed, [UNCHANGED]) == RecordDiff([], ["srv"], [])
+    assert provider.records == [ADDRESS, unrelated, managed_srv]
+    assert provider.calls == []

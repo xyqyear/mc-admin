@@ -3,13 +3,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class DNSUpdateResponse(BaseModel):
-    """Response for DNS update operations"""
-
-    success: bool
-    message: str
-
-
 class DNSRecord(BaseModel):
     """DNS record information"""
 
@@ -18,18 +11,6 @@ class DNSRecord(BaseModel):
     record_id: str | int
     record_type: str
     ttl: int
-
-
-class DNSRecordsResponse(BaseModel):
-    """Response for DNS records list"""
-
-    records: list[DNSRecord]
-
-
-class RouterRoutesResponse(BaseModel):
-    """Response for MC Router routes"""
-
-    routes: dict[str, str]
 
 
 class DNSRecordDiff(BaseModel):

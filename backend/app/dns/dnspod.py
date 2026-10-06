@@ -78,12 +78,6 @@ class DNSPodDescribeRecordListRequestT(TypedDict):
     Domain: str
 
 
-class DNSPodModifyRecordBatchRequestT(TypedDict):
-    RecordIdList: RecordIdListT
-    Change: str
-    ChangeTo: str
-
-
 class DNSPodDeleteRecordBatchRequestT(TypedDict):
     RecordIdList: RecordIdListT
 
@@ -97,7 +91,6 @@ DNSPodAPIResponseT = DescribeDomainListResponseT | DescribeRecordListResponseT
 DNSPodAPIRequestParamsT = (
     DNSPodDescribeDomainListRequestT
     | DNSPodDescribeRecordListRequestT
-    | DNSPodModifyRecordBatchRequestT
     | DNSPodDeleteRecordBatchRequestT
     | DNSPodCreateRecordBatchRequestT
 )
@@ -105,7 +98,6 @@ DNSPodAPIRequestParamsT = (
 DNSPodAPIRequestNameT = Literal[
     "DescribeDomainList",
     "DescribeRecordList",
-    "ModifyRecordBatch",
     "DeleteRecordBatch",
     "CreateRecordBatch",
 ]
@@ -135,10 +127,6 @@ class DNSPodClient(DNSClient):
             "DescribeRecordList": DNSPodRequestInfoT(
                 constructor=models.DescribeRecordListRequest,
                 api_call=self._client.DescribeRecordList,
-            ),
-            "ModifyRecordBatch": DNSPodRequestInfoT(
-                constructor=models.ModifyRecordBatchRequest,
-                api_call=self._client.ModifyRecordBatch,
             ),
             "DeleteRecordBatch": DNSPodRequestInfoT(
                 constructor=models.DeleteRecordBatchRequest,

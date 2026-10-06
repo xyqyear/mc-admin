@@ -13,13 +13,6 @@ class AddressInfo(NamedTuple):
     port: int
 
 
-class DNSRecord(NamedTuple):
-    sub_domain: str
-    record_type: str
-    value: str
-    ttl: int
-
-
 class RouteEntry(NamedTuple):
     server_address: str
     backend: str
@@ -94,12 +87,19 @@ class ConnectivityObservation:
         return "ready"
 
 
-def generate_dns_records(addresses: dict[str, AddressInfo], servers: list[str], managed: str, ttl: int, domain: str) -> list[DNSRecord]:
+def generate_dns_records(addresses: dict[str, AddressInfo], servers: list[str], managed: str, ttl: int, domain: str) -> list[AddRecordT]:
     records = []
     for name, address in addresses.items():
         base = managed if name == "*" else f"{name}.{managed}"
-        records.append(DNSRecord(f"*.{base}", address.type, address.host, ttl))
-        records.extend(DNSRecord(f"_minecraft._tcp.{server}.{base}", "SRV", f"0 5 {address.port} {server}.{base}.{domain}", ttl) for server in servers)
+        records.append(AddRecordT(sub_domain=f"*.{base}", value=address.host, record_type=address.type, ttl=ttl))
+        records.extend(
+            AddRecordT(
+                sub_domain=f"_minecraft._tcp.{server}.{base}",
+                value=f"0 5 {address.port} {server}.{base}.{domain}",
+                record_type="SRV", ttl=ttl,
+            )
+            for server in servers
+        )
     return records
 
 

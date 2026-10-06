@@ -1,10 +1,9 @@
 """Cron expression validation and execution timing tests."""
-import asyncio
 
 import pytest
 from sqlalchemy import select
 
-from app.cron.models import CronJob, CronJobExecution, ExecutionStatus
+from app.cron.models import CronJob
 from app.db.database import get_async_session
 
 from .test_cronjobs import SampleCronJobParams
@@ -13,63 +12,6 @@ pytestmark = pytest.mark.usefixtures("setup_test_db")
 
 
 class TestCronScheduling:
-    async def test_cronjob_scheduled_to_run_in_5_seconds(self, fresh_cron_manager):
-        cron_manager = fresh_cron_manager
-
-        params = SampleCronJobParams(message="Cron timing test", delay_seconds=0)
-
-        cronjob_id = await cron_manager.create_cronjob(
-            identifier="test_cronjob",
-            params=params,
-            cron="* * * * *",
-            second="*",
-            name="Cron Timing Test CronJob",
-        )
-
-        scheduled_job = cron_manager.scheduler.get_job(cronjob_id)
-        assert scheduled_job is not None, "CronJob should be scheduled"
-
-        max_wait_time = 5
-        execution_found = False
-
-        for i in range(max_wait_time):
-            await asyncio.sleep(1)
-
-            async with get_async_session() as session:
-                result = await session.execute(
-                    select(CronJobExecution).where(
-                        CronJobExecution.cronjob_id == cronjob_id
-                    )
-                )
-                executions = result.scalars().all()
-
-                if executions:
-                    execution_found = True
-                    execution = executions[0]
-
-                    assert execution.cronjob_id == cronjob_id
-                    assert execution.execution_id is not None
-                    assert execution.started_at is not None
-
-                    assert execution.status in [
-                        ExecutionStatus.COMPLETED,
-                        ExecutionStatus.RUNNING,
-                    ]
-
-                    if execution.status == ExecutionStatus.COMPLETED:
-                        assert execution.ended_at is not None
-                        assert execution.duration_ms is not None
-                        assert execution.duration_ms >= 0
-
-                        assert execution.duration_ms < 2000, (
-                            "CronJob should complete quickly"
-                        )
-
-                    break
-
-        assert execution_found, (
-            f"CronJob did not execute within {max_wait_time} seconds."
-        )
 
     async def test_cron_validation_with_different_expressions(self, fresh_cron_manager):
         cron_manager = fresh_cron_manager

@@ -93,11 +93,6 @@ class HuaweiDNSClient(DNSClient):
         self._http_client = self._huawei_client.get_http_client()
         self._closed = False
         self._domain = domain
-        self._lock = asyncio.Lock()
-
-    @property
-    def lock(self) -> asyncio.Lock:
-        return self._lock
 
     async def close(self) -> None:
         if not self._closed:

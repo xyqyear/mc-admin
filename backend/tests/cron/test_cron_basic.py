@@ -1,13 +1,15 @@
 """Basic cron scheduler tests: creation, execution, and lifecycle."""
 import asyncio
+import json
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 from sqlalchemy import select
 
 import app.cron.manager as manager_module
 from app.cron.models import CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
-from app.cron.types import CronJobConfig
+from app.cron.types import CronJobConfig, ExecutionContext
 from app.db.database import get_async_session
 
 from .test_cron_manager import TestCronManager, test_cron_registry
@@ -91,38 +93,59 @@ class TestBasicCronJobFunctionality:
         assert scheduled_job is not None
         assert scheduled_job.id == cronjob_id
 
-    async def test_cronjob_execution_with_second_star(self, fresh_cron_manager):
-        cron_manager = fresh_cron_manager
-        params = SampleCronJobParams(message="Quick test", delay_seconds=0)
+    async def test_scheduler_dispatch_finishes_the_same_committed_execution(self, fresh_cron_manager, tmp_path):
+        manager = fresh_cron_manager
+        entered = asyncio.get_running_loop().create_future()
+        release = asyncio.Event()
+        marker = tmp_path / "scheduled-effect.txt"
 
-        cronjob_id = await cron_manager.create_cronjob(
-            identifier="test_cronjob", params=params, cron="* * * * *", second="*"
+        async def write_marker(context: ExecutionContext):
+            async with get_async_session() as session:
+                row = (await session.execute(select(CronJobExecution).where(CronJobExecution.execution_id == context.execution_id))).scalar_one()
+                assert row.status is ExecutionStatus.RUNNING
+                assert row.ended_at is None
+            entered.set_result(context.execution_id)
+            await release.wait()
+            marker.write_text(cast(SampleCronJobParams, context.params).message)
+            context.log("scheduled marker committed")
+
+        test_cron_registry.register_func(write_marker, SampleCronJobParams, identifier="scheduled_marker")
+        job_id = await manager.create_cronjob(
+            identifier="scheduled_marker", params=SampleCronJobParams(message="actual scheduled bytes"),
+            cron="* * * * *", second="*",
         )
-
-        await asyncio.sleep(2)
-
-        async with get_async_session() as session:
-            result = await session.execute(
-                select(CronJobExecution).where(
-                    CronJobExecution.cronjob_id == cronjob_id
-                )
-            )
-            executions = result.scalars().all()
-
-            assert len(executions) >= 1
-
-            execution = executions[0]
-            assert execution.cronjob_id == cronjob_id
-            assert execution.status in [
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.RUNNING,
-            ]
-            assert execution.started_at is not None
-
-            if execution.status == ExecutionStatus.COMPLETED:
-                assert execution.ended_at is not None
-                assert execution.duration_ms is not None
-                assert execution.duration_ms >= 0
+        try:
+            execution_id = await asyncio.wait_for(asyncio.shield(entered), 5)
+            await manager.pause_cronjob(job_id)
+            assert manager.scheduler.get_job(job_id) is None
+            assert not marker.exists()
+            async with get_async_session() as session:
+                row = (await session.execute(select(CronJobExecution).where(CronJobExecution.execution_id == execution_id))).scalar_one()
+                assert row.status is ExecutionStatus.RUNNING
+                assert row.ended_at is None
+            release.set()
+            async with asyncio.timeout(5):
+                while True:
+                    async with get_async_session() as session:
+                        row = (await session.execute(select(CronJobExecution).where(CronJobExecution.execution_id == execution_id))).scalar_one()
+                        if row.status is ExecutionStatus.COMPLETED:
+                            assert row.ended_at is not None
+                            assert row.duration_ms is not None and row.duration_ms >= 0
+                            assert any("scheduled marker committed" in message for message in json.loads(row.messages_json))
+                            break
+                        assert row.status is ExecutionStatus.RUNNING
+                    await asyncio.sleep(0.01)
+            async with get_async_session() as session:
+                executions = (await session.execute(select(CronJobExecution).where(CronJobExecution.cronjob_id == job_id))).scalars().all()
+                job = (await session.execute(select(CronJob).where(CronJob.cronjob_id == job_id))).scalar_one()
+                assert [record.execution_id for record in executions] == [execution_id]
+                assert job.execution_count == 1
+                assert job.status is CronJobStatus.PAUSED
+            assert marker.read_text() == "actual scheduled bytes"
+        finally:
+            release.set()
+            await manager.shutdown()
+            test_cron_registry._cronjobs.pop("scheduled_marker", None)
 
     async def test_pause_and_resume_cronjob(self, fresh_cron_manager):
         cron_manager = fresh_cron_manager
@@ -245,15 +268,12 @@ class TestBasicCronJobFunctionality:
         cron_manager = fresh_cron_manager
         params = SampleCronJobParams(message="Failure test", delay_seconds=-1)
 
-        @test_cron_registry.register(
-            schema_cls=SampleCronJobParams,
-            identifier="failing_test_cronjob",
-            description="CronJob that fails for testing",
-        )
         async def failing_cronjob(context):
             if context.params.delay_seconds < 0:
                 raise ValueError("Invalid delay seconds")
             await asyncio.sleep(context.params.delay_seconds)
+
+        test_cron_registry.register_func(func=failing_cronjob, schema_cls=SampleCronJobParams, identifier="failing_test_cronjob", description="CronJob that fails for testing")
 
         cronjob_id = await cron_manager.create_cronjob(
             identifier="failing_test_cronjob",

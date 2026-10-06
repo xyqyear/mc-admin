@@ -32,7 +32,7 @@ class ConflictProvider(DNSClient):
 async def test_conflicting_address_type_converges(before, after):
     original = ReturnRecordT("*.primary.mc", "old", "old-id", before, 600)
     retained = ReturnRecordT("*.stable.mc", "stable", "stable-id", "A", 600)
-    target = [AddRecordT("*.primary.mc", "new", after, 600), AddRecordT("*.stable.mc", "stable", "A", 600)]
+    target = [AddRecordT(sub_domain="*.primary.mc", value="new", record_type=after, ttl=600), AddRecordT(sub_domain="*.stable.mc", value="stable", record_type="A", ttl=600)]
     provider = ConflictProvider([original, retained])
     await provider.apply_diff(diff_dns_records(list(provider.records.values()), target))
     assert {(r.sub_domain, r.record_type, r.value) for r in provider.records.values()} == {
@@ -45,7 +45,7 @@ async def test_conflicting_address_type_converges(before, after):
 async def test_failed_replacement_preserves_failure_and_unrelated_progress(failure):
     original = ReturnRecordT("*.primary.mc", "192.0.2.1", "old-id", "A", 600)
     provider = ConflictProvider([original])
-    target = [AddRecordT("*.primary.mc", "target.example.com", "CNAME", 600), AddRecordT("*.other.mc", "192.0.2.2", "A", 600)]
+    target = [AddRecordT(sub_domain="*.primary.mc", value="target.example.com", record_type="CNAME", ttl=600), AddRecordT(sub_domain="*.other.mc", value="192.0.2.2", record_type="A", ttl=600)]
     diff = diff_dns_records([original], target)
     provider.fail_delete = failure == "delete"
     provider.fail_create = failure == "create"
@@ -65,6 +65,6 @@ async def test_failed_replacement_preserves_failure_and_unrelated_progress(failu
 async def test_cname_replacement_can_create_both_address_families():
     original = ReturnRecordT("*.primary.mc", "target.example.com", "old-id", "CNAME", 600)
     provider = ConflictProvider([original])
-    target = [AddRecordT("*.primary.mc", "192.0.2.1", "A", 600), AddRecordT("*.primary.mc", "2001:db8::1", "AAAA", 600)]
+    target = [AddRecordT(sub_domain="*.primary.mc", value="192.0.2.1", record_type="A", ttl=600), AddRecordT(sub_domain="*.primary.mc", value="2001:db8::1", record_type="AAAA", ttl=600)]
     await provider.apply_diff(diff_dns_records([original], target))
     assert {r.record_type for r in provider.records.values()} == {"A", "AAAA"}

@@ -18,7 +18,8 @@ from app.servers.models import Server, ServerStatus
 
 
 class StatefulDNS(DNSClient):
-    def __init__(self):
+    def __init__(self, domain="example.com"):
+        self.domain = domain
         self.records = []
         self.calls = []
         self.unavailable = False
@@ -27,12 +28,19 @@ class StatefulDNS(DNSClient):
         self.started: asyncio.Event | None = None
         self.release: asyncio.Event | None = None
         self.closed = False
+        self.initialized = True
+        self.initialization_error: Exception | None = None
 
     def get_domain(self):
-        return "example.com"
+        return self.domain
 
     def is_initialized(self):
-        return True
+        return self.initialized
+
+    async def init(self):
+        if self.initialization_error is not None:
+            raise self.initialization_error
+        self.initialized = True
 
     async def list_records(self):
         if self.unavailable:
@@ -136,6 +144,134 @@ async def synchronize(system):
 async def observe(system):
     async with system.db() as db:
         return await system.manager.observe(db)
+
+
+@pytest.mark.parametrize("change", ["credentials", "domain", "router_url"])
+async def test_typed_configuration_replaces_clients_and_applies_new_plan(connectivity, monkeypatch, change):
+    configuration = DNSManagerConfig(
+        enabled=True, dns=DNSPod(domain="example.com", id="old-id", key="old-key"),
+        mc_router_base_url="http://old-router:26666", addresses=[Manual()],
+    )
+    providers, routers = [], []
+
+    def provider_factory(domain, identifier, key):
+        provider = StatefulDNS(domain)
+        providers.append((domain, identifier, key, provider))
+        return provider
+
+    def router_factory(base_url):
+        router = StatefulRouter()
+        routers.append((base_url, router))
+        return router
+
+    monkeypatch.setattr("app.dns.manager.DNSPodClient", provider_factory)
+    monkeypatch.setattr("app.dns.manager.MCRouterClient", router_factory)
+    manager = SimpleDNSManager(configuration=lambda: configuration, docker_manager=connectivity.manager._docker_manager)
+    try:
+        await manager.initialize()
+        async with connectivity.db() as session:
+            await manager.update(session)
+        old_provider, old_router = providers[0][3], routers[0][1]
+        assert {(record.sub_domain, record.record_type, record.value, record.ttl) for record in old_provider.records} == {
+            ("*.mc", "A", "127.0.0.1", 15),
+            ("_minecraft._tcp.survival.mc", "SRV", "0 5 25565 survival.mc.example.com", 15),
+        }
+        assert old_router.routes == {"survival.mc.example.com": "localhost:25565"}
+        old_writes = (list(old_provider.calls), list(old_router.calls))
+        if change == "credentials":
+            configuration.dns = DNSPod(domain="example.com", id="new-id", key="new-key")
+            expected_credentials = ("example.com", "new-id", "new-key")
+        elif change == "domain":
+            configuration.dns = DNSPod(domain="new.example.net", id="old-id", key="old-key")
+            expected_credentials = ("new.example.net", "old-id", "old-key")
+        else:
+            configuration.mc_router_base_url = "http://new-router:26666"
+            expected_credentials = ("example.com", "old-id", "old-key")
+        async with connectivity.db() as session:
+            await manager.update(session)
+        assert len(providers) == len(routers) == 2
+        assert providers[1][:3] == expected_credentials
+        assert routers[1][0] == ("http://new-router:26666" if change == "router_url" else "http://old-router:26666")
+        assert old_provider.closed and old_router.closed
+        assert (old_provider.calls, old_router.calls) == old_writes
+        provider, router = providers[1][3], routers[1][1]
+        expected_target = "survival.mc.new.example.net" if change == "domain" else "survival.mc.example.com"
+        assert {(record.sub_domain, record.record_type, record.value, record.ttl) for record in provider.records} == {
+            ("*.mc", "A", "127.0.0.1", 15),
+            ("_minecraft._tcp.survival.mc", "SRV", "0 5 25565 " + expected_target, 15),
+        }
+        assert router.routes == {expected_target: "localhost:25565"}
+        configuration.dns_ttl = 30
+        configuration.addresses = [Manual(value="192.0.2.10", port=25566)]
+        async with connectivity.db() as session:
+            await manager.update(session)
+        assert len(providers) == len(routers) == 2
+        assert manager._dns_client is provider and manager._mc_router_client is router
+        assert {(record.sub_domain, record.record_type, record.value, record.ttl) for record in provider.records} == {
+            ("*.mc", "A", "192.0.2.10", 30),
+            ("_minecraft._tcp.survival.mc", "SRV", "0 5 25566 " + expected_target, 30),
+        }
+        assert router.routes == {expected_target: "localhost:25565"}
+    finally:
+        await manager.close()
+    assert all(provider.closed for _, _, _, provider in providers)
+    assert all(router.closed for _, router in routers)
+
+
+async def test_typed_provider_replacement_failure_keeps_router_and_recovers(connectivity, monkeypatch, caplog):
+    configuration = DNSManagerConfig(
+        enabled=True, dns=DNSPod(domain="example.com", id="original", key="valid"),
+        mc_router_base_url="http://old-router:26666", addresses=[Manual()],
+    )
+    providers, routers = [], []
+
+    def provider_factory(domain, identifier, key):
+        provider = StatefulDNS(domain)
+        provider.initialized = False
+        if key == "invalid":
+            provider.initialization_error = OSError("replacement-provider-secret")
+        providers.append(provider)
+        return provider
+
+    def router_factory(base_url):
+        router = StatefulRouter()
+        routers.append((base_url, router))
+        return router
+
+    monkeypatch.setattr("app.dns.manager.DNSPodClient", provider_factory)
+    monkeypatch.setattr("app.dns.manager.MCRouterClient", router_factory)
+    manager = SimpleDNSManager(configuration=lambda: configuration, docker_manager=connectivity.manager._docker_manager)
+    try:
+        await manager.initialize()
+        async with connectivity.db() as session:
+            await manager.update(session)
+        old_provider, old_router = providers[0], routers[0][1]
+        configuration.dns = DNSPod(domain="new.example.net", id="replacement", key="invalid")
+        configuration.mc_router_base_url = "http://new-router:26666"
+        async with connectivity.db() as session:
+            with pytest.raises(PublicOperationError, match="部分网络配置未完成"):
+                await manager.update(session)
+        assert old_provider.closed and old_router.closed
+        assert providers[-1].closed and manager._dns_client is None
+        unavailable_router = routers[-1][1]
+        assert manager._mc_router_client is unavailable_router and not unavailable_router.closed
+        assert routers[-1][0] == "http://new-router:26666"
+        assert unavailable_router.routes == {"survival.mc.new.example.net": "localhost:25565"}
+        assert "replacement-provider-secret" not in caplog.text
+        configuration.dns = DNSPod(domain="new.example.net", id="replacement", key="recovered")
+        async with connectivity.db() as session:
+            await manager.update(session)
+        assert unavailable_router.closed
+        assert manager._dns_client is providers[-1] and not providers[-1].closed
+        assert {(record.sub_domain, record.record_type, record.value, record.ttl) for record in providers[-1].records} == {
+            ("*.mc", "A", "127.0.0.1", 15),
+            ("_minecraft._tcp.survival.mc", "SRV", "0 5 25565 survival.mc.new.example.net", 15),
+        }
+        assert routers[-1][1].routes == {"survival.mc.new.example.net": "localhost:25565"}
+    finally:
+        await manager.close()
+    assert all(provider.closed for provider in providers)
+    assert all(router.closed for _, router in routers)
 
 
 async def test_failed_provider_initialization_keeps_router_available(connectivity, monkeypatch, caplog):

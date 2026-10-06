@@ -9,11 +9,10 @@ automatic self-check.
 - **`cron_manager`** — APScheduler facade. Creates, updates, pauses, resumes,
   cancels, persists, recovers, and executes jobs.
 - **`cron_registry`** — registry of job functions, parameter schemas, and
-  registration metadata. Built-in jobs use
-  `cron_registry.register_func(...)`; the optional `register(...)` decorator is
-  a helper around the same registration path.
+  registration metadata. All jobs use the explicit
+  `cron_registry.register_func(...)` registration path.
 - **`restart_scheduler`** — picks restart minutes that avoid active backup
-  minutes. Used by per-server restart schedule UI.
+  and paused backup minutes and restart slots. Used by per-server restart schedule UI.
 
 ## Server-managed restart plans
 
@@ -28,6 +27,13 @@ Jobs created through the generic cron API have no managed binding, even if their
 name is exactly `restart-<server_id>`. Multiple independent restart jobs remain
 supported. Automatic time selection excludes only the current managed job; a
 similarly named independent job continues to reserve its time slot.
+
+Automatic scheduling examines five-minute slots from the configured start time,
+rounded down to the nearest five minutes, and crosses hour/day boundaries. Active
+and paused backup minutes and restart slots remain reserved. If all slots are
+occupied, the original unrounded start time is retained. Generated expressions are
+daily (`minute hour * * *`); user-provided custom expressions retain all five fields
+unchanged in configuration and API responses.
 
 Deleting and recreating a server name creates a different generation. The new
 server's schedule GET returns `null` until a plan is explicitly created, and that
@@ -230,7 +236,8 @@ Status transitions are recorded in `CronJobExecution` rows:
 Jobs that do not run call `context.skip(reason)` and return. The manager marks
 only still-running contexts as completed; exceptions and cancellation retain
 their own terminal statuses. Skipped attempts retain timestamps, a reason in the
-execution logs, and an execution count, without claiming that a backup exists.
+execution logs, and an execution count. Backup history distinguishes a skip before
+snapshot creation from retention cleanup skipped after a snapshot was created.
 The frontend detail dialog displays them as “跳过” rather than “成功”.
 
 ## Built-In Jobs
@@ -245,6 +252,13 @@ uptimekuma_url?)`.
 3. If any required maintenance/resource claim is busy, record `skipped` and its reason without automatic retry; a global backup skips the entire run.
 4. Apply configured forget/prune retention through the repository-use guard. If active references prevent retention, retain the created snapshot and explicitly record that cleanup was skipped.
 5. Push optional Uptime Kuma status, preserving the separate cron execution history.
+
+After snapshot creation, an HTTP 423 retention conflict records `skipped` with a
+static repository-busy diagnostic and retains the snapshot. Other HTTP retention
+errors propagate unchanged and record `failed`, also retaining the snapshot.
+An ordinary retention exception records a safe warning and finishes `completed`.
+Cancellation propagates at backup, retention and notification boundaries and
+commits `cancelled`; a snapshot already created remains retained.
 
 ### `restart_server` (`jobs/restart.py`)
 
@@ -272,20 +286,41 @@ Backup jobs notify via plain HTTP GET to the configured push URL:
 
 - `status=up|down`
 - `msg=<short_text>`
-- `ping=<ms>` for successful runs
+- `ping=<ms>` for every notification
 
 An intentional lock-conflict skip sends `status=up` with a `skipped:` message;
 this monitor heartbeat is separate from the persisted `skipped` execution result.
+Retention conflicts after snapshot creation also send an `up`/`skipped:` heartbeat;
+other HTTP retention failures send `down`, while ordinary retention warnings send
+`up`/`OK`. Transport and ordinary notification errors are best effort and preserve
+the backup outcome. The configured URL is sent unchanged but omitted from logs and
+execution history, along with adapter exception text.
+
+## Error output
+
+Cron keeps authored Chinese diagnostics separate from internal exception values.
+Local validation and manager failures retain their original `ValueError` type and
+status classification; their public messages omit dynamic identifiers and input
+values. Unknown adapter exceptions use the standard internal-error message in
+history and responses. An adapter `HTTPException.detail` is not trusted for cron
+history or Uptime Kuma messages.
+
+Invalid parameters retain HTTP 400 with a string detail. Diagnostics include known
+schema field names, numeric indexes, error categories and authored constraints;
+they omit raw input, mapping keys, validator messages and exception context.
+Unexpected create/update failures retain HTTP 500. Safe logs record exception type
+and stack locations without exception values, causes or locals.
 
 ## Files
 
 - `manager.py` — `CronManager` and typed `get_cron_manager()` accessor for the active runtime
-- `registry.py` — `CronRegistry`, `register_func`, optional decorator helper
+- `registry.py` — `CronRegistry` and explicit `register_func` metadata registration
 - `restart_scheduler.py` — restart-minute selection
 - `weekdays.py` — conventional-crontab weekday normalization for APScheduler 3
 - `types.py` — `ExecutionContext`, registration/config/record types
 - `crud.py` — DB operations on `CronJob` and `CronJobExecution`
 - `bindings.py` — managed identity validation and retained ambiguity diagnostics
+- `errors.py` — authored cron diagnostics on unchanged exception types
 - `jobs/backup.py` — backup job
 - `jobs/restart.py` — restart job
 
@@ -300,7 +335,3 @@ executions failed and retains the journal's interrupted outcome without replay.
 Shutdown stops scheduling, cancels owned executions and waits for their cleanup
 before closing the database. Runtime shutdown then drains the remaining producers
 and request/task writers. See [runtime lifecycle](runtime.md).
-
-## 失败信息边界
-
-定时任务模型校验只公开字段与类型、可信 Schema 约束和业务定义的中文信息，不回显参数值或第三方异常正文。业务 ValueError 保留原有类型、内部字符串及 HTTP 状态分类，通过独立的公开消息供接口和执行记录展示。未知适配器错误使用固定中文消息，日志仅保留安全上下文、异常类型和调用位置；备份及 Uptime Kuma 通知不记录 URL 或凭据。取消、维护跳过、快照成功后的保留清理警告仍遵守各自的执行结果。

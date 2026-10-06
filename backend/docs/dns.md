@@ -4,7 +4,7 @@ DNS records and the mc-router routing table follow ACTIVE database server record
 
 ## Planning, observation and application
 
-`planning.py` contains pure record/route generation, route differences and `DesiredConnectivity` / `ConnectivityObservation`. `SimpleDNSManager` reads the ACTIVE inventory and each server's compose game port, observes the two external systems independently, and applies known differences. `get_dns_manager()` obtains the actual manager owned by the current Runtime. Runtime construction injects its configuration reader and Docker manager; there is no shared DNS manager instance.
+`planning.py` contains pure record/route generation, route differences and `DesiredConnectivity` / `ConnectivityObservation`. Record generation returns `types.AddRecordT` using named fields and the captured provider domain; the HTTP record DTO separately includes `record_id`. `SimpleDNSManager` reads the ACTIVE inventory and each server's compose game port, observes the two external systems independently, and applies known differences. `get_dns_manager()` obtains the actual manager owned by the current Runtime. Runtime construction injects its configuration reader and Docker manager; there is no shared DNS manager instance.
 
 `observe(db)` is read-only with respect to remote records and routes. It returns separate nullable DNS/router differences, `unknown_servers`, safe `issues`, `empty_desired` and a `state`:
 
@@ -17,7 +17,7 @@ DNS records and the mc-router routing table follow ACTIVE database server record
 
 A failed remote read is unknown, never an empty record set. The affected branch performs no writes; a separately observed healthy branch can still converge. If any ACTIVE server's compose is unreadable, both plans suppress deletions, preserving its existing connectivity without guessing which old routes belong to it. Known additions and updates continue. An unavailable database inventory prevents both branches from writing.
 
-Empty desired state retains the existing deletion policy: no configured addresses or no readable ACTIVE servers means no remote deletion. Removing some addresses or servers is reconciled when at least one address and readable server remain and the inventory is completely known. The older `get_current_diff(db)` interface still reports an error for an empty target; the status API uses the richer observation instead.
+Empty desired state retains the existing deletion policy: no configured addresses or no readable ACTIVE servers means no remote deletion. Removing some addresses or servers is reconciled when at least one address and readable server remain and the inventory is completely known. Status and update use `ConnectivityObservation`, which represents empty and unknown states explicitly.
 
 `update(db)` observes afresh before applying. It does not apply a previously displayed UI diff. Targets are independent: one failed add/update/delete does not prevent unrelated targets from being attempted. DNS writes have a maximum concurrency of four; provider methods retain their existing payload contracts. After all issued writes settle, a partial failure returns a safe error and remains visible through status. Retrying reads the actual state again and applies only remaining differences. No-change updates make no remote writes. There is no cross-provider rollback or transaction with external administrative tools.
 
@@ -50,6 +50,6 @@ Each constructed client is immediately registered for cleanup. Provider initiali
 - `api_models.py` — public DNS response DTOs.
 - `types.py`, `utils.py` — record types, keys and DNS differences.
 
-Focused checks: `uv run pytest --no-cov -q tests/dns` and the owned external contract `uv run pytest --no-cov -q tests/dns/test_router_live.py --run-docker`.
+Focused checks select affected nodes explicitly, such as `uv run pytest --no-cov -q tests/dns/test_manager.py::test_generate_dns_records` or the owned external contract `uv run pytest --no-cov -q tests/dns/test_router_live.py --run-docker`.
 
 手动 `POST /api/dns/update` 返回 202 和任务 ID，由 `app.dns.tasks` 使用独立 DB 会话执行现有 reconciliation。权限及 DNS 禁用检查在接受前完成；执行失败进入任务错误，查询状态仍保留各提供方的部分成功和未知状态。自动更新不新增任务中心记录。

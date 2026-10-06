@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import httpx2
 import pytest
 
+from app.dns.planning import RouteDiff
 from app.dns.router import MCRouterClient
 
 
@@ -183,19 +184,19 @@ async def test_failed_route_batch_waits_for_other_issued_request(router_client, 
     router_client.get_routes = AsyncMock(return_value=routes)
     if phase == "remove":
         router_client._remove_route = AsyncMock(side_effect=change_route)
-        batch = asyncio.create_task(router_client._remove_all_routes())
+        batch = asyncio.create_task(router_client.apply_diff(RouteDiff({}, routes, {})))
     else:
         router_client._add_route = AsyncMock(side_effect=change_route)
-        batch = asyncio.create_task(router_client._add_routes(routes))
+        batch = asyncio.create_task(router_client.apply_diff(RouteDiff(routes, {}, {})))
     try:
         await asyncio.wait_for(entered.wait(), 1)
         await asyncio.sleep(0)
         assert not batch.done()
         assert not settled.is_set()
         finish.set()
-        with pytest.raises(RuntimeError, match="router rejected one route") as error:
+        with pytest.raises(ExceptionGroup, match="MC Router 部分路由更新失败") as error:
             await asyncio.wait_for(batch, 1)
-        assert error.value is failure
+        assert error.value.exceptions == (failure,)
         assert settled.is_set()
     finally:
         finish.set()
@@ -203,7 +204,7 @@ async def test_failed_route_batch_waits_for_other_issued_request(router_client, 
 
 
 @pytest.mark.asyncio
-async def test_remove_all_routes(router_client):
+async def test_apply_diff_removes_all_selected_routes(router_client):
     existing_routes = {
         "vanilla.mc.example.com": "localhost:25565",
         "modded.mc.example.com": "localhost:25566",
@@ -213,7 +214,7 @@ async def test_remove_all_routes(router_client):
 
     router_client._remove_route = AsyncMock()
 
-    await router_client._remove_all_routes()
+    await router_client.apply_diff(RouteDiff({}, existing_routes, {}))
 
     assert router_client._remove_route.call_count == 2
     router_client._remove_route.assert_any_call("vanilla.mc.example.com")
@@ -221,7 +222,7 @@ async def test_remove_all_routes(router_client):
 
 
 @pytest.mark.asyncio
-async def test_add_routes(router_client):
+async def test_apply_diff_adds_all_selected_routes(router_client):
     routes = {
         "vanilla.mc.example.com": "localhost:25565",
         "modded.mc.example.com": "localhost:25566",
@@ -229,7 +230,7 @@ async def test_add_routes(router_client):
 
     router_client._add_route = AsyncMock()
 
-    await router_client._add_routes(routes)
+    await router_client.apply_diff(RouteDiff(routes, {}, {}))
 
     assert router_client._add_route.call_count == 2
     router_client._add_route.assert_any_call(
