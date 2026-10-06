@@ -111,9 +111,10 @@ class TestCreateServerArchiveStream:
             assert len(progress_updates) >= 2
 
             assert progress_updates[0].progress == 0
-            assert "Starting" in progress_updates[0].message
+            assert progress_updates[0].message == "正在准备压缩"
 
             assert progress_updates[-1].progress == 100
+            assert progress_updates[-1].message == "压缩完成"
             assert progress_updates[-1].result is not None
             assert "filename" in progress_updates[-1].result
 
