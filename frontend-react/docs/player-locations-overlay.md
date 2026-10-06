@@ -1,6 +1,6 @@
 # Player Locations Overlay (`features/world/layers/players/`)
 
-The world-restore page shows saved player positions from mcmap as both a
+The restore and prune pages show saved player positions from mcmap as both a
 sidebar tab and a translucent Leaflet overlay. Locations are last-saved player
 file positions, not live online positions.
 
@@ -29,10 +29,28 @@ fills in missing names and avatars as Mojang lookups complete. Each profile
 event writes the matching TanStack Query cache entry keyed by normalized
 UUID. Map and individual-profile consumers observe that same entry; disabling the stream does not detach cache updates. Stream progress/error remains local, without a second mutable profile store.
 
+`features/players/identity.ts` supplies the public pure `normalizeUuid()` helper
+used by profile queries, the world controller, the list and marker layers. It
+removes hyphens, lowercases exactly 32 hexadecimal characters and returns `null`
+for missing or invalid values. UUID syntax normalization does not impose an
+online-mode version check. Location identity uses `uuid ?? id`; an explicitly
+empty or invalid UUID stays unresolved rather than falling back to a different
+ID. Online filtering and profile-cache lookup use this same normalized identity.
+
+Profile events validate the concrete wire fields before entering the cache.
+The finite stream ends with `complete` or `error`; EOF without either displays
+a recoverable Chinese error in the player tab. Cached names, saved locations
+and map controls remain usable. “重试玩家资料” starts a new profile stream for
+the same UUID set without refetching positions. Disabling or unmounting aborts
+the request without reporting an error. The shared reader skips malformed JSON;
+decoded event-handler failures end dispatch and release the reader.
+
 ## Sidebar
 
-`PlayerLocationList.tsx` is the `玩家位置` tab in
-`ServerWorldRestore.tsx`. It shows:
+`WorldPlayerLocationList.tsx` binds the common controller's `players` group and
+the current map dimension to `PlayerLocationList.tsx`. Both
+`WorldRestoreScreen.tsx` and `ChunkPruneScreen.tsx` compose this `玩家位置` tab.
+It shows:
 
 - a Switch for overlay visibility,
 - a Switch for filtering the list and map to online players only,
@@ -67,8 +85,13 @@ inspection.
 
 ## Cross-Dimension Pan
 
-Player rows reuse the world-restore page's pending-pan ref used by FTB claims.
-For off-dimension rows, the page stores the target relpath and X/Z block
-position, switches dimension via the URL, then consumes the pending pan during
-the next overlay render before Leaflet layers are attached. This preserves the
-same StrictMode-safe, pan-before-add ordering as the FTB claims overlay.
+`useWorldMapController` owns one pending-pan ref shared by player rows and FTB
+claims. An off-dimension row stores the target relpath and X/Z block position,
+switches the URL dimension and clears the previous view coordinates. An overlay
+render applies the pan only when its dimension matches the target, before
+Leaflet layers attach. A microtask clears the ref so subsequent renders do not
+replay the pan while StrictMode keeps the same pan-before-add ordering.
+
+`mapConfig.blockToLatLng()` maps block X/Z to `[-Z, X]`, preserving negative
+coordinates for markers and pan. Block-to-chunk and chunk-to-region conversions
+use floor division, so negative positions retain their correct world cells.

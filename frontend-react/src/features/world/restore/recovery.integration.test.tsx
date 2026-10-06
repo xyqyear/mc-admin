@@ -55,10 +55,10 @@ it.each([401, 403, 409, 422, 500])('preserves structured HTTP %s errors from the
 
 it('ends a ready preview session when its owner unmounts and shows heartbeat expiry', async () => {
   let heartbeat: (() => void) | undefined
-  const nativeInterval = window.setInterval.bind(window)
-  vi.spyOn(window, 'setInterval').mockImplementation((callback: TimerHandler, timeout?: number, ...args: unknown[]) => {
-    if (timeout === 30_000) { heartbeat = callback as () => void; return 987654 }
-    return nativeInterval(callback, timeout, ...args)
+  const nativeInterval = globalThis.setInterval.bind(globalThis)
+  vi.spyOn(window, 'setInterval').mockImplementation((callback, timeout) => {
+    if (timeout === 30_000) heartbeat = callback
+    return nativeInterval(callback, timeout)
   })
   const ended: string[] = []
   server.use(

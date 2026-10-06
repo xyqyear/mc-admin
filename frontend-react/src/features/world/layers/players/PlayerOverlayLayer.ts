@@ -2,6 +2,7 @@ import L from 'leaflet'
 
 import type { PlayerMapProfileResponse } from '@/features/players/contracts';
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
+import { blockToLatLng } from '@/features/world/map/mapConfig'
 
 import {
   isPlayerOnline,
@@ -10,8 +11,6 @@ import {
   playerLocationKey,
 } from '@/features/world/layers/players/playerLocationDisplay'
 
-// CRS.Simple: lat = -z, lng = x.
-const blockToLatLng = (bx: number, bz: number): L.LatLngExpression => [-bz, bx]
 const MARKER_WIDTH = 120
 const NAME_HEIGHT = 14
 const MARKER_GAP = 1

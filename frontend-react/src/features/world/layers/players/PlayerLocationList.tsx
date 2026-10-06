@@ -30,6 +30,8 @@ interface PlayerLocationListProps {
   dimensionLabelByRelpath: Map<string, string>
   profilesByUuid: ReadonlyMap<string, PlayerMapProfileResponse>
   pendingProfileUuids: ReadonlySet<string>
+  profileError: string | null
+  onRetryProfiles: () => void
   onlinePlayerUuids: ReadonlySet<string>
   onlineOnly: boolean
   onlineStatusLoading: boolean
@@ -49,6 +51,8 @@ export const PlayerLocationList: React.FC<PlayerLocationListProps> = ({
   dimensionLabelByRelpath,
   profilesByUuid,
   pendingProfileUuids,
+  profileError,
+  onRetryProfiles,
   onlinePlayerUuids,
   onlineOnly,
   onlineStatusLoading,
@@ -131,6 +135,14 @@ export const PlayerLocationList: React.FC<PlayerLocationListProps> = ({
 
   return (
     <div className="flex flex-col gap-2">
+      {profileError && (
+        <div role="alert" className="text-xs text-destructive">
+          玩家资料加载失败：{profileError}
+          <Button size="sm" variant="outline" className="ml-2 h-6 px-2" onClick={onRetryProfiles}>
+            <RefreshCw className="mr-1 h-3 w-3" /> 重试玩家资料
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5">
           <Switch

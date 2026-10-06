@@ -1,6 +1,7 @@
 import L from 'leaflet'
 
 import { BLOCKS_PER_CHUNK } from '@/features/world/map/coords'
+import { blockToLatLng } from '@/features/world/map/mapConfig'
 import type {
   FtbClusterEntry,
   FtbTeamEntry,
@@ -10,9 +11,6 @@ import { computeBoundaryRings, type Ring } from '@/features/world/layers/claims/
 import { pickLabelEdge } from '@/features/world/layers/claims/pickLabelEdge'
 import type { TeamColor } from '@/features/world/layers/claims/teamColors'
 import { teamColors } from '@/features/world/layers/claims/teamColors'
-
-// CRS.Simple: lat = -z, lng = x.
-const blockToLatLng = (bx: number, bz: number): L.LatLngExpression => [-bz, bx]
 
 function ringToLatLngs(ring: Ring): L.LatLngExpression[] {
   return ring.map(([cx, cz]) =>

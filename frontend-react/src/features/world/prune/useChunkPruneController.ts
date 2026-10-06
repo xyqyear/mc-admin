@@ -21,7 +21,7 @@ import {
   useChunkPruneSettings,
   useChunkPruneState,
 } from '@/features/world/prune/queries'
-import { useTaskMutations } from '@/features/tasks/commands'
+import { useCancelTask } from '@/features/tasks/commands';
 import { taskQueryKeys } from '@/features/tasks/queries'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import type { BackgroundTaskStatus } from '@/features/tasks/contracts'
@@ -51,11 +51,13 @@ export function previewUnavailableMessage(availability: string | undefined): str
 
 export function useChunkPruneController(serverId: string) {
   const world = useWorldMapController(serverId)
-  const { serverStopped, regionRelpath, claimsOverlays, playersOverlays } = world
-  const urlMode: ChunkPruneMode = world.rawMode === 'chunks' ? 'chunks' : 'regions'
+  const { serverStopped } = world.server
+  const { regionRelpath, rawMode } = world.map
+  const { claimsOverlays } = world.claims
+  const { playersOverlays } = world.players
+  const urlMode: ChunkPruneMode = rawMode === 'chunks' ? 'chunks' : 'regions'
   const queryClient = useQueryClient()
   const settingsQ = useChunkPruneSettings(serverId)
-  const { useCancelTask } = useTaskMutations()
   const cancelTask = useCancelTask()
   const { confirm, confirmDialog } = useConfirm()
 

@@ -8,8 +8,8 @@ import { useWorldRestoreSelectionStore, type WorldRestoreSelectionMode } from '@
 const EMPTY_SELECTION = new Set<ChunkKey>()
 export function useWorldRestoreController(serverId: string) {
   const world = useWorldMapController(serverId)
-  const { dimensionRelpath, regionRelpath } = world
-  const urlMode: WorldRestoreSelectionMode = world.rawMode === 'chunk' ? 'chunk' : 'region'
+  const { dimensionRelpath, regionRelpath, rawMode } = world.map
+  const urlMode: WorldRestoreSelectionMode = rawMode === 'chunk' ? 'chunk' : 'region'
   const { confirm: confirmModeChange, confirmDialog: modeChangeConfirmDialog } = useConfirm()
   const selectionState = useWorldRestoreSelectionStore((s) =>
     s.byServer[serverId],

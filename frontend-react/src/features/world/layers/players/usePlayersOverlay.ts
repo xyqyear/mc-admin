@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import L from 'leaflet'
 
 import type { ServerMapOverlay } from '@/features/world/map/ServerMap'
+import { blockToLatLng } from '@/features/world/map/mapConfig'
 import type { PlayerMapProfileResponse } from '@/features/players/contracts';
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
 
@@ -75,7 +76,7 @@ export function usePlayersOverlay({
   ])
 
   const panToBlock = useCallback((bx: number, bz: number) => {
-    mapRef.current?.panTo([-bz, bx])
+    mapRef.current?.panTo(blockToLatLng(bx, bz))
   }, [])
 
   return { overlays, panToBlock }

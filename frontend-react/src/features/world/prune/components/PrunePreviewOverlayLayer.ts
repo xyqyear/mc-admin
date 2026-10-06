@@ -1,4 +1,5 @@
 import L from 'leaflet'
+import { blockToLatLng } from '@/features/world/map/mapConfig'
 
 import {
   BLOCKS_PER_CHUNK,
@@ -9,8 +10,6 @@ import type {
   ChunkPruneMode,
   GridRing,
 } from '@/features/world/prune/contracts'
-
-const blockToLatLng = (bx: number, bz: number): L.LatLngExpression => [-bz, bx]
 
 function ringToLatLngs(ring: GridRing, cellSize: number): L.LatLngExpression[] {
   return ring.map(([x, z]) => blockToLatLng(x * cellSize, z * cellSize))

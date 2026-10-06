@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type L from 'leaflet'
 
 import type { ServerMapOverlay } from '@/features/world/map/ServerMap'
+import { blockToLatLng } from '@/features/world/map/mapConfig'
 import type { FtbTeamEntry } from '@/features/world/layers/claims/contracts'
 
 import {
@@ -94,7 +95,7 @@ export function useClaimsOverlay({
   }, [])
 
   const panToBlock = useCallback((bx: number, bz: number) => {
-    mapRef.current?.panTo([-bz, bx])
+    mapRef.current?.panTo(blockToLatLng(bx, bz))
   }, [])
 
   return {

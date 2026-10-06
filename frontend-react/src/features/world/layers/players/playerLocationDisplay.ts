@@ -1,17 +1,12 @@
 import type { PlayerMapProfileResponse } from '@/features/players/contracts';
+import { normalizeUuid } from '@/features/players/identity'
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
 
 export function normalizedUuidOf(
   player: Pick<PlayerLocationEntry, 'uuid' | 'id'>,
 ): string | null {
   const raw = player.uuid ?? player.id
-  return normalizePlayerUuid(raw)
-}
-
-export function normalizePlayerUuid(value: string | null | undefined): string | null {
-  if (!value) return null
-  const normalized = value.replaceAll('-', '').toLowerCase()
-  return /^[0-9a-f]{32}$/.test(normalized) ? normalized : null
+  return normalizeUuid(raw)
 }
 
 export function isPlayerOnline(

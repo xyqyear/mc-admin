@@ -8,7 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FtbClusterEntry, FtbTeamEntry } from '@/features/world/layers/claims/contracts'
 import { useClaimsOverlay } from '@/features/world/layers/claims/useClaimsOverlay'
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
-import { normalizePlayerUuid } from '@/features/world/layers/players/playerLocationDisplay'
+import { normalizeUuid } from '@/features/players/identity'
+import { blockToLatLng } from '@/features/world/map/mapConfig'
 import { usePlayersOverlay } from '@/features/world/layers/players/usePlayersOverlay'
 import type { ServerMapView } from '@/features/world/map/ServerMap'
 import { buildDimensionOptions, relpathOf, selectWorldDimension } from '@/features/world/map/worldDimensions'
@@ -162,7 +163,7 @@ export function useWorldMapController(serverId: string) {
       queueMicrotask(() => {
         pendingPanRef.current = null
       })
-      map.setView([-pending.bz, pending.bx], map.getZoom(), { animate: false })
+      map.setView(blockToLatLng(pending.bx, pending.bz), map.getZoom(), { animate: false })
     },
     [],
   )
@@ -200,7 +201,7 @@ export function useWorldMapController(serverId: string) {
     () =>
       new Set(
         (onlinePlayersQ.data ?? [])
-          .map((player) => normalizePlayerUuid(player.uuid))
+          .map((player) => normalizeUuid(player.uuid))
           .filter((uuid): uuid is string => !!uuid),
       ),
     [onlinePlayersQ.data],
@@ -318,57 +319,26 @@ export function useWorldMapController(serverId: string) {
   const dimensionSelectValue = dimensionRelpath ?? null
 
   return {
-    layoutQ,
-    statusQ,
-    serverInfoQ,
-    serverStopped,
-    mapStatusQ,
-    mapInitialized,
-    initOpen,
-    initForce,
-    setInitOpen,
-    setInitForce,
-    openInitDialog,
-    handleInitComplete,
-    handleInitClose,
-    handleRefreshMap,
-    dimensionRelpath,
-    initialView,
-    regionRelpath,
-    rootList,
-    dimensionOptions,
-    dimensionLabelByRelpath,
-    dimensionSelectValue,
-    handleDimensionChange,
-    handleViewChange,
-    regionsMap,
-    regionsLoading,
-    regionsError,
-    claimsQ,
-    claimsAvailable,
-    claimsOverlayVisible,
-    setClaimsOverlayVisible,
-    teams,
-    claimsPopover,
-    closeClaimsPopover,
-    highlightClusters,
-    handleRefreshClaims,
-    handleClusterClick,
-    popoverContext,
-    playerLocationsQ,
-    playersOverlayVisible,
-    setPlayersOverlayVisible,
-    onlinePlayersOnly,
-    setOnlinePlayersOnly,
-    onlinePlayersQ,
-    onlinePlayerUuids,
-    onlineStatusAvailable,
-    playerProfiles,
-    handleRefreshPlayers,
-    handlePlayerClick,
-    claimsOverlays,
-    playersOverlays,
-    mapOverlays,
-    rawMode
+    server: { statusQ, serverInfoQ, serverStopped },
+    map: {
+      layoutQ, mapStatusQ, mapInitialized, initOpen, initForce,
+      openInitDialog, handleInitComplete, handleInitClose, handleRefreshMap,
+      dimensionRelpath, initialView, regionRelpath, rootList, dimensionOptions,
+      dimensionLabelByRelpath, dimensionSelectValue, handleDimensionChange,
+      handleViewChange, regionsMap, regionsLoading, regionsError, mapOverlays, rawMode,
+    },
+    claims: {
+      claimsQ, claimsAvailable, claimsOverlayVisible, setClaimsOverlayVisible,
+      teams, claimsPopover, closeClaimsPopover, highlightClusters,
+      handleRefreshClaims, handleClusterClick, popoverContext, claimsOverlays,
+    },
+    players: {
+      playerLocationsQ, playersOverlayVisible, setPlayersOverlayVisible,
+      onlinePlayersOnly, setOnlinePlayersOnly, onlinePlayersQ, onlinePlayerUuids,
+      onlineStatusAvailable, playerProfiles, handleRefreshPlayers, handlePlayerClick,
+      playersOverlays,
+    },
   }
 }
+
+export type WorldMapController = ReturnType<typeof useWorldMapController>

@@ -8,19 +8,14 @@ import ServerOperationButtons from '@/features/servers/ui/ServerOperationButtons
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { Spinner } from '@/shared/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { ClusterPopover } from '@/features/world/layers/claims/ClusterPopover'
 import { TeamClusterList } from '@/features/world/layers/claims/TeamClusterList'
-import { PlayerLocationList } from '@/features/world/layers/players/PlayerLocationList'
+import { WorldPlayerLocationList } from '@/features/world/layers/players/WorldPlayerLocationList'
+import { WorldDimensionSelect } from '@/features/world/map/WorldDimensionSelect'
+import { WorldMapInitialization } from '@/features/world/map/WorldMapInitialization'
 import type { ChunkKey } from '@/features/world/map/contracts'
 import MapHelpButton from '@/features/world/map/MapHelpButton'
 import MapInitDialog from '@/features/world/map/MapInitDialog'
@@ -30,77 +25,8 @@ import ChunkPrunePanel from '@/features/world/prune/components/ChunkPrunePanel'
 const ServerChunkPrune: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const serverId = id ?? ''
-  const {
-    layoutQ,
-    statusQ,
-    serverInfoQ,
-    serverStopped,
-    mapStatusQ,
-    mapInitialized,
-    initOpen,
-    initForce,
-    setInitOpen,
-    setInitForce,
-    handleInitComplete,
-    handleRefreshMap,
-    dimensionRelpath,
-    initialView,
-    regionRelpath,
-    rootList,
-    dimensionOptions,
-    dimensionLabelByRelpath,
-    handleDimensionChange,
-    handleViewChange,
-    regionsMap,
-    regionsLoading,
-    regionsError,
-    claimsQ,
-    claimsAvailable,
-    claimsOverlayVisible,
-    setClaimsOverlayVisible,
-    claimsPopover,
-    closeClaimsPopover,
-    highlightClusters,
-    handleRefreshClaims,
-    handleClusterClick,
-    popoverContext,
-    playerLocationsQ,
-    playersOverlayVisible,
-    setPlayersOverlayVisible,
-    onlinePlayersOnly,
-    setOnlinePlayersOnly,
-    onlinePlayersQ,
-    onlinePlayerUuids,
-    onlineStatusAvailable,
-    playerProfiles,
-    handleRefreshPlayers,
-    handlePlayerClick,
-    mapOverlays,
-    urlMode,
-    thresholdValue,
-    setThresholdValue,
-    thresholdUnit,
-    setThresholdUnit,
-    thresholdSeconds,
-    previewStarting,
-    cancelTask,
-    previewTask,
-    applyTask,
-    previewStatus,
-    applyStatus,
-    previewResult,
-    applyResult,
-    previewError,
-    applyError,
-    applyActive,
-    canPreview,
-    canApply,
-    startPreview,
-    cancelPreview,
-    startApply,
-    cancelApply,
-    handleModeChange,
-    confirmDialog
+  const { map, server, claims, players,
+    urlMode, thresholdValue, setThresholdValue, thresholdUnit, setThresholdUnit, thresholdSeconds, previewStarting, cancelTask, previewTask, applyTask, previewStatus, applyStatus, previewResult, applyResult, previewError, applyError, applyActive, canPreview, canApply, startPreview, cancelPreview, startApply, cancelApply, handleModeChange, confirmDialog, mapOverlays,
   } = useChunkPruneController(serverId)
 
   if (!serverId) {
@@ -120,18 +46,18 @@ const ServerChunkPrune: React.FC = () => {
         serverTag={serverId}
         actions={
           <>
-            {layoutQ.isLoading ? (
+            {map.layoutQ.isLoading ? (
               <>
                 <Skeleton className="h-9 w-30" />
                 <Skeleton className="h-9 w-65" />
               </>
-            ) : dimensionOptions.length > 0 ? (
+            ) : map.dimensionOptions.length > 0 ? (
               <>
-                {mapInitialized && (
+                {map.mapInitialized && (
                   <>
                     <Button
                       variant="outline"
-                      onClick={handleRefreshMap}
+                      onClick={map.handleRefreshMap}
                       title="重新读取世界元数据并刷新瓦片"
                     >
                       <RefreshCw className="mr-1 h-4 w-4" />
@@ -139,38 +65,14 @@ const ServerChunkPrune: React.FC = () => {
                     </Button>
                     <Button
                       variant="destructive"
-                      onClick={() => {
-                        setInitForce(true)
-                        setInitOpen(true)
-                      }}
+                      onClick={() => map.openInitDialog(true)}
                       title="删除客户端 JAR 和调色板缓存后重新下载并生成"
                     >
                       重载渲染前置
                     </Button>
                   </>
                 )}
-                <Select
-                  items={dimensionOptions}
-                  value={dimensionRelpath ?? null}
-                  onValueChange={(v) => {
-                    if (typeof v === 'string') handleDimensionChange(v)
-                  }}
-                  itemToStringLabel={(v) =>
-                    dimensionOptions.find((o) => o.value === v)?.label ??
-                    String(v)
-                  }
-                >
-                  <SelectTrigger className="w-65">
-                    <SelectValue placeholder="选择维度" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dimensionOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <WorldDimensionSelect options={map.dimensionOptions} value={map.dimensionRelpath ?? null} onChange={map.handleDimensionChange} />
                 <MapHelpButton
                   title="区块清理说明"
                   description="预览会扫描服务器所有维度；当前选择的维度只影响地图上显示哪一部分结果。"
@@ -245,8 +147,8 @@ const ServerChunkPrune: React.FC = () => {
             ) : null}
             <ServerOperationButtons
               serverId={serverId}
-              serverName={serverInfoQ.data?.name ?? serverId}
-              status={statusQ.data}
+              serverName={server.serverInfoQ.data?.name ?? serverId}
+              status={server.statusQ.data}
               showReturnButton={false}
               maintenanceActive={applyActive}
             />
@@ -254,14 +156,14 @@ const ServerChunkPrune: React.FC = () => {
         }
       />
 
-      {layoutQ.isError && (
+      {map.layoutQ.isError && (
         <Alert variant="destructive">
           <AlertTitle>加载失败</AlertTitle>
           <AlertDescription>无法获取世界布局</AlertDescription>
         </Alert>
       )}
 
-      {!layoutQ.isLoading && layoutQ.data && rootList.length === 0 && (
+      {!map.layoutQ.isLoading && map.layoutQ.data && map.rootList.length === 0 && (
         <Alert>
           <AlertTitle>未发现世界</AlertTitle>
           <AlertDescription>
@@ -270,50 +172,30 @@ const ServerChunkPrune: React.FC = () => {
         </Alert>
       )}
 
-      {regionsError && (
+      {map.regionsError && (
         <Alert variant="destructive">
           <AlertTitle>加载失败</AlertTitle>
           <AlertDescription>无法获取该维度的区域清单</AlertDescription>
         </Alert>
       )}
 
-      {!mapStatusQ.isLoading && mapStatusQ.data && !mapInitialized && (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-4 py-8">
-            <div className="text-center text-muted-foreground">
-              {!mapStatusQ.data.client_jar_present
-                ? '尚未下载客户端 JAR。'
-                : !mapStatusQ.data.palette_present
-                  ? '尚未生成调色板。'
-                  : '调色板已过期（版本或mods变更）。'}
-            </div>
-            <Button
-              onClick={() => {
-                setInitForce(false)
-                setInitOpen(true)
-              }}
-            >
-              初始化地图
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      <WorldMapInitialization map={map} />
 
-      {(mapInitialized || layoutQ.isLoading) && (
+      {(map.mapInitialized || map.layoutQ.isLoading) && (
         <div className="flex flex-col gap-4 md:grid md:min-h-0 md:flex-1 md:grid-cols-[1fr_270px] md:grid-rows-1">
           <Card className="overflow-hidden py-0">
             <CardContent className="h-[60vh] p-0 md:h-full md:min-h-[60vh]">
-              {regionsMap && regionRelpath ? (
+              {map.regionsMap && map.regionRelpath ? (
                 <ServerMap
                   serverId={serverId}
-                  regionPath={regionRelpath}
-                  regions={regionsMap}
+                  regionPath={map.regionRelpath}
+                  regions={map.regionsMap}
                   selectionMode="none"
                   overlays={mapOverlays}
-                  initialView={initialView}
-                  onViewChange={handleViewChange}
+                  initialView={map.initialView}
+                  onViewChange={map.handleViewChange}
                 />
-              ) : layoutQ.isLoading || regionsLoading ? (
+              ) : map.layoutQ.isLoading || map.regionsLoading ? (
                 <div className="flex h-[60vh] items-center justify-center md:h-full">
                   <Spinner />
                 </div>
@@ -327,13 +209,13 @@ const ServerChunkPrune: React.FC = () => {
                 <Tabs defaultValue="prune" className="gap-4">
                   <TabsList
                     className={
-                      claimsAvailable
+                      claims.claimsAvailable
                         ? 'grid w-full grid-cols-3'
                         : 'grid w-full grid-cols-2'
                     }
                   >
                     <TabsTrigger value="prune">清理</TabsTrigger>
-                    {claimsAvailable && (
+                    {claims.claimsAvailable && (
                       <TabsTrigger value="claims">领地列表</TabsTrigger>
                     )}
                     <TabsTrigger value="players">玩家位置</TabsTrigger>
@@ -355,7 +237,7 @@ const ServerChunkPrune: React.FC = () => {
                       applyMessage={applyTask?.message ?? null}
                       applyResult={applyResult}
                       applyError={applyError}
-                      serverStopped={serverStopped}
+                      serverStopped={server.serverStopped}
                       canPreview={canPreview}
                       canApply={canApply}
                       cancellingPreview={cancelTask.isPending}
@@ -370,46 +252,29 @@ const ServerChunkPrune: React.FC = () => {
                     />
                   </TabsContent>
                   <TabsContent value="claims">
-                    {claimsAvailable && (
+                    {claims.claimsAvailable && (
                       <TeamClusterList
-                        data={claimsQ.data}
-                        isLoading={claimsQ.isLoading}
-                        isError={claimsQ.isError}
-                        currentDimRelpath={regionRelpath}
-                        dimensionLabelByRelpath={dimensionLabelByRelpath}
+                        data={claims.claimsQ.data}
+                        isLoading={claims.claimsQ.isLoading}
+                        isError={claims.claimsQ.isError}
+                        currentDimRelpath={map.regionRelpath}
+                        dimensionLabelByRelpath={map.dimensionLabelByRelpath}
                         mode={urlMode === 'regions' ? 'region' : 'chunk'}
                         selection={new Set<ChunkKey>()}
-                        overlayVisible={claimsOverlayVisible}
+                        overlayVisible={claims.claimsOverlayVisible}
                         selectable={false}
-                        onOverlayVisibleChange={setClaimsOverlayVisible}
-                        onRefresh={handleRefreshClaims}
-                        onClusterHover={highlightClusters}
-                        onClusterClick={handleClusterClick}
+                        onOverlayVisibleChange={claims.setClaimsOverlayVisible}
+                        onRefresh={claims.handleRefreshClaims}
+                        onClusterHover={claims.highlightClusters}
+                        onClusterClick={claims.handleClusterClick}
                         onClusterSelect={() => undefined}
-                        onTeamHover={highlightClusters}
+                        onTeamHover={claims.highlightClusters}
                         onTeamSelectInDim={() => undefined}
                       />
                     )}
                   </TabsContent>
                   <TabsContent value="players">
-                    <PlayerLocationList
-                      data={playerLocationsQ.data}
-                      isLoading={playerLocationsQ.isLoading}
-                      isError={playerLocationsQ.isError}
-                      currentDimRelpath={regionRelpath}
-                      dimensionLabelByRelpath={dimensionLabelByRelpath}
-                      profilesByUuid={playerProfiles.profilesByUuid}
-                      pendingProfileUuids={playerProfiles.pendingUuids}
-                      onlinePlayerUuids={onlinePlayerUuids}
-                      onlineOnly={onlinePlayersOnly}
-                      onlineStatusLoading={onlinePlayersQ.isLoading}
-                      onlineStatusAvailable={onlineStatusAvailable}
-                      overlayVisible={playersOverlayVisible}
-                      onOverlayVisibleChange={setPlayersOverlayVisible}
-                      onOnlineOnlyChange={setOnlinePlayersOnly}
-                      onRefresh={handleRefreshPlayers}
-                      onPlayerClick={handlePlayerClick}
-                    />
+                    <WorldPlayerLocationList players={players} map={map} />
                   </TabsContent>
                 </Tabs>
               </CardContent>
@@ -418,29 +283,26 @@ const ServerChunkPrune: React.FC = () => {
         </div>
       )}
 
-      {claimsPopover && popoverContext && (
+      {claims.claimsPopover && claims.popoverContext && (
         <ClusterPopover
-          team={popoverContext.team}
-          cluster={popoverContext.cluster}
-          anchorEl={claimsPopover.anchorEl}
+          team={claims.popoverContext.team}
+          cluster={claims.popoverContext.cluster}
+          anchorEl={claims.claimsPopover.anchorEl}
           mode={urlMode === 'regions' ? 'region' : 'chunk'}
-          teamChunksInDim={popoverContext.teamChunksInDim}
-          clustersInDim={popoverContext.clustersInDim}
-          onClose={closeClaimsPopover}
-          onSelectCluster={() => closeClaimsPopover()}
-          onSelectTeamInDim={() => closeClaimsPopover()}
+          teamChunksInDim={claims.popoverContext.teamChunksInDim}
+          clustersInDim={claims.popoverContext.clustersInDim}
+          onClose={claims.closeClaimsPopover}
+          onSelectCluster={() => claims.closeClaimsPopover()}
+          onSelectTeamInDim={() => claims.closeClaimsPopover()}
         />
       )}
 
       <MapInitDialog
-        open={initOpen}
+        open={map.initOpen}
         serverId={serverId}
-        force={initForce}
-        onClose={() => {
-          setInitOpen(false)
-          setInitForce(false)
-        }}
-        onComplete={handleInitComplete}
+        force={map.initForce}
+        onClose={map.handleInitClose}
+        onComplete={map.handleInitComplete}
       />
       {confirmDialog}
     </div>

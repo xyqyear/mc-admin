@@ -1,5 +1,5 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { createTestClient } from '@/test/http'
@@ -9,6 +9,9 @@ import { useChunkPruneController } from '@/features/world/prune/useChunkPruneCon
 import { useWorldRestoreController } from '@/features/world/restore/useWorldRestoreController'
 import type { BackgroundTaskResponse } from '@/features/tasks/contracts';
 import type { ChunkPrunePreview } from '@/features/world/prune/contracts'
+import type L from 'leaflet'
+import type { FtbClusterEntry } from '@/features/world/layers/claims/contracts'
+import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -97,14 +100,77 @@ it('blocks reuse after an accepted apply fails its final input check', async () 
 it('preserves view coordinates in the URL and resets selection on a dimension change', async () => {
   window.history.replaceState(null, '', '/#dim=world%2Fregion&mode=region&z=2&cx=10&cz=-20')
   const { result } = renderHook(() => useWorldRestoreController('alpha'), { wrapper })
-  await waitFor(() => expect(result.current.regionRelpath).toBe('world/region'))
-  expect(result.current.initialView).toEqual({ zoom: 2, cx: 10, cz: -20 })
+  await waitFor(() => expect(result.current.map.regionRelpath).toBe('world/region'))
+  expect(result.current.map.initialView).toEqual({ zoom: 2, cx: 10, cz: -20 })
   act(() => result.current.handleSelectionChange(new Set(['0,0'])))
   expect(result.current.selection.size).toBe(1)
-  act(() => result.current.handleViewChange({ zoom: 3, cx: 80, cz: 90 }))
+  act(() => result.current.map.handleViewChange({ zoom: 3, cx: 80, cz: 90 }))
   await waitFor(() => expect(new URLSearchParams(window.location.hash.slice(1)).get('cx')).toBe('80'))
-  act(() => result.current.handleDimensionChange('world/DIM-1/region'))
-  await waitFor(() => expect(result.current.regionRelpath).toBe('world/DIM-1/region'))
+  act(() => result.current.map.handleDimensionChange('world/DIM-1/region'))
+  await waitFor(() => expect(result.current.map.regionRelpath).toBe('world/DIM-1/region'))
   expect(result.current.selection.size).toBe(0)
   expect(new URLSearchParams(window.location.hash.slice(1)).has('cx')).toBe(false)
+})
+
+it.each(['claims', 'players'] as const)('maps negative %s locations and consumes cross-dimension pans through real overlays', async kind => {
+  window.history.replaceState(null, '', '/#dim=world%2Fregion&mode=chunk&z=2&cx=10&cz=-20')
+  const clusters: FtbClusterEntry[] = [
+    { id: 'same', region_dir_relpath: 'world/region', chunks: [[-2, -3]], force_loaded: [], centroid_block: [-17, -33], bbox_chunk: [-2, -3, -2, -3], regions: [[-1, -1]] },
+    { id: 'cross', region_dir_relpath: 'world/DIM-1/region', chunks: [[-2, -3]], force_loaded: [], centroid_block: [-17, -33], bbox_chunk: [-2, -3, -2, -3], regions: [[-1, -1]] },
+  ]
+  const players: PlayerLocationEntry[] = [
+    { id: '0123456789abcdef0123456789abcdef', id_kind: 'uuid', uuid: '0123456789abcdef0123456789abcdef', source: 'world/playerdata/same.dat', storage: 'playerdata', data_version: 1, dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: -17, y: 64, z: -33 } },
+    { id: '0123456789abcdef0123456789abcdef', id_kind: 'uuid', uuid: '0123456789abcdef0123456789abcdef', source: 'world/playerdata/cross.dat', storage: 'playerdata', data_version: 1, dimension_id: 'minecraft:the_nether', region_dir_relpath: 'world/DIM-1/region', pos: { x: -17, y: 64, z: -33 } },
+  ]
+  server.use(
+    http.get('*/api/servers/alpha/claims', () => HttpResponse.json({ available: true, dimensions: [], teams: [{ id: 'team', display_name: '负坐标领地', type: 'party', members: [], owner: null, total_chunks: 2, clusters }] })),
+    http.get('*/api/servers/alpha/player-locations', () => HttpResponse.json({ dimensions: [], skipped: [], players })),
+    http.post('*/api/players/profiles/stream', () => new HttpResponse('data: {"event_type":"complete","total":1,"resolved":0}\n\n', { headers: { 'Content-Type': 'text/event-stream' } })),
+  )
+  const { result } = renderHook(() => useWorldRestoreController('alpha'), { wrapper })
+  await waitFor(() => expect(result.current.claims.teams).toHaveLength(1))
+  await waitFor(() => expect(result.current.players.playerLocationsQ.data?.players).toHaveLength(2))
+  const panTo = vi.fn()
+  const setView = vi.fn()
+  const leafletMap = { panTo, setView, getZoom: () => 5 } as unknown as L.Map
+  const initialOverlay = kind === 'claims' ? result.current.claims.claimsOverlays![0] : result.current.players.playersOverlays![0]
+  initialOverlay.render(leafletMap)
+  act(() => result.current.handleSelectionChange(new Set(['-2,-3'])))
+  act(() => {
+    if (kind === 'claims') result.current.claims.handleClusterClick(result.current.claims.teams[0].clusters[0])
+    else result.current.players.handlePlayerClick(result.current.players.playerLocationsQ.data!.players[0])
+  })
+  expect(panTo).toHaveBeenCalledExactlyOnceWith([33, -17])
+  expect(setView).not.toHaveBeenCalled()
+  expect(result.current.urlMode).toBe('chunk')
+  expect([...result.current.selection]).toEqual(['-2,-3'])
+  expect(new URLSearchParams(window.location.hash.slice(1)).get('cx')).toBe('10')
+  act(() => {
+    if (kind === 'claims') result.current.claims.handleClusterClick(result.current.claims.teams[0].clusters[1])
+    else result.current.players.handlePlayerClick(result.current.players.playerLocationsQ.data!.players[1])
+  })
+  await waitFor(() => expect(result.current.map.regionRelpath).toBe('world/DIM-1/region'))
+  expect(result.current.urlMode).toBe('chunk')
+  expect(result.current.selection.size).toBe(0)
+  const changedDimension = new URLSearchParams(window.location.hash.slice(1))
+  expect(changedDimension.get('dim')).toBe('world/DIM-1/region')
+  expect(changedDimension.get('mode')).toBe('chunk')
+  expect(changedDimension.has('z')).toBe(false)
+  expect(changedDimension.has('cx')).toBe(false)
+  expect(changedDimension.has('cz')).toBe(false)
+  initialOverlay.render(leafletMap)
+  expect(setView).not.toHaveBeenCalled()
+  const newOverlay = kind === 'claims' ? result.current.claims.claimsOverlays![0] : result.current.players.playersOverlays![0]
+  await act(async () => { newOverlay.render(leafletMap) })
+  expect(setView).toHaveBeenCalledExactlyOnceWith([33, -17], 5, { animate: false })
+  act(() => result.current.map.handleViewChange({ zoom: 5, cx: -17, cz: -33 }))
+  const located = new URLSearchParams(window.location.hash.slice(1))
+  expect(located.get('dim')).toBe('world/DIM-1/region')
+  expect(located.get('mode')).toBe('chunk')
+  expect(located.get('z')).toBe('5')
+  expect(located.get('cx')).toBe('-17')
+  expect(located.get('cz')).toBe('-33')
+  await act(async () => { newOverlay.render(leafletMap) })
+  expect(setView).toHaveBeenCalledTimes(1)
+  expect(panTo).toHaveBeenCalledTimes(1)
 })

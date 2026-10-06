@@ -8,20 +8,15 @@ import ServerOperationButtons from '@/features/servers/ui/ServerOperationButtons
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent } from '@/shared/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { Spinner } from '@/shared/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '@/shared/lib/utils'
 import { ClusterPopover } from '@/features/world/layers/claims/ClusterPopover'
 import { TeamClusterList } from '@/features/world/layers/claims/TeamClusterList'
-import { PlayerLocationList } from '@/features/world/layers/players/PlayerLocationList'
+import { WorldPlayerLocationList } from '@/features/world/layers/players/WorldPlayerLocationList'
+import { WorldDimensionSelect } from '@/features/world/map/WorldDimensionSelect'
+import { WorldMapInitialization } from '@/features/world/map/WorldMapInitialization'
 import MapHelpButton from '@/features/world/map/MapHelpButton'
 import MapInitDialog from '@/features/world/map/MapInitDialog'
 import ServerMap from '@/features/world/map/ServerMap'
@@ -32,61 +27,10 @@ import { WorldRestoreSidebar } from '@/features/world/restore/components/WorldRe
 const ServerWorldRestore: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const serverId = id ?? ''
-  const {
-    layoutQ,
-    statusQ,
-    serverInfoQ,
-    serverStopped,
-    mapStatusQ,
-    mapInitialized,
-    initOpen,
-    initForce,
-    openInitDialog,
-    handleInitComplete,
-    handleInitClose,
-    handleRefreshMap,
-    initialView,
-    regionRelpath,
-    rootList,
-    dimensionOptions,
-    dimensionLabelByRelpath,
-    dimensionSelectValue,
-    handleDimensionChange,
-    handleViewChange,
-    regionsMap,
-    regionsLoading,
-    regionsError,
-    claimsQ,
-    claimsAvailable,
-    claimsOverlayVisible,
-    setClaimsOverlayVisible,
-    claimsPopover,
-    closeClaimsPopover,
-    highlightClusters,
-    handleRefreshClaims,
-    handleClusterClick,
-    popoverContext,
-    playerLocationsQ,
-    playersOverlayVisible,
-    setPlayersOverlayVisible,
-    onlinePlayersOnly,
-    setOnlinePlayersOnly,
-    onlinePlayersQ,
-    onlinePlayerUuids,
-    onlineStatusAvailable,
-    playerProfiles,
-    handleRefreshPlayers,
-    handlePlayerClick,
-    mapOverlays,
-    urlMode,
-    modeChangeConfirmDialog,
-    handleSelectionChange,
-    handleModeChange,
-    handleClusterSelect,
-    handleTeamSelectInDim,
-    selectionMode,
-    selection
+  const { map, server, claims, players,
+    urlMode, modeChangeConfirmDialog, handleSelectionChange, handleModeChange, handleClusterSelect, handleTeamSelectInDim, selectionMode, selection,
   } = useWorldRestoreController(serverId)
+  const { popoverContext } = claims
 
   if (!serverId) {
     return (
@@ -106,18 +50,18 @@ const ServerWorldRestore: React.FC = () => {
         serverTag={serverId}
         actions={
           <>
-            {layoutQ.isLoading ? (
+            {map.layoutQ.isLoading ? (
               <>
                 <Skeleton className="h-9 w-30" />
                 <Skeleton className="h-9 w-65" />
               </>
-            ) : dimensionOptions.length > 0 ? (
+            ) : map.dimensionOptions.length > 0 ? (
               <>
-                {mapInitialized && (
+                {map.mapInitialized && (
                   <>
                     <Button
                       variant="outline"
-                      onClick={handleRefreshMap}
+                      onClick={map.handleRefreshMap}
                       title="重新读取世界元数据并刷新瓦片"
                     >
                       <RefreshCw className="mr-1 h-4 w-4" />
@@ -125,7 +69,7 @@ const ServerWorldRestore: React.FC = () => {
                     </Button>
                     <Button
                       variant="destructive"
-                      onClick={() => openInitDialog(true)}
+                      onClick={() => map.openInitDialog(true)}
                       title="删除客户端 JAR 和调色板缓存后重新下载并生成"
                     >
                       重载渲染前置
@@ -148,48 +92,28 @@ const ServerWorldRestore: React.FC = () => {
                     </Tabs>
                   </>
                 )}
-                <Select
-                  items={dimensionOptions}
-                  value={dimensionSelectValue}
-                  onValueChange={(v) => {
-                    if (typeof v === 'string') handleDimensionChange(v)
-                  }}
-                  itemToStringLabel={(v) =>
-                    dimensionOptions.find((o) => o.value === v)?.label ?? String(v)
-                  }
-                >
-                  <SelectTrigger className="w-65">
-                    <SelectValue placeholder="选择维度" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dimensionOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <WorldDimensionSelect options={map.dimensionOptions} value={map.dimensionSelectValue} onChange={map.handleDimensionChange} />
                 <MapHelpButton />
               </>
             ) : null}
             <ServerOperationButtons
               serverId={serverId}
-              serverName={serverInfoQ.data?.name ?? serverId}
-              status={statusQ.data}
+              serverName={server.serverInfoQ.data?.name ?? serverId}
+              status={server.statusQ.data}
               showReturnButton={false}
             />
           </>
         }
       />
 
-      {layoutQ.isError && (
+      {map.layoutQ.isError && (
         <Alert variant="destructive">
           <AlertTitle>加载失败</AlertTitle>
           <AlertDescription>无法获取世界布局</AlertDescription>
         </Alert>
       )}
 
-      {!layoutQ.isLoading && layoutQ.data && rootList.length === 0 && (
+      {!map.layoutQ.isLoading && map.layoutQ.data && map.rootList.length === 0 && (
         <Alert>
           <AlertTitle>未发现世界</AlertTitle>
           <AlertDescription>
@@ -198,58 +122,38 @@ const ServerWorldRestore: React.FC = () => {
         </Alert>
       )}
 
-      {regionsError && (
+      {map.regionsError && (
         <Alert variant="destructive">
           <AlertTitle>加载失败</AlertTitle>
           <AlertDescription>无法获取该维度的区域清单</AlertDescription>
         </Alert>
       )}
 
-      {mapStatusQ.isError && (
-        <Alert variant="destructive">
-          <AlertTitle>加载失败</AlertTitle>
-          <AlertDescription>无法获取地图初始化状态</AlertDescription>
-        </Alert>
-      )}
+      <WorldMapInitialization map={map} showStatusError />
 
-      {!mapStatusQ.isLoading && mapStatusQ.data && !mapInitialized && (
-        <Card>
-          <CardContent className="py-8 flex flex-col items-center gap-4">
-            <div className="text-center text-muted-foreground">
-              {!mapStatusQ.data.client_jar_present
-                ? '尚未下载客户端 JAR。'
-                : !mapStatusQ.data.palette_present
-                  ? '尚未生成调色板。'
-                  : '调色板已过期（版本或mods变更）。'}
-            </div>
-            <Button onClick={() => openInitDialog(false)}>初始化地图</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      <ServerStopGuard status={statusQ.data} />
+      <ServerStopGuard status={server.statusQ.data} />
 
       <div
-        className={cn('flex flex-col gap-4', (mapInitialized || layoutQ.isLoading)
+        className={cn('flex flex-col gap-4', (map.mapInitialized || map.layoutQ.isLoading)
           ? 'md:flex-1 md:min-h-0 md:grid md:grid-cols-[1fr_270px] md:grid-rows-1'
           : 'md:w-67.5')}
       >
-        {(mapInitialized || layoutQ.isLoading) && (
+        {(map.mapInitialized || map.layoutQ.isLoading) && (
           <Card className="overflow-hidden py-0">
             <CardContent className="p-0 h-[60vh] md:h-full md:min-h-[60vh]">
-              {regionsMap && regionRelpath ? (
+              {map.regionsMap && map.regionRelpath ? (
                 <ServerMap
                   serverId={serverId}
-                  regionPath={regionRelpath}
-                  regions={regionsMap}
+                  regionPath={map.regionRelpath}
+                  regions={map.regionsMap}
                   selectionMode={selectionMode}
                   selection={selection}
                   onSelectionChange={handleSelectionChange}
-                  overlays={mapOverlays}
-                  initialView={initialView}
-                  onViewChange={handleViewChange}
+                  overlays={map.mapOverlays}
+                  initialView={map.initialView}
+                  onViewChange={map.handleViewChange}
                 />
-              ) : layoutQ.isLoading || regionsLoading ? (
+              ) : map.layoutQ.isLoading || map.regionsLoading ? (
                 <div className="h-[60vh] md:h-full flex items-center justify-center">
                   <Spinner />
                 </div>
@@ -258,84 +162,67 @@ const ServerWorldRestore: React.FC = () => {
           </Card>
         )}
         <WorldRestoreSidebar
-          mapInitialized={mapInitialized}
+          mapInitialized={map.mapInitialized}
           backup={
             <WorldRestoreSelectionPanel
               serverId={serverId}
-              regionDirRelpath={regionRelpath}
+              regionDirRelpath={map.regionRelpath}
               selection={selection}
               mode={urlMode}
-              serverStopped={serverStopped}
+              serverStopped={server.serverStopped}
             />
           }
-          claims={claimsAvailable ? (
+          claims={claims.claimsAvailable ? (
             <TeamClusterList
-              data={claimsQ.data}
-              isLoading={claimsQ.isLoading}
-              isError={claimsQ.isError}
-              currentDimRelpath={regionRelpath}
-              dimensionLabelByRelpath={dimensionLabelByRelpath}
+              data={claims.claimsQ.data}
+              isLoading={claims.claimsQ.isLoading}
+              isError={claims.claimsQ.isError}
+              currentDimRelpath={map.regionRelpath}
+              dimensionLabelByRelpath={map.dimensionLabelByRelpath}
               mode={urlMode}
               selection={selection}
-              overlayVisible={claimsOverlayVisible}
-              onOverlayVisibleChange={setClaimsOverlayVisible}
-              onRefresh={handleRefreshClaims}
-              onClusterHover={highlightClusters}
-              onClusterClick={handleClusterClick}
+              overlayVisible={claims.claimsOverlayVisible}
+              onOverlayVisibleChange={claims.setClaimsOverlayVisible}
+              onRefresh={claims.handleRefreshClaims}
+              onClusterHover={claims.highlightClusters}
+              onClusterClick={claims.handleClusterClick}
               onClusterSelect={handleClusterSelect}
-              onTeamHover={highlightClusters}
+              onTeamHover={claims.highlightClusters}
               onTeamSelectInDim={handleTeamSelectInDim}
             />
           ) : undefined}
           players={
-            <PlayerLocationList
-              data={playerLocationsQ.data}
-              isLoading={playerLocationsQ.isLoading}
-              isError={playerLocationsQ.isError}
-              currentDimRelpath={regionRelpath}
-              dimensionLabelByRelpath={dimensionLabelByRelpath}
-              profilesByUuid={playerProfiles.profilesByUuid}
-              pendingProfileUuids={playerProfiles.pendingUuids}
-              onlinePlayerUuids={onlinePlayerUuids}
-              onlineOnly={onlinePlayersOnly}
-              onlineStatusLoading={onlinePlayersQ.isLoading}
-              onlineStatusAvailable={onlineStatusAvailable}
-              overlayVisible={playersOverlayVisible}
-              onOverlayVisibleChange={setPlayersOverlayVisible}
-              onOnlineOnlyChange={setOnlinePlayersOnly}
-              onRefresh={handleRefreshPlayers}
-              onPlayerClick={handlePlayerClick}
-            />
+            <WorldPlayerLocationList players={players} map={map} />
           }
         />
       </div>
 
-      {claimsPopover && popoverContext && (
+      {claims.claimsPopover && popoverContext && (
         <ClusterPopover
           team={popoverContext.team}
           cluster={popoverContext.cluster}
-          anchorEl={claimsPopover.anchorEl}
+          anchorEl={claims.claimsPopover.anchorEl}
           mode={urlMode}
           teamChunksInDim={popoverContext.teamChunksInDim}
           clustersInDim={popoverContext.clustersInDim}
-          onClose={closeClaimsPopover}
+          onClose={claims.closeClaimsPopover}
           onSelectCluster={() => {
             handleClusterSelect(popoverContext.cluster)
-            closeClaimsPopover()
+            claims.closeClaimsPopover()
           }}
           onSelectTeamInDim={() => {
             handleTeamSelectInDim(popoverContext.team)
-            closeClaimsPopover()
+            claims.closeClaimsPopover()
           }}
         />
       )}
 
       <MapInitDialog
-        open={initOpen}
+        open={map.initOpen}
         serverId={serverId}
-        force={initForce}
-        onClose={handleInitClose}
-        onComplete={handleInitComplete}
+        force={map.initForce}
+        onClose={map.handleInitClose}
+        onComplete={map.handleInitComplete}
       />
       {modeChangeConfirmDialog}
     </div>
