@@ -8,8 +8,7 @@ from app.auth.api_models import (
     VerifyCodeRequest,
     VerifyCodeResponse,
 )
-from app.auth.schemas import UserPublic
-from app.auth.service import get_identity_service
+from app.auth.service import get_identity_service, user_to_public
 from app.auth.store import get_user_by_username
 
 from ..auth.jwt_utils import verify_password
@@ -42,12 +41,7 @@ async def login_for_access_token(
             detail="User ID is missing",
         )
 
-    public_user = UserPublic(
-        id=user.id,
-        username=user.username,
-        role=user.role,
-        created_at=user.created_at,
-    )
+    public_user = user_to_public(user)
     token, csrf_token = get_identity_service().create_session_token(public_user)
     set_auth_cookies(response, token, csrf_token)
     return LoginResponse(user=public_user)

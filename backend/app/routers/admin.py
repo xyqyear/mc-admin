@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User, UserRole
 from app.auth.schemas import UserCreate, UserPublic
+from app.auth.service import user_to_public
 from app.auth.store import create_user, delete_user, get_all_users
 
 from ..auth.jwt_utils import get_password_hash
@@ -24,12 +25,7 @@ async def get_users(
     """Get all users. Only accessible by OWNER role."""
     users = await get_all_users(db)
     return [
-        UserPublic(
-            id=user.id,
-            username=user.username,
-            role=user.role,
-            created_at=user.created_at,
-        )
+        user_to_public(user)
         for user in users
         if user.id is not None
     ]
@@ -63,12 +59,7 @@ async def create_new_user(
             detail="Failed to create user",
         )
 
-    return UserPublic(
-        id=created_user.id,
-        username=created_user.username,
-        role=created_user.role,
-        created_at=created_user.created_at,
-    )
+    return user_to_public(created_user)
 
 
 @router.delete("/users/{user_id}")
