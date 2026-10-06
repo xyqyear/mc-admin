@@ -158,8 +158,6 @@ async def test_get_network_io_with_docker(mc_server_session: MCInstance):
     # Total values should be non-negative
     assert network_io.total_rx_bytes >= 0
     assert network_io.total_tx_bytes >= 0
-    assert network_io.total_rx_packets >= 0
-    assert network_io.total_tx_packets >= 0
 
     # Each interface should have valid properties
     for interface in network_io.interfaces:

@@ -24,7 +24,7 @@ from .docker.cgroup import (
 )
 from .docker.compose_file import ComposeFile
 from .docker.manager import ComposeManager
-from .docker.network import NetworkStats, read_container_network_stats
+from .docker.network import NetworkStats, read_network_stats
 from .paths import (
     confined_server_file,
     find_compose_file,
@@ -194,24 +194,6 @@ class MCInstance:
             await async_fs.chown(self._project_path, uid, gid)
             await async_fs.chown(self.get_data_path(), uid, gid)
             await async_fs.chown(compose_file_path, uid, gid)
-
-    async def update_compose_file(self, compose_yaml: str) -> None:
-        """Overwrite the compose file. Server must be down (not in created/running state)."""
-        if await self.created():
-            raise RuntimeError(f"Cannot update server {self._name} while it is created")
-        if not self._verify_compose_yaml(compose_yaml):
-            raise ValueError(
-                "Invalid compose YAML or doesn't meet Minecraft server requirements"
-            )
-
-        compose_file_path = await self.get_compose_file_path()
-        if compose_file_path is None:
-            raise FileNotFoundError(
-                f"Could not find compose file for server {self._name}"
-            )
-
-        async with aiofiles.open(compose_file_path, "w", encoding="utf8") as file:
-            await file.write(compose_yaml)
 
     async def remove(self) -> None:
         await self.get_compose_file_path()
@@ -454,4 +436,4 @@ class MCInstance:
 
     async def get_network_io(self) -> NetworkStats:
         pid = await self.get_pid()
-        return await read_container_network_stats(pid)
+        return await read_network_stats(pid)

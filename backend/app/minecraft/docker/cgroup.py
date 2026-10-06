@@ -67,12 +67,6 @@ class MemoryStats(BaseModel):
         """Active memory (active_anon + active_file)."""
         return self.active_anon + self.active_file
 
-    @property
-    def inactive_memory(self) -> int:
-        """Inactive memory (inactive_anon + inactive_file)."""
-        return self.inactive_anon + self.inactive_file
-
-
 class BlockIODevice(BaseModel):
     """Block I/O statistics for a single device."""
 
@@ -94,12 +88,6 @@ class BlockIODevice(BaseModel):
     def total_bytes(self) -> int:
         """Total bytes (read + write + discard)."""
         return self.rbytes + self.wbytes + self.dbytes
-
-    @property
-    def total_operations(self) -> int:
-        """Total I/O operations (read + write + discard)."""
-        return self.rios + self.wios + self.dios
-
 
 class BlockIOStats(BaseModel):
     """Block I/O statistics from cgroup v2 io.stat file."""
@@ -128,13 +116,6 @@ class BlockIOStats(BaseModel):
 
         return cls(devices=devices)
 
-    def get_device_by_id(self, device_id: str) -> BlockIODevice | None:
-        """Get device statistics by device ID (major:minor)."""
-        for device in self.devices:
-            if device.device_id == device_id:
-                return device
-        return None
-
     @property
     def total_read_bytes(self) -> int:
         """Total read bytes across all devices."""
@@ -149,20 +130,6 @@ class BlockIOStats(BaseModel):
     def total_bytes(self) -> int:
         """Total bytes across all devices."""
         return sum(device.total_bytes for device in self.devices)
-
-    @property
-    def total_operations(self) -> int:
-        """Total I/O operations across all devices."""
-        return sum(device.total_operations for device in self.devices)
-
-
-class CGroupStats(BaseModel):
-    """Combined cgroup statistics for a Docker container."""
-
-    container_id: str
-    memory: MemoryStats | None = None
-    block_io: BlockIOStats | None = None
-
 
 async def read_memory_stats(container_id: str) -> MemoryStats:
     """Read memory statistics for a Docker container."""

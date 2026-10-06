@@ -4,7 +4,7 @@ The bridge between MC Admin and the Docker daemon. Each managed server is one Do
 
 ## Owned adapter
 
-`get_docker_mc_manager()` returns the owning runtime’s adapter, constructed with its server root. It returns `MCInstance` objects keyed by server name and aggregates info across all of them.
+`get_docker_mc_manager()` returns the owning runtime’s adapter, constructed with its server root. It discovers valid server Compose files and returns `MCInstance` objects keyed by server name. Call each instance for its paths, status and metrics.
 
 ```python
 from app.minecraft import get_docker_mc_manager
@@ -19,7 +19,7 @@ Use `app.servers.commands.ServerCommands` for user-initiated lifecycle mutations
 
 Per-server façade. Methods fall into three groups:
 
-- **Compose lifecycle**: `create(yaml)`, `update_compose_file(yaml)`, `up()`, `down()`, `start()`, `stop()`, `restart()`, `remove()`.
+- **Compose lifecycle**: `create(yaml)`, `up()`, `down()`, `start()`, `stop()`, `restart()`, `remove()`. Existing Compose changes use `app.configuration` preparation and the durable rebuild task, which preserves running intent, validates the expected version and records matching source metadata.
 - **State queries**: `exists()`, `created()`, `running()`, plus the hierarchical `MCServerStatus` enum: `REMOVED < EXISTS < CREATED < RUNNING < STARTING < HEALTHY`.
 - **File access**: `get_compose_file()`, `get_compose_obj()`, `get_server_properties()`, `get_data_path()`.
 
@@ -49,12 +49,12 @@ The game-port self-check uses `get_properties_game_port()` to extract only the f
 
 ## Resource monitoring
 
-- **Memory** (`docker/cgroup.py`): parses cgroup v2 `memory.stat` into `MemoryStats` (anon, file, kernel, …). Derived properties: `total_memory`, `active_memory`, `inactive_memory`.
-- **Block I/O**: `BlockIODevice` per device — `rbytes`, `wbytes`, `rios`, `wios`, derived `total_bytes` / `total_operations`.
-- **Network** (`docker/network.py`): `NetworkStats` with rx/tx bytes & packets.
-- **CPU**: `app.utils.system.get_process_cpu_usage()` (psutil-backed, run via `asyncio.to_thread`).
+- **Memory** (`docker/cgroup.py`): parses cgroup v2 `memory.stat` into `MemoryStats` (anon, file, kernel, …). Used totals are `total_memory` and `active_memory`; raw inactive counters remain in the model.
+- **Block I/O**: `BlockIODevice` retains each device's bytes and operation counters. Byte totals feed the application metrics.
+- **Network** (`docker/network.py`): `read_network_stats(pid)` reads `/proc/<pid>/net/dev`. `NetworkStats` retains every interface's raw counters and provides byte totals and interface lookup.
+- **CPU**: `app.utils.system.get_process_cpu_usage()` takes an independent one-second sample from a fresh psutil process in `asyncio.to_thread`. Multi-core processes may exceed 100%. CPU reads return zero for a disappeared process; other access errors propagate. Each call resolves current PID identity without retaining process objects across calls. Memory statistics come from the container's cgroup.
 
-`get_running_server_names()` cheap-checks `docker ps` filtered by the `mc-*` container-name prefix; per-server stats only fan out to servers we know are running.
+Server listing uses feature-owned queries; lifecycle and monitoring read the selected instance's actual Compose and container state.
 
 ## Files
 

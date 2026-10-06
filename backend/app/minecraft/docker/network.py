@@ -40,22 +40,6 @@ class NetworkInterface(BaseModel):
         """Total bytes (received + transmitted)."""
         return self.rx_bytes + self.tx_bytes
 
-    @property
-    def total_packets(self) -> int:
-        """Total packets (received + transmitted)."""
-        return self.rx_packets + self.tx_packets
-
-    @property
-    def total_errors(self) -> int:
-        """Total errors (received + transmitted)."""
-        return self.rx_errs + self.tx_errs
-
-    @property
-    def total_drops(self) -> int:
-        """Total drops (received + transmitted)."""
-        return self.rx_drop + self.tx_drop
-
-
 class NetworkStats(BaseModel):
     """Network statistics for a process/container."""
 
@@ -136,42 +120,6 @@ class NetworkStats(BaseModel):
         """Total bytes across all interfaces."""
         return sum(interface.total_bytes for interface in self.interfaces)
 
-    @property
-    def total_rx_packets(self) -> int:
-        """Total received packets across all interfaces."""
-        return sum(interface.rx_packets for interface in self.interfaces)
-
-    @property
-    def total_tx_packets(self) -> int:
-        """Total transmitted packets across all interfaces."""
-        return sum(interface.tx_packets for interface in self.interfaces)
-
-    @property
-    def total_packets(self) -> int:
-        """Total packets across all interfaces."""
-        return sum(interface.total_packets for interface in self.interfaces)
-
-    @property
-    def total_errors(self) -> int:
-        """Total errors across all interfaces."""
-        return sum(interface.total_errors for interface in self.interfaces)
-
-    @property
-    def total_drops(self) -> int:
-        """Total drops across all interfaces."""
-        return sum(interface.total_drops for interface in self.interfaces)
-
-    @property
-    def non_loopback_interfaces(self) -> list[NetworkInterface]:
-        """Get all non-loopback interfaces."""
-        return [interface for interface in self.interfaces if interface.name != "lo"]
-
-    @property
-    def external_traffic_bytes(self) -> int:
-        """Total bytes for non-loopback interfaces only."""
-        return sum(interface.total_bytes for interface in self.non_loopback_interfaces)
-
-
 async def read_network_stats(pid: int) -> NetworkStats:
     """Read network statistics for a process by PID."""
     logger = get_logger()
@@ -186,8 +134,3 @@ async def read_network_stats(pid: int) -> NetworkStats:
     except Exception as e:
         logger.exception("Operation read_network_stats failed")
         raise RuntimeError(f"Failed to read network stats for PID {pid}: {e}")
-
-
-async def read_container_network_stats(container_pid: int) -> NetworkStats:
-    """Read network statistics for a Docker container by its main process PID."""
-    return await read_network_stats(container_pid)

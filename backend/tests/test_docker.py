@@ -13,7 +13,6 @@ from app.minecraft import (
     MCServerInfo,
 )
 from app.minecraft.compose import ServerType
-from app.minecraft.docker.manager import DockerManager
 
 from .fixtures.mc_client import MinecraftClient
 from .fixtures.test_utils import (
@@ -100,11 +99,9 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
     await aioos.makedirs(resources.root / "irrelevant_dir", exist_ok=True)
     await asyncio.gather(server1_create_coroutine, server2_create_coroutine)
     assert set(await docker_mc_manager.get_all_server_names()) == {first_name, second_name}
-    assert set(await docker_mc_manager.get_all_server_compose_paths()) == {
-            resources.root / first_name / "docker-compose.yml",
-            resources.root / second_name / "docker-compose.yml",
-        }
-    assert set(await docker_mc_manager.get_all_server_info()) == {
+    assert await server1.get_compose_file_path() == resources.root / first_name / "docker-compose.yml"
+    assert await server2.get_compose_file_path() == resources.root / second_name / "docker-compose.yml"
+    assert await server1.get_server_info() == (
             MCServerInfo(
                 name=first_name,
                 path=server1.get_project_path(),
@@ -114,7 +111,9 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
                 game_version="1.21.11",
                 game_port=0,
                 rcon_port=0,
-            ),
+            )
+        )
+    assert await server2.get_server_info() == (
             MCServerInfo(
                 name=second_name,
                 path=server2.get_project_path(),
@@ -124,9 +123,10 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
                 game_version="1.21.11",
                 game_port=0,
                 rcon_port=0,
-            ),
-        }
-    assert set(await docker_mc_manager.get_running_server_names()) == set()
+            )
+        )
+    assert not await server1.running()
+    assert not await server2.running()
 
     print("servers created")
 
@@ -142,7 +142,8 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
     server1_game_port, server1_rcon_port = await resources.published_ports(first_name)
     server2_game_port, server2_rcon_port = await resources.published_ports(second_name)
     assert len({server1_game_port, server1_rcon_port, server2_game_port, server2_rcon_port}) == 4
-    assert set(await docker_mc_manager.get_running_server_names()) == {first_name, second_name}
+    assert await server1.running()
+    assert await server2.running()
 
     print("servers healthy")
 
@@ -203,43 +204,6 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
     await client2.disconnect()
 
     assert await server1.list_players() == []
-
-    # Test update_compose_file functionality while server is running
-    print("Starting update_compose_file tests")
-
-    original_compose = await server1.get_compose_file()
-    print("Read original compose file")
-    updated_compose = original_compose.replace("MODE: creative", "MODE: survival")
-
-    # Try to update while server is running - should fail with RuntimeError
-    with pytest.raises(RuntimeError, match="while it is created"):
-        await server1.update_compose_file(updated_compose)
-    print("✅ Correctly caught RuntimeError when trying to update running server")
-
-    # Bring server down for update
-    await server1.down()
-    print("Brought server down for update")
-
-    # Now update should succeed
-    await server1.update_compose_file(updated_compose)
-    print("Successfully updated compose file")
-
-    # Bring the server up again to verify the update worked
-    await server1.up()
-    await server1.wait_until_healthy()
-    print("Server is running again with updated config")
-
-    # Verify the environment variable via DockerManager
-    docker_env_output = await DockerManager.run_sub_command(
-        "inspect",
-        f"mc-{first_name}",
-        "--format",
-        "{{range .Config.Env}}{{println .}}{{end}}",
-    )
-    assert "MODE=survival" in docker_env_output
-    print("✅ Verified compose file change via docker inspect")
-
-    print("✅ update_compose_file tests completed successfully")
 
     # Final cleanup
     await server1.down()
