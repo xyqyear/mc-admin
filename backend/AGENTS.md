@@ -147,7 +147,7 @@ Docker and Compose label values may contain equals signs. The shared label parse
 Long-form, current-state design docs live under `backend/docs/`:
 
 - `docs/administration-contracts.md` — user journeys, wire/deployment contracts and regression owners
-- `docs/testing.md` — isolated fixtures, capability inventory, migration/API fixtures
+- `docs/testing.md` — isolated fixtures, capability inventory, world recovery regression ownership, migration/API fixtures
 - `docs/servers.md` — DB-driven server discovery, bundled lifecycle orchestrators, filesystem↔DB sync endpoint
 - `docs/database-migrations.md` — Alembic startup gate, supported DB states, revision IDs
 - `docs/minecraft.md` — Docker Compose lifecycle, `MCInstance`, compose validation, cgroup v2 monitoring

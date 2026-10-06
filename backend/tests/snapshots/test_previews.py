@@ -11,7 +11,7 @@ from app.runtime_resources import current_runtime
 from app.snapshots.restoration_models import Restoration
 from app.snapshots.scopes import PathsScope
 
-from .test_commands import complete
+from .support import complete
 
 pytestmark = pytest.mark.binary("restic")
 

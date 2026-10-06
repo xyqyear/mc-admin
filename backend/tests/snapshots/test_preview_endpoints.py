@@ -12,7 +12,7 @@ from app.runtime_resources import current_runtime
 from app.snapshots.restoration_models import RestorationType
 from app.snapshots.selection_models import RestorationSelection
 
-from .test_commands import complete
+from .support import complete
 from .test_previews import prepared
 
 pytestmark = [pytest.mark.binary("restic"), pytest.mark.binary("fd")]

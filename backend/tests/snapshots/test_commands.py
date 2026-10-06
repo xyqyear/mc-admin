@@ -20,23 +20,9 @@ from app.snapshots.queries import RestorationQueries
 from app.snapshots.restoration_models import Restoration, RestorationStatus
 from app.snapshots.scopes import GlobalScope, PathsScope
 
+from .support import complete
+
 pytestmark = pytest.mark.binary("restic")
-
-
-async def complete(case, accepted, *, success=True):
-    future = case.tasks.get_future(accepted["task_id"])
-    assert future is not None
-    result = await asyncio.wait_for(asyncio.shield(future), 30)
-    assert result.success is success, result
-    task = case.tasks.get_task(accepted["task_id"])
-    assert task.status is (TaskStatus.COMPLETED if success else TaskStatus.FAILED), task
-    if accepted.get("restoration_id"):
-        row = await case.commands.store.get(accepted["restoration_id"])
-        assert row.operation_id == accepted["task_id"]
-        assert row.status is (
-            RestorationStatus.SUCCEEDED if success else RestorationStatus.FAILED
-        )
-    return result.data
 
 
 async def test_online_file_restore_and_repeated_rollback_replace_later_edits(case):

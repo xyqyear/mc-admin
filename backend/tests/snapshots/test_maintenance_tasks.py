@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from app.runtime_resources import current_runtime
 from app.snapshots.maintenance import SnapshotMaintenance
 
-from .test_commands import complete
+from .support import complete
 from .test_previews import prepared
 
 pytestmark = pytest.mark.binary("restic")

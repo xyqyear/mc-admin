@@ -13,9 +13,7 @@ from app.servers.references import resolve_server_ref
 from app.snapshots.restoration_models import Restoration
 from tests.support.restorations import legacy_world_restoration
 
-from .test_commands import complete
-from .test_world_commands import scope
-from .test_world_recovery import create
+from .support import complete, create, scope
 
 pytestmark = [
     pytest.mark.binary("restic"),

@@ -8,7 +8,7 @@ from app.snapshots.restoration_models import RestorationType
 from app.snapshots.scopes import WorldScope
 from app.snapshots.selection_models import RestorationSelection
 
-from .test_commands import complete
+from .support import complete
 
 pytestmark = [pytest.mark.binary("restic"), pytest.mark.binary("fd"), pytest.mark.binary("mcmap")]
 

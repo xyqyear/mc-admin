@@ -7,25 +7,13 @@ from app.snapshots.scopes import WorldScope
 from app.snapshots.selection_models import RestorationSelection
 from tests.support.regions import chunk_value, region_bytes
 
-from .test_commands import complete
+from .support import complete, scope
 
 pytestmark = [
     pytest.mark.binary("restic"),
     pytest.mark.binary("fd"),
     pytest.mark.binary("mcmap"),
 ]
-
-
-def scope(kind="world"):
-    return WorldScope(
-        server_id="survival",
-        selection=RestorationSelection(
-            type=RestorationType(kind),
-            region_dir_relpath=None if kind == "world" else "world/region",
-            regions=[(0, 0)] if kind == "regions" else [],
-            chunks=[(0, 0)] if kind == "chunks" else [],
-        ),
-    )
 
 
 @pytest.mark.parametrize("kind", ["world", "dimension", "regions", "chunks"])

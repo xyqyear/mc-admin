@@ -11,7 +11,7 @@ from app.runtime_resources import current_runtime
 from app.world.locks import LockHolder, ServerOperationKind
 from tests.support.regions import chunk_value, region_bytes
 
-from .test_commands import complete
+from .support import complete
 
 pytestmark = [pytest.mark.binary("restic"), pytest.mark.binary("fd")]
 
