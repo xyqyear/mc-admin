@@ -116,13 +116,15 @@ Saved cron `status` is displayed as enabled/paused/cancelled. `registration_stat
 
 ## File and world ownership
 
-`features/files/` contains contracts, API, queries, commands, language/search rules, upload controller and UI. `useFileNavigation` owns path/search URL state; `useFileEditor` owns the loaded baseline/draft; `useFileBrowser` coordinates CRUD and task presentation. `pages/server/servers/ServerFiles.tsx` delegates to `FileBrowserScreen`. Ordinary online edits, deliberately empty files, deep regex filtering, diff and per-file overwrite policies remain available.
+`features/files/` contains contracts, API, queries, commands, language/search rules, upload controller and UI. `useFileNavigation` owns path/search URL state; `useFileEditor` owns the loaded baseline/draft; `useFileBrowser` coordinates CRUD and task presentation. `FileBatchActions` binds explicit real selections to shared snapshot, recovery, packing, deletion and directory export commands. `useDirectoryDownload` captures local directory authorization; its streaming executor reports aggregate browser-owned tasks independently of the current page. `pages/server/servers/ServerFiles.tsx` delegates to `FileBrowserScreen`. See `docs/file-operations.md` for selection identities, path layouts and browser capability feedback.
 
 `features/world/` owns layout/dimensions/map/claims/player-layer contracts, API and queries. `useWorldMapController` groups its state and actions under `server`, `map`, `claims` and `players`. `WorldDimensionSelect`, `WorldMapInitialization` and `WorldPlayerLocationList` bind concrete shared presentation inputs. Restore and prune controllers own their respective selection and preview/apply lifecycles; route files delegate to feature screens. Claims/player implementations do not depend on the restore feature.
 
 `WorldRestoreSidebar` keeps the backup panel mounted at a stable position while map status, layout and optional layer tabs load. Snapshot and restoration-history drawers retain their local state across these responses; map rendering readiness does not gate access to recovery history.
 
 `features/backups/useSnapshotOperation` owns common file/world recovery task observation and immutable accepted scopes. Acceptance and read failures keep the original progress UI blocked; navigation only detaches observation. World UI composes the public backup contracts, commands and history/progress components. `features/backups/useSnapshotPreview` observes common preview tasks, heartbeats ready sessions and submits cleanup on close/unmount; expired sessions require regeneration. Independent prune/populate/compression tasks continue after views close. Prune state includes feature-owned preview metadata/projections even after task-center dismissal; only a matching ready preview can apply. Historical restores with `binding_issue` remain readable but cannot roll back into another server generation.
+
+`features/backups` owns snapshot creation and editing notes up to 500 Unicode characters. Lists and file/world recovery selectors display the same notes; a completed snapshot whose note fails to save offers only a metadata retry. `features/players/ui/OnlinePlayersCard` opens the shared player detail dialog by UUID in place and keeps its owner mounted when the online list disappears.
 
 ## Server Map Reuse
 

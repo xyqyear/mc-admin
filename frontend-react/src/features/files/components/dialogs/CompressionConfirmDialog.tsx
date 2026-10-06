@@ -23,7 +23,8 @@ interface CompressionConfirmDialogProps {
   task?: BackgroundTask | null
   selectedFile?: FileItem | null
   currentPath: string
-  compressionType: 'file' | 'folder' | 'server'
+  compressionType: 'file' | 'folder' | 'server' | 'batch'
+  selectedPaths?: string[]
   serverName?: string
 }
 
@@ -36,6 +37,7 @@ const CompressionConfirmDialog: React.FC<CompressionConfirmDialogProps> = ({
   selectedFile,
   currentPath,
   compressionType,
+  selectedPaths = [],
   serverName = ''
 }) => {
   const isTaskRunning = task && (task.status === 'running' || task.status === 'pending')
@@ -49,6 +51,8 @@ const CompressionConfirmDialog: React.FC<CompressionConfirmDialogProps> = ({
 
   const getCompressionDescription = () => {
     switch (compressionType) {
+      case 'batch':
+        return `将打包选中的 ${selectedPaths.length} 个条目，保留原目录结构`
       case 'file':
         return `将压缩文件 "${selectedFile?.name}" 为压缩包`
       case 'folder':
@@ -64,6 +68,8 @@ const CompressionConfirmDialog: React.FC<CompressionConfirmDialogProps> = ({
 
   const getCompressionIcon = () => {
     switch (compressionType) {
+      case 'batch':
+        return <Archive className="h-5 w-5 text-blue-500" />
       case 'file':
         return <Archive className="h-5 w-5 text-blue-500" />
       case 'folder':
@@ -77,6 +83,8 @@ const CompressionConfirmDialog: React.FC<CompressionConfirmDialogProps> = ({
 
   const getCompressionTitle = () => {
     switch (compressionType) {
+      case 'batch':
+        return '打包所选文件和目录'
       case 'file':
         return '压缩单个文件'
       case 'folder':
@@ -110,6 +118,7 @@ const CompressionConfirmDialog: React.FC<CompressionConfirmDialogProps> = ({
             <div className="text-muted-foreground ml-8">
               {getCompressionDescription()}
             </div>
+            {compressionType === 'batch' && <ul className="mt-2 max-h-40 overflow-auto text-sm">{selectedPaths.map(path => <li key={path}>{path}</li>)}</ul>}
           </div>
 
           <Alert>

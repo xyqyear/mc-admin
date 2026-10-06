@@ -16,7 +16,26 @@ export interface DownloadTask {
   downloadedSize?: number
   /** bytes per second */
   speed?: number
+  totalFiles?: number
+  completedFiles?: number
+  failedFiles?: number
+  listingComplete?: boolean
+  destination?: string
+  failures?: DownloadFailure[]
+  warnings?: DownloadPathWarning[]
+  warningCount?: number
   abortController?: AbortController
+}
+
+export interface DownloadFailure {
+  path: string
+  error: string
+}
+
+export interface DownloadPathWarning {
+  path: string
+  destination: string
+  reason: string
 }
 
 interface DownloadState {

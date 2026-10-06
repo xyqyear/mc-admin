@@ -1,7 +1,7 @@
 """7z compression of Minecraft server files."""
 
 import re
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import aclosing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -69,6 +69,7 @@ def generate_archive_filename(
 
 async def create_server_archive_stream(
     instance: MCInstance, relative_path: str | None = None, *, output_path: Path | None = None,
+    relative_paths: Sequence[str] | None = None,
 ) -> AsyncGenerator[TaskProgress]:
     """Create a 7z archive of an instance's files, yielding ``TaskProgress`` updates."""
     settings = get_settings()
@@ -91,38 +92,52 @@ async def create_server_archive_stream(
     if not await aioos.path.exists(source_path):
         raise PublicOperationError("压缩源路径不存在，请刷新文件列表后重试")
 
-    source_parent = source_path.parent
-    source_name = source_path.name
+    if relative_paths is not None:
+        source_parent = instance.get_data_path()
+        source_names = [path or "." for path in relative_paths]
+        for path in relative_paths:
+            if not await aioos.path.exists(source_parent / path):
+                raise PublicOperationError("压缩源路径不存在，请刷新文件列表后重试")
+    else:
+        source_parent = source_path.parent
+        source_names = ["./" + source_path.name]
 
-    yield TaskProgress(progress=0, message="Starting compression...")
+    yield TaskProgress(progress=0, message="正在准备压缩")
 
     # 7z rewrites the progress line with \r and \x08 between updates.
     progress_delimiters = {ord("\r"), ord("\n"), ord("\x08")}
 
     try:
-        async with aclosing(exec_command_stream(
-            "7z",
-            "a",
-            "-t7z",
-            "-bsp1",
-            str(archive_path),
-            source_name,
-            cwd=str(source_parent),
-            delimiters=progress_delimiters,
-        )) as stream:
-            async for segment in stream:
-                match = re.search(r"^\s*(\d+)%", segment)
-                if match:
-                    progress = int(match.group(1))
-                    yield TaskProgress(
-                        progress=progress, message=f"Compressing: {progress}%"
-                    )
+        batches: list[list[str]] = [[]]
+        argument_bytes = 0
+        for name in source_names:
+            size = len(name.encode()) + 4
+            if batches[-1] and argument_bytes + size > 32_768:
+                batches.append([])
+                argument_bytes = 0
+            batches[-1].append(name)
+            argument_bytes += size
+        for index, names in enumerate(batches):
+            # Include switches preserve literal @ filenames without listfile parsing.
+            include = ["-i!" + name for name in names] if relative_paths is not None else []
+            async with aclosing(exec_command_stream(
+                "7z", "a", "-t7z", "-bsp1", "-spd", "-snl",
+                *(["-spf"] if relative_paths is not None and source_names != ["."] else []),
+                *include, str(archive_path), "--",
+                *(names if relative_paths is None else []),
+                cwd=str(source_parent), delimiters=progress_delimiters,
+            )) as stream:
+                async for segment in stream:
+                    match = re.search(r"^\s*(\d+)%", segment)
+                    if match:
+                        progress = (index * 100 + int(match.group(1))) / len(batches)
+                        yield TaskProgress(progress=progress, message=f"正在压缩：{progress:.0f}%")
 
         archive_size = (await aioos.stat(archive_path)).st_size
 
         yield TaskProgress(
             progress=100,
-            message="Compression complete",
+            message="压缩完成",
             result={"filename": archive_filename, "size": archive_size},
         )
     except BaseException:

@@ -5,7 +5,10 @@ import { useServerInfo } from '@/features/servers/queries';
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { useCreateFile, useDeleteFile, useBulkDeleteFiles, useRenameFile, useRestoreFileOwnership, useFileDownload } from '@/features/files/commands';
+import { useCreateFile, useDeleteFile, useRenameFile, useRestoreFileOwnership, useFileDownload } from '@/features/files/commands';
+import { useDirectoryDownload } from '@/features/files/useDirectoryDownload'
+import { includesFilePath } from '@/features/files/selection'
+import type { DirectoryDownloadRequest } from '@/features/files/components/dialogs/DirectoryDownloadDialog'
 import type { FileSearchBoxRef } from '@/features/files/components/FileSearchBox'
 import type { FileItem } from '@/features/files/contracts'
 import { useFileList } from '@/features/files/queries'
@@ -19,9 +22,16 @@ export function useFileBrowser(id: string | undefined) {
   const { data: serverInfo } = useServerInfo(id || "")
   const hasServerInfo = !!serverInfo
 
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([])
-  const navigation = useFileNavigation(() => setSelectedFiles([]))
+  const [selection, setSelection] = useState<{ identity: string; paths: string[] }>({ identity: '', paths: [] })
+  const navigation = useFileNavigation(() => setSelection({ identity: '', paths: [] }))
   const { currentPath, searchQuery, useRegex, inputSearchTerm, updatePath, handleSearchChange, handleSearch, handleRegexChange, handleSearchClear } = navigation
+  const selectionIdentity = JSON.stringify([id, currentPath, searchQuery, useRegex])
+  if (selection.identity !== selectionIdentity) setSelection({ identity: selectionIdentity, paths: [] })
+  const selectedFiles = selection.identity === selectionIdentity ? selection.paths : []
+  const setSelectedFiles = (paths: string[]) => setSelection({ identity: selectionIdentity, paths })
+  const handleBatchDeleted = (paths: string[]) => setSelection(previous => previous.identity === selectionIdentity
+    ? { ...previous, paths: previous.paths.filter(path => !paths.some(root => includesFilePath(root, path))) }
+    : previous)
   const editor = useFileEditor(id)
   const { editingFile, isEditDialogOpen, isDiffDialogOpen, setIsDiffDialogOpen, fileContent, setFileContent, originalFileContent, isLoadingContent, contentError, refetchContent, editorDraft, updateFileMutation, getCurrentFileLanguageConfig, handleFileEdit, handleFileSave, handleShowDiff, closeEditor } = editor
 
@@ -35,10 +45,13 @@ export function useFileBrowser(id: string | undefined) {
     return { ...fileData, items: filteredItems }
   }, [fileData, searchQuery, useRegex])
   const { downloadFile } = useFileDownload(id);
+  const directoryDownload = useDirectoryDownload(id || '')
+  const [directoryRequest, setDirectoryRequest] = useState<{ serverId: string; request: DirectoryDownloadRequest } | null>(null)
+  const directoryDownloadRequest = directoryRequest && directoryRequest.serverId === id ? directoryRequest.request : null
+  const setDirectoryDownloadRequest = (request: DirectoryDownloadRequest | null) => setDirectoryRequest(request && id ? { serverId: id, request } : null)
 
   const createFileMutation = useCreateFile(id)
   const deleteFileMutation = useDeleteFile(id)
-  const bulkDeleteMutation = useBulkDeleteFiles(id)
   const renameFileMutation = useRenameFile(id)
   const restoreOwnershipMutation = useRestoreFileOwnership(id)
   const populateServerMutation = usePopulateServer()
@@ -63,6 +76,7 @@ export function useFileBrowser(id: string | undefined) {
   const [compressionType, setCompressionType] = useState<'file' | 'folder' | 'server'>('file')
   const [compressionResult, setCompressionResult] = useState<{ filename: string, message: string } | null>(null)
   const [compressionTaskId, setCompressionTaskId] = useState<string | null>(null)
+  const compressionSubmitting = React.useRef(false)
   const [ownershipTaskId, setOwnershipTaskId] = useState<string | null>(null)
 
   const { data: compressionTask } = useTask(compressionTaskId || '')
@@ -144,7 +158,7 @@ export function useFileBrowser(id: string | undefined) {
 
   const handleFileDownload = (file: FileItem) => {
     if (file.type === 'directory') {
-      toast.info('请点击压缩按钮进行压缩下载')
+      if (directoryDownload.supported) setDirectoryDownloadRequest({ paths: [file.path], basePath: currentPath })
       return
     }
     if (id) downloadFile(file.path, file.name)
@@ -179,26 +193,6 @@ export function useFileBrowser(id: string | undefined) {
       path: currentPath
     })
     setIsCreateDialogOpen(false)
-  }
-
-  const handleBulkDelete = () => {
-    if (selectedFiles.length === 0) {
-      toast.warning('请选择要删除的文件')
-      return
-    }
-    confirm({
-      title: '确认删除',
-      description: `确定要删除选中的 ${selectedFiles.length} 个文件吗？`,
-      confirmText: '确定',
-      cancelText: '取消',
-      variant: 'destructive',
-      onConfirm: async () => {
-        if (id) {
-          bulkDeleteMutation.mutate(selectedFiles)
-          setSelectedFiles([])
-        }
-      },
-    })
   }
 
   const handleMultiFileUploadComplete = () => {
@@ -247,7 +241,8 @@ export function useFileBrowser(id: string | undefined) {
   }
 
   const handleCompressionConfirm = async () => {
-    if (!id) return
+    if (!id || compressionSubmitting.current || compressionTaskId) return
+    compressionSubmitting.current = true
 
     let compressionPath: string | null = null
     switch (compressionType) {
@@ -270,6 +265,8 @@ export function useFileBrowser(id: string | undefined) {
       setCompressionTaskId(result.task_id)
     } catch (error: any) {
       toast.error(`压缩失败: ${error.message || '未知错误'}`)
+    } finally {
+      compressionSubmitting.current = false
     }
   }
 
@@ -324,14 +321,16 @@ export function useFileBrowser(id: string | undefined) {
     isFetchingFiles,
     createArchiveMutation,
     populateServerMutation,
-    bulkDeleteMutation,
     restoreOwnershipMutation,
     ownershipTask,
     handleNavigateToParent,
     handleRefresh,
     setIsMultiFileUploadDialogOpen,
     setIsCreateDialogOpen,
-    handleBulkDelete,
+    handleBatchDeleted,
+    directoryDownloadRequest,
+    setDirectoryDownloadRequest,
+    directoryDownloadReason: directoryDownload.reason,
     handleCompressServer,
     handleReplaceServerFiles,
     handleRestoreOwnership,
@@ -400,6 +399,7 @@ export function useFileBrowser(id: string | undefined) {
     setCompressionTaskId,
     handleCompressionConfirm,
     compressionTask,
+    compressionTaskId,
     compressionFile,
     compressionType,
     isCompressionResultDialogOpen,

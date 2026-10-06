@@ -49,6 +49,7 @@ interface FileTableProps {
   onFileEdit: (file: FileItem) => void
   onFileDelete: (file: FileItem) => void
   onFileDownload: (file: FileItem) => void
+  directoryDownloadReason?: string | null
   onFileRename: (file: FileItem) => void
   onFolderOpen: (file: FileItem) => void
   onFileCompress: (file: FileItem) => void
@@ -68,6 +69,7 @@ const FileTable: React.FC<FileTableProps> = ({
   onFileEdit,
   onFileDelete,
   onFileDownload,
+  directoryDownloadReason,
   onFileRename,
   onFolderOpen,
   onFileCompress,
@@ -83,6 +85,7 @@ const FileTable: React.FC<FileTableProps> = ({
       id: 'select',
       header: ({ table }) => (
         <Checkbox
+          aria-label="选择当前页全部条目"
           checked={table.getIsAllPageRowsSelected()}
           indeterminate={table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected()}
           onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked === true)}
@@ -90,6 +93,7 @@ const FileTable: React.FC<FileTableProps> = ({
       ),
       cell: ({ row }) => (
         <Checkbox
+          aria-label={`选择 ${row.original.path}`}
           checked={row.getIsSelected()}
           onCheckedChange={(checked) => row.toggleSelected(checked === true)}
         />
@@ -172,17 +176,17 @@ const FileTable: React.FC<FileTableProps> = ({
             <Tooltip>
               <TooltipTrigger
                 className="inline-flex"
-                render={
+                render={<span />}
+              >
                   <Button
                     variant="outline"
                     size="icon-sm"
+                    aria-label={`下载 ${file.path}`}
+                    disabled={file.type === 'directory' && !!directoryDownloadReason}
                     onClick={() => onFileDownload(file)}
-                  />
-                }
-              >
-                <Download className="h-4 w-4" />
+                  ><Download className="h-4 w-4" /></Button>
               </TooltipTrigger>
-              <TooltipContent>下载</TooltipContent>
+              <TooltipContent>{file.type === 'directory' ? directoryDownloadReason || '直接下载文件夹' : '下载'}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -247,7 +251,7 @@ const FileTable: React.FC<FileTableProps> = ({
         )
       },
     },
-  ], [serverId, onFolderOpen, onFileEdit, onFileDownload, onFileCompress, onFileRename, onFileDelete, createArchiveMutation, confirm])
+  ], [serverId, onFolderOpen, onFileEdit, onFileDownload, directoryDownloadReason, onFileCompress, onFileRename, onFileDelete, createArchiveMutation, confirm])
 
   const data = fileData?.items || []
 

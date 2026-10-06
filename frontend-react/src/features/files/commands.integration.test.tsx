@@ -5,7 +5,7 @@ import { setupServer } from 'msw/node'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { queryKeys } from '@/shared/http/api'
-import { useCreateFile, useDeleteFile } from './commands'
+import { useCreateFile, useDeleteFile, useBulkDeleteFiles } from './commands'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -54,4 +54,26 @@ it('binds writes to the current server and keeps deletion pending until its task
   expect(client.getQueryState(beta)?.isInvalidated).toBe(true)
   expect(client.getQueryState(alpha)?.isInvalidated).toBe(false)
   expect(writes).toEqual([{ server: 'alpha', body: { path: '/data', name: 'a.txt', type: 'file' } }, { server: 'beta', path: '/data/b.txt' }])
+})
+
+it('submits one batch and exposes confirmed partial failure without treating acceptance as completion', async () => {
+  const terminal = deferred<void>()
+  const writes: unknown[] = []
+  let reads = 0
+  const outcome = { paths: ['a.txt', 'locked'], results: [{ path: 'a.txt', status: 'deleted' }, { path: 'locked', status: 'failed', message: '权限不足' }], deleted: 1, failed: 1, pending: 0 }
+  server.use(
+    http.post('*/api/servers/alpha/files/delete-batch', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ task_id: 'batch' }, { status: 202 }) }),
+    http.get('*/api/tasks/batch', async () => {
+      const first = ++reads === 1
+      if (!first) await terminal.promise
+      return HttpResponse.json({ task_id: 'batch', status: first ? 'running' : 'failed', error: first ? null : '部分条目删除失败', result: first ? null : outcome })
+    }),
+  )
+  const { result } = renderHook(() => useBulkDeleteFiles('alpha'), { wrapper: ({ children }) => <TestProviders client={client}>{children}</TestProviders> })
+  let deletion!: Promise<unknown>
+  act(() => { deletion = result.current.mutateAsync(['/a.txt', '/locked']) })
+  await waitFor(() => expect(reads).toBeGreaterThan(0))
+  expect(result.current.isPending).toBe(true)
+  await act(async () => { terminal.resolve(); expect(await deletion).toEqual(outcome) })
+  expect(writes).toEqual([{ paths: ['/a.txt', '/locked'] }])
 })

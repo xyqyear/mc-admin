@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
+import { Checkbox } from '@/shared/ui/checkbox'
 import FileIcon from '@/features/files/components/FileIcon'
 import HighlightedFileName from '@/features/files/components/HighlightedFileName'
 import type { SearchFileItem } from '@/features/files/contracts'
@@ -15,6 +16,8 @@ interface FileSearchResultTreeProps {
   searchResults: SearchFileItem[]
   currentRegex: string
   onSelect: (selectedKeys: React.Key[]) => void
+  selectedPaths?: string[]
+  onSelectionChange?: (paths: string[]) => void
 }
 
 function buildTreeData(results: SearchFileItem[]): TreeNode[] {
@@ -32,37 +35,43 @@ const TreeNodeRow: React.FC<{
   currentRegex: string
   onToggle: (key: string) => void
   onSelect: (key: string) => void
-}> = ({ node, level, expandedKeys, resultsByPath, currentRegex, onToggle, onSelect }) => {
+  selectedPaths: string[]
+  onSelectionChange?: (paths: string[]) => void
+}> = ({ node, level, expandedKeys, resultsByPath, currentRegex, onToggle, onSelect, selectedPaths, onSelectionChange }) => {
   const isExpanded = expandedKeys.has(node.key)
   const hasChildren = !!node.children?.length
 
-  const nodeItem = node.isLeaf ? resultsByPath.get(node.key) : undefined
+  const nodeItem = resultsByPath.get(node.key)
   const iconFile = nodeItem ?? { name: node.name, type: hasChildren ? 'directory' as const : 'file' as const }
   const matchResult = currentRegex ? matchRegex(node.name, currentRegex) : undefined
-  const size = node.isLeaf && node.payload?.type === 'file' ? node.payload.size : undefined
+  const size = nodeItem?.type === 'file' ? nodeItem.size : undefined
 
   return (
     <>
       <div
         className="flex items-center gap-1.5 py-1 px-2 hover:bg-accent/50 rounded cursor-pointer"
         style={{ paddingLeft: `${level * 16 + 8}px` }}
-        onClick={() => {
-          if (hasChildren) onToggle(node.key)
-          onSelect(node.key)
-        }}
       >
         {hasChildren ? (
-          <span className="shrink-0">
+          <button type="button" aria-label={`${isExpanded ? '收起' : '展开'} ${node.key}`} aria-expanded={isExpanded} className="shrink-0" onClick={() => onToggle(node.key)}>
             {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          </span>
+          </button>
         ) : (
           <span className="w-3.5" />
         )}
+        {onSelectionChange && nodeItem && <Checkbox
+          aria-label={`选择搜索结果 ${node.key}`}
+          checked={selectedPaths.includes(node.key)}
+          onCheckedChange={checked => onSelectionChange(checked === true ? [...selectedPaths, node.key] : selectedPaths.filter(path => path !== node.key))}
+        />}
         <span className="shrink-0">
           <FileIcon file={iconFile} />
         </span>
-        <HighlightedFileName name={node.name} matchResult={matchResult} />
-        {node.isLeaf && size != null && (
+        <button type="button" className="text-left hover:underline" onClick={() => {
+          if (hasChildren) onToggle(node.key)
+          onSelect(node.key)
+        }}><HighlightedFileName name={node.name} matchResult={matchResult} /></button>
+        {size != null && (
           <span className="text-xs text-muted-foreground ml-1">
             ({formatFileSize(size, { decimals: 1, zeroValue: "0 B", terabytes: true })})
           </span>
@@ -78,6 +87,8 @@ const TreeNodeRow: React.FC<{
           currentRegex={currentRegex}
           onToggle={onToggle}
           onSelect={onSelect}
+          selectedPaths={selectedPaths}
+          onSelectionChange={onSelectionChange}
         />
       ))}
     </>
@@ -87,7 +98,9 @@ const TreeNodeRow: React.FC<{
 const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
   searchResults,
   currentRegex,
-  onSelect
+  onSelect,
+  selectedPaths = [],
+  onSelectionChange,
 }) => {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
   const treeData = useMemo(() => buildTreeData(searchResults), [searchResults])
@@ -153,6 +166,8 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
             currentRegex={currentRegex}
             onToggle={handleToggle}
             onSelect={handleSelect}
+            selectedPaths={selectedPaths}
+            onSelectionChange={onSelectionChange}
           />
         ))}
       </div>

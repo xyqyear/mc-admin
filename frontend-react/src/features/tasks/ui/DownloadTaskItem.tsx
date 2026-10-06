@@ -67,6 +67,11 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
   }
 
   const getProgressInfo = () => {
+    if (task.totalFiles !== undefined) {
+      return task.listingComplete
+        ? `${task.completedFiles ?? 0} / ${task.totalFiles} 个文件`
+        : `已保存 ${task.completedFiles ?? 0} 个，正在读取清单`
+    }
     if (task.size && task.downloadedSize) {
       return `${formatFileSize(task.downloadedSize)} / ${formatFileSize(task.size)}`
     }
@@ -86,6 +91,25 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
         <div>
           <strong>服务器：</strong>
           {task.serverId}
+        </div>
+      )}
+      {task.destination && (
+        <div>
+          <strong>保存位置：</strong>
+          <span className="break-all">{task.destination}</span>
+        </div>
+      )}
+      {task.totalFiles !== undefined && (
+        <div>
+          <strong>文件：</strong>
+          已保存 {task.completedFiles ?? 0} 个，失败 {task.failedFiles ?? 0} 个
+          {task.listingComplete && `，共 ${task.totalFiles} 个`}
+        </div>
+      )}
+      {task.size !== undefined && (
+        <div>
+          <strong>传输：</strong>
+          {formatFileSize(task.downloadedSize ?? 0)} / {formatFileSize(task.size)}
         </div>
       )}
       <div>
@@ -112,6 +136,38 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
         <div>
           <strong>错误：</strong>
           <span className="text-destructive break-all">{task.error}</span>
+        </div>
+      )}
+      {!!task.warningCount && (
+        <div>
+          <strong>文件名调整：</strong>
+          {task.warningCount} 项
+          <div className="mt-1 max-h-36 overflow-auto space-y-1 max-w-80">
+            {task.warnings?.map((warning) => (
+              <div key={warning.path} className="break-all">
+                {warning.path} → {warning.destination}
+                <div className="text-muted-foreground">{warning.reason}</div>
+              </div>
+            ))}
+          </div>
+          {task.warningCount > (task.warnings?.length ?? 0) && (
+            <div className="text-muted-foreground">仅展示前 {task.warnings?.length ?? 0} 项</div>
+          )}
+        </div>
+      )}
+      {!!task.failures?.length && (
+        <div>
+          <strong>失败文件：</strong>
+          <div className="mt-1 max-h-36 overflow-auto space-y-1 max-w-80">
+            {task.failures.map((failure) => (
+              <div key={failure.path} className="break-all text-destructive">
+                {failure.path}：{failure.error}
+              </div>
+            ))}
+          </div>
+          {(task.failedFiles ?? 0) > task.failures.length && (
+            <div className="text-muted-foreground">仅展示前 {task.failures.length} 项</div>
+          )}
         </div>
       )}
     </div>
@@ -142,15 +198,25 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
             )}
 
             {task.status === 'completed' && (
-              <span className="text-xs text-green-600">下载完成</span>
+              <span className="text-xs text-green-600">
+                {task.totalFiles !== undefined ? `已保存 ${task.completedFiles ?? 0} 个文件` : '下载完成'}
+              </span>
             )}
 
             {task.status === 'error' && (
-              <span className="text-xs text-destructive">下载失败</span>
+              <span className="text-xs text-destructive">
+                {task.totalFiles !== undefined
+                  ? task.failedFiles
+                    ? `已保存 ${task.completedFiles ?? 0} 个，失败 ${task.failedFiles} 个`
+                    : `下载中断，已保存 ${task.completedFiles ?? 0} 个`
+                  : '下载失败'}
+              </span>
             )}
 
             {task.status === 'cancelled' && (
-              <span className="text-xs text-muted-foreground">已取消</span>
+              <span className="text-xs text-muted-foreground">
+                {task.totalFiles !== undefined ? `已取消，保留 ${task.completedFiles ?? 0} 个文件` : '已取消'}
+              </span>
             )}
           </PopoverTrigger>
           <PopoverContent side="left" className="w-auto">

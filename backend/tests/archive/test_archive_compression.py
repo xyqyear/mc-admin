@@ -226,7 +226,7 @@ class TestCreateServerArchiveStream:
 
             async def failing_generator(*args, **kwargs):
                 nonlocal partial
-                partial = Path(args[4])
+                partial = Path(args[args.index("--") - 1])
                 partial.write_bytes(b"partial archive")
                 yield "0%"
                 raise RuntimeError("Compression failed")
@@ -265,7 +265,7 @@ class TestCreateServerArchiveStream:
                         assert (await anext(stream)).progress == 0
                         progress = await anext(stream)
                         assert progress.progress == 25
-                        assert progress.message == "Compressing: 25%"
+                        assert progress.message == "正在压缩：25%"
                         assert not archive.exists()
                 finally:
                     release.touch()
@@ -489,7 +489,7 @@ class TestBackgroundTaskIntegration:
 
         def controlled_command(*args, **kwargs):
             nonlocal partial
-            partial = Path(args[4])
+            partial = Path(args[args.index("--") - 1])
             return exec_command_stream(
                 sys.executable, "-u", "-c",
                 "import pathlib, sys, time\n"

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
 import { expect, it, vi } from 'vitest'
 import FileUploadTree from './dialogs/FileUploadTree'
 import FileSearchResultTree from './FileSearchResultTree'
@@ -28,7 +29,7 @@ it('auto-expands search paths, preserves directory leaves and highlights, and se
   const { rerender } = render(<FileSearchResultTree searchResults={results} currentRegex="settings" onSelect={select} />)
   expect(screen.getAllByText('settings', { selector: 'mark' })).toHaveLength(2)
   const config = screen.getByText('config')
-  expect(config.parentElement!.querySelector('svg.lucide-folder')).toBeTruthy()
+  expect(config.closest('button')!.parentElement!.querySelector('svg.lucide-folder')).toBeTruthy()
   fireEvent.click(config)
   expect(select).toHaveBeenLastCalledWith(['/config'])
   expect(screen.queryByText('nested')).toBeNull()
@@ -39,4 +40,23 @@ it('auto-expands search paths, preserves directory leaves and highlights, and se
   expect(screen.queryByText('settings', { selector: 'mark' })).toBeNull()
   rerender(<FileSearchResultTree searchResults={results} currentRegex="toml" onSelect={select} />)
   expect(screen.getAllByText('toml', { selector: 'mark' })).toHaveLength(2)
+})
+
+it('selects actual directory matches independently from descendants and virtual ancestors', () => {
+  const select = vi.fn()
+  const entry = (path: string, type: SearchFileItem['type']): SearchFileItem => ({ path, name: path.split('/').at(-1)!, type, size: 1, modified_at: '2026-10-01T00:00:00Z' })
+  function Selection() {
+    const [paths, setPaths] = useState<string[]>([])
+    return <><output>{JSON.stringify(paths)}</output><FileSearchResultTree searchResults={[entry('/plugins', 'directory'), entry('/plugins/config/a.toml', 'file'), entry('/virtual/b.toml', 'file')]} currentRegex="" onSelect={select} selectedPaths={paths} onSelectionChange={setPaths} /></>
+  }
+  render(<Selection />)
+  expect(screen.queryByRole('checkbox', { name: '选择搜索结果 /virtual' })).toBeNull()
+  expect(screen.queryByRole('checkbox', { name: '选择搜索结果 /plugins/config' })).toBeNull()
+  fireEvent.click(screen.getByRole('checkbox', { name: '选择搜索结果 /plugins' }))
+  expect(screen.getByRole('status').textContent).toBe('["/plugins"]')
+  expect((screen.getByRole('checkbox', { name: '选择搜索结果 /plugins/config/a.toml' }) as HTMLInputElement).getAttribute('aria-checked')).not.toBe('true')
+  expect(select).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '收起 /plugins' }))
+  expect(select).not.toHaveBeenCalled()
+  expect(screen.getByRole('status').textContent).toBe('["/plugins"]')
 })

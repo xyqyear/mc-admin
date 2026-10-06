@@ -3,11 +3,13 @@ import type {
   CreateFileRequest,
   FileContent,
   FileListResponse,
+  FileDownloadManifestRequest,
+  FileDownloadManifestResponse,
   OwnershipRestoreTaskResponse,
   RenameFileRequest,
   FileSearchRequest, FileSearchResponse, MultiFileUploadRequest, UploadConflictResponse, OverwritePolicy, MultiFileUploadResult,
 } from "@/features/files/contracts";
-import { api } from "@/shared/http/api";
+import { api, AUTH_EXPIRED_EVENT, buildApiUrl, createApiError } from "@/shared/http/api";
 
 export const fileApi = {
   listFiles: async (
@@ -43,6 +45,11 @@ export const fileApi = {
     return response.data;
   },
 
+  deleteFiles: async (serverId: string, paths: string[]): Promise<TaskAccepted> => {
+    const response = await api.post(`/servers/${serverId}/files/delete-batch`, { paths });
+    return response.data;
+  },
+
   downloadFileWithProgress: async (
     serverId: string,
     path: string,
@@ -75,6 +82,43 @@ export const fileApi = {
     });
 
     return response.data;
+  },
+
+  getDownloadManifest: async (
+    serverId: string,
+    request: FileDownloadManifestRequest,
+    signal?: AbortSignal,
+  ): Promise<FileDownloadManifestResponse> => {
+    const response = await api.post<FileDownloadManifestResponse>(
+      `/servers/${serverId}/files/download-manifest`, request, { signal },
+    );
+    return response.data;
+  },
+
+  downloadFileStream: async (
+    serverId: string,
+    path: string,
+    signal: AbortSignal,
+    expectedGeneration?: number,
+  ): Promise<Response> => {
+    let response: Response;
+    const params = new URLSearchParams({ path });
+    if (expectedGeneration !== undefined) params.set("expected_generation", String(expectedGeneration));
+    try {
+      response = await fetch(buildApiUrl(`/servers/${encodeURIComponent(serverId)}/files/download?${params}`), {
+        credentials: "include",
+        signal,
+      });
+    } catch (error: unknown) {
+      if (signal.aborted) throw error;
+      throw createApiError(undefined, undefined, "ERR_NETWORK");
+    }
+    if (!response.ok) {
+      if (response.status === 401) window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+      const data: unknown = await response.json().catch(() => undefined);
+      throw createApiError(data, response.status);
+    }
+    return response;
   },
 
   createFileOrDirectory: async (

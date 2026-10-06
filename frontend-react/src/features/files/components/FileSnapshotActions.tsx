@@ -25,7 +25,7 @@ export default function FileSnapshotActions({ file, serverId, path, isServerMode
       <TooltipTrigger render={<span />}>
         <Button variant="outline" size={isServerMode ? 'default' : 'icon-sm'}
           aria-label={`为 ${label} 创建快照`} disabled={disabled}
-          onClick={() => recovery.create(actualPath, label)}>
+          onClick={() => recovery.create([actualPath], label)}>
           <Database className="h-4 w-4" />{isServerMode && '创建快照'}
         </Button>
       </TooltipTrigger>
@@ -34,7 +34,7 @@ export default function FileSnapshotActions({ file, serverId, path, isServerMode
     <Tooltip>
       <TooltipTrigger render={<span />}>
         <Button variant={isServerMode ? 'default' : 'outline'} size={isServerMode ? 'default' : 'icon-sm'}
-          aria-label={`恢复 ${label}`} disabled={disabled} onClick={() => recovery.restore(actualPath)}>
+          aria-label={`恢复 ${label}`} disabled={disabled} onClick={() => recovery.restore([actualPath], label)}>
           <History className="h-4 w-4" />{isServerMode && '快照恢复'}
         </Button>
       </TooltipTrigger>

@@ -8,12 +8,17 @@ from pathlib import Path
 from uuid import uuid4
 
 from aiofiles import os as aioos
+from fastapi import HTTPException
 
 from ..background_tasks import TaskProgress, TaskType, get_task_manager
 from ..background_tasks.api_models import TaskAccepted
 from ..config import get_settings
 from ..files import base
-from ..files.paths import resolve_file_path, validate_file_name
+from ..files.paths import (
+    normalize_selected_paths,
+    resolve_file_path,
+    validate_file_name,
+)
 from ..files.resources import path_claims, require_same_claims
 from ..files.types import CreateFileRequest, RenameFileRequest
 from ..minecraft import MCInstance
@@ -107,27 +112,38 @@ class CompressionPlan:
     stage: Path
     token: str
     claims: tuple[ResourceClaim, ...]
+    relative_paths: tuple[str, ...] | None = None
+    sources: tuple[Path, ...] = ()
 
 
-async def prepare_compression(instance: MCInstance, relative_path: str | None) -> CompressionPlan:
+async def prepare_compression(instance: MCInstance, relative_path: str | None, *, paths: Sequence[str] | None = None) -> CompressionPlan:
     settings = get_settings()
-    source = instance.get_project_path() if relative_path is None else await resolve_file_path(instance.get_data_path(), relative_path)
+    if paths is not None:
+        for path in paths:
+            target = await resolve_file_path(instance.get_data_path(), path)
+            if not await aioos.path.exists(target):
+                raise HTTPException(status_code=404, detail="压缩源路径不存在，请刷新文件列表后重试")
+    roots = await normalize_selected_paths(instance.get_data_path(), paths) if paths is not None else None
+    sources = tuple([await resolve_file_path(instance.get_data_path(), path) for path in roots]) if roots is not None else (instance.get_project_path() if relative_path is None else await resolve_file_path(instance.get_data_path(), relative_path),)
+    for source in sources:
+        if not await aioos.path.exists(source):
+            raise HTTPException(status_code=404, detail="压缩源路径不存在，请刷新文件列表后重试")
     archive_root = await async_fs.resolve(settings.archive_path)
     token = uuid4().hex
     stage = archive_root / f"{STAGE_PREFIX}{token}.tmp"
     output = archive_root / generate_archive_filename(instance.get_name(), relative_path)
-    claims = (*await path_claims(instance.get_project_path(), [source], server_id=instance.get_name()), *await archive_claims(archive_root, [output, stage]))
-    return CompressionPlan(instance, relative_path, source, output, stage, token, claims)
+    claims = (*await path_claims(instance.get_project_path(), sources, server_id=instance.get_name()), *await archive_claims(archive_root, [output, stage]))
+    return CompressionPlan(instance, relative_path, sources[0], output, stage, token, claims, roots, sources)
 
 
 async def compress(plan: CompressionPlan) -> AsyncGenerator[TaskProgress]:
     async with get_operation_coordinator().acquire(plan.claims, policy=ConflictPolicy.REJECT), settle_before_release():
-        actual = (*await path_claims(plan.instance.get_project_path(), [plan.source], server_id=plan.instance.get_name()), *await archive_claims(plan.output.parent, [plan.output, plan.stage]))
+        actual = (*await path_claims(plan.instance.get_project_path(), plan.sources or (plan.source,), server_id=plan.instance.get_name()), *await archive_claims(plan.output.parent, [plan.output, plan.stage]))
         require_same_claims(plan.claims, actual)
         await retain_recovery_reference("archive_stage", plan.token)
         await record_phase("compressing_archive")
         try:
-            async with aclosing(create_server_archive_stream(plan.instance, plan.relative_path, output_path=plan.stage)) as events:
+            async with aclosing(create_server_archive_stream(plan.instance, plan.relative_path, output_path=plan.stage, relative_paths=plan.relative_paths)) as events:
                 async for event in events:
                     if event.result is None:
                         yield event
@@ -148,4 +164,4 @@ async def compress(plan: CompressionPlan) -> AsyncGenerator[TaskProgress]:
                 if execution is not None:
                     await execution.journal.resolve_reference(execution.operation_id, "archive_stage", plan.token)
             await finalize(cleanup())
-        yield TaskProgress(progress=100, message="Compression complete", result={"filename": plan.output.name, "size": size})
+        yield TaskProgress(progress=100, message="压缩完成", result={"filename": plan.output.name, "size": size})

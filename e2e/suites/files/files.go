@@ -16,6 +16,7 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 		{ID: "files.multipart-policies", Suite: "files", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: multipartPolicies},
 		{ID: "files.multipart-safe-failures", Suite: "files", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: multipartSafeFailures},
 		{ID: "files.path-confinement", Suite: "files", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: confinement},
+		{ID: "files.batch-manifest-delete", Suite: "files", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: batchManifestDelete},
 	}
 }
 

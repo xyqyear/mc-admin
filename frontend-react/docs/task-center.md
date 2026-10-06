@@ -23,7 +23,9 @@ File and world recovery share independent tasks. Their progress dialogs retain t
 ## Client state
 
 - `panelStore.ts`: panel open state, active tab and drag position. Only the launcher position persists.
-- `downloadStore.ts`: browser download records and live AbortControllers. Persisted in-flight records become cancelled on reload because an HTTP download cannot resume from a serialized controller.
-- `downloads.ts`: public download command adapter; archives and ordinary files supply the HTTP operation and progress callback.
+- `downloadStore.ts`: browser download records and live AbortControllers. Directory batches retain aggregate bytes, discovered/saved/failed file counts, destination and bounded failure/name-mapping details. Persisted in-flight records become cancelled on reload because an HTTP download cannot resume from a serialized controller.
+- `downloads.ts`: public download command adapter; archives and ordinary files supply the HTTP operation and progress callback. Browser-owned directory export supplies a streaming executor and aggregate progress through `executeManagedDownload`.
+
+`features/files/useDirectoryDownload.ts` invokes the writable directory picker during the initiating click, before asynchronous requests. Its executor reads bounded recursive manifest pages, binds content reads to the manifest's server generation and writes response streams into a separate local export folder with four concurrent transfers. Original layouts retain empty directories and use the captured browsing/search root. Flat layouts retain files, resolving duplicates, case-insensitive collisions and unsupported local names without overwriting existing files; task details display adjusted names. A file becomes complete only after its writable stream closes. Failed or cancelled transfers remove incomplete output while successful files remain. Closing the initiating view or task panel does not stop execution; cancellation aborts active reads and prevents later transfers, and refresh/closure ends the browser-owned work. Direct export reads live server files rather than a point-in-time snapshot.
 
 `ui/TaskCenterTrigger.tsx`, `TaskCenterPanel.tsx`, `BackgroundTaskList.tsx`, `BackgroundTaskItem.tsx`, `DownloadTaskList.tsx` and `DownloadTaskItem.tsx` present these states. The public `ui/index.ts` entry is used by the app shell.

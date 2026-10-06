@@ -276,7 +276,7 @@ class BackgroundTaskManager:
             record = await self.journal.get(task_id)
             if record is not None:
                 task = self._task_from_record(record)
-        if task is not None and task.result is None and task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
+        if task is not None and task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
             result = await self.journal.get_task_result(task_id)
             return task.model_copy(update={"result": result})
         return task

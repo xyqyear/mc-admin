@@ -12,6 +12,25 @@ export interface FileListResponse {
   current_path: string;
 }
 
+export interface FileDownloadManifestRequest {
+  paths: string[];
+  cursor?: string;
+  limit?: number;
+}
+
+export interface FileDownloadManifestEntry {
+  path: string;
+  type: "file" | "directory";
+  size: number;
+}
+
+export interface FileDownloadManifestResponse {
+  server_generation: number;
+  entries: FileDownloadManifestEntry[];
+  errors: { path: string; message: string }[];
+  next_cursor: string | null;
+}
+
 export interface FileContent {
   content: string;
 }
@@ -98,4 +117,11 @@ export interface UploadFileResult {
 export interface MultiFileUploadResult {
   message: string;
   results: Record<string, UploadFileResult>;
+}
+export interface FileBatchDeleteResult {
+  paths: string[]
+  results: { path: string; status: 'deleted' | 'failed' | 'pending'; message?: string | null }[]
+  deleted: number
+  failed: number
+  pending: number
 }

@@ -26,6 +26,7 @@ import FileTable from '@/features/files/components/FileTable'
 import FileToolbar from '@/features/files/components/FileToolbar'
 import FileBreadcrumb from '@/features/files/components/FileBreadcrumb'
 import FileSearchBox from '@/features/files/components/FileSearchBox'
+import { DirectoryDownloadDialog } from '@/features/files/components/dialogs/DirectoryDownloadDialog'
 
 const ServerFiles: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -41,14 +42,16 @@ const ServerFiles: React.FC = () => {
     isFetchingFiles,
     createArchiveMutation,
     populateServerMutation,
-    bulkDeleteMutation,
     restoreOwnershipMutation,
     ownershipTask,
     handleNavigateToParent,
     handleRefresh,
     setIsMultiFileUploadDialogOpen,
     setIsCreateDialogOpen,
-    handleBulkDelete,
+    handleBatchDeleted,
+    directoryDownloadRequest,
+    setDirectoryDownloadRequest,
+    directoryDownloadReason,
     handleCompressServer,
     handleReplaceServerFiles,
     handleRestoreOwnership,
@@ -116,6 +119,7 @@ const ServerFiles: React.FC = () => {
     setCompressionTaskId,
     handleCompressionConfirm,
     compressionTask,
+    compressionTaskId,
     compressionFile,
     compressionType,
     isCompressionResultDialogOpen,
@@ -153,7 +157,6 @@ const ServerFiles: React.FC = () => {
             isLoadingFiles={isFetchingFiles}
             createArchiveMutation={createArchiveMutation}
             populateServerMutation={populateServerMutation}
-            bulkDeleteMutation={bulkDeleteMutation}
             restoreOwnershipMutation={{
               isPending:
                 restoreOwnershipMutation.isPending ||
@@ -164,7 +167,7 @@ const ServerFiles: React.FC = () => {
             onRefresh={handleRefresh}
             onUpload={() => setIsMultiFileUploadDialogOpen(true)}
             onCreateFile={() => setIsCreateDialogOpen(true)}
-            onBulkDelete={handleBulkDelete}
+            onDeleted={handleBatchDeleted}
             onCompressServer={handleCompressServer}
             onReplaceServerFiles={handleReplaceServerFiles}
             onRestoreOwnership={handleRestoreOwnership}
@@ -215,6 +218,7 @@ const ServerFiles: React.FC = () => {
             onFileEdit={handleFileEdit}
             onFileDelete={handleFileDelete}
             onFileDownload={handleFileDownload}
+            directoryDownloadReason={directoryDownloadReason}
             onFileRename={handleFileRename}
             onFolderOpen={handleFolderOpen}
             onFileCompress={handleCompress}
@@ -313,7 +317,7 @@ const ServerFiles: React.FC = () => {
           setCompressionTaskId(null)
         }}
         onOk={handleCompressionConfirm}
-        confirmLoading={createArchiveMutation.isPending}
+        confirmLoading={createArchiveMutation.isPending || (!!compressionTaskId && !compressionTask)}
         task={compressionTask}
         selectedFile={compressionFile}
         currentPath={currentPath}
@@ -334,11 +338,19 @@ const ServerFiles: React.FC = () => {
       />
 
       <FileDeepSearchDialog
+        key={JSON.stringify([id, currentPath])}
         open={isDeepSearchDialogOpen}
         onCancel={() => setIsDeepSearchDialogOpen(false)}
         serverId={id || ''}
         currentPath={currentPath}
         onNavigate={handleDeepSearchNavigate}
+      />
+
+      <DirectoryDownloadDialog
+        key={JSON.stringify(directoryDownloadRequest)}
+        serverId={id || ''}
+        request={directoryDownloadRequest}
+        onClose={() => setDirectoryDownloadRequest(null)}
       />
 
       {confirmDialog}

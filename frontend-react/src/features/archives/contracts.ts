@@ -26,6 +26,7 @@ export interface RenameArchiveFileRequest {
 export interface CreateArchiveRequest {
   server_id: string
   path?: string | null
+  paths?: string[]
 }
 
 export interface CreateArchiveResponse {

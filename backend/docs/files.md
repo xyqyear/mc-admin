@@ -1,6 +1,6 @@
 # File Operations (`app.files`)
 
-CRUD for files inside a server's data directory, deep search, ownership repair, and multi-file upload with conflict resolution.
+CRUD for files inside a server's data directory, scoped batch deletion and compression, bounded download manifests, deep search, ownership repair, and multi-file upload with conflict resolution.
 
 ## Directory boundary and operation policies
 
@@ -40,6 +40,71 @@ values and destination names are excluded from error logs.
 Large batches use a bounded journal summary while execution leases retain the
 individual paths. Interrupted writes do not imply automatic rollback.
 
+`POST /servers/{server_id}/files/delete-batch` accepts `paths[]` and returns one
+202 durable `file_delete` task. Every submitted member passes confinement,
+existence and root-deletion checks before acceptance; overlapping lexical parent
+targets are then consolidated. The worker reacquires all lexical and canonical
+claims together and repeats the complete preflight before its first write.
+One failed target does not stop unrelated later targets. Results retain each
+effective target's `deleted`, `failed` or `pending` state, including safe failure
+messages and counts. A partially failed task ends failed with its detailed result
+still available. Cancellation waits for the current finite deletion and result
+publication, then stops later targets. Already deleted files remain deleted;
+pending targets have not started. The initial pending result is retained at
+acceptance, including cancellation before execution. The existing single-path
+DELETE interface remains supported.
+
+## Browser-owned directory exports
+
+`POST /servers/{server_id}/files/download-manifest` accepts frozen `paths[]`, an
+optional opaque cursor and a page limit from 1 to 500 (default 200). Pages contain
+data-relative file paths, byte sizes, directory paths including empty directories,
+safe per-entry errors and `server_generation`. Selected parents subsume selected
+children. There is no application-level total-file or selected-root count limit.
+Enumeration retains a depth-first directory stack rather than the complete tree,
+and closes all directory iterators when each page finishes. Continuing a page
+reopens the current branch and skips its consumed directory entries; it does not
+rescan unrelated completed subtrees. This avoids keeping a complete manifest or
+per-file content in memory. Very large individual directories still incur offset
+rescan cost across pages.
+
+The cursor binds the registered server generation, data path and normalized
+requested roots. Directory device/inode/mtime evidence rejects replaced or
+structurally changed active branches with 409. Every request confines selected
+roots again. Recursive enumeration never follows directory symlinks, including
+internal aliases; it reports them as unsupported entries. Internal file links
+are supported, while escaping or unreadable descendants produce safe errors.
+Existing authenticated GET file downloads remain the transport; browser exports
+pass `expected_generation` to reject same-name replacement servers. Legacy
+download callers can omit that additive query parameter.
+
+Direct export has no backend write lease or durable execution task. The browser
+selects an authorized local folder, streams files with bounded concurrency and
+owns flat/original path mapping, progress and cancellation. It is not a snapshot:
+server files can change during enumeration or transfer. Size changes must be
+reported by the browser; a page structure conflict requires starting a new
+export. Browser refresh or closure ends transfers. Successfully completed local
+files remain when later work fails or is cancelled.
+
+## Scoped persistent compression
+
+`POST /archive/compress` accepts either the existing `path`, omitted whole-project
+scope, or additive `paths[]`; `path` and `paths` are mutually exclusive. A batch
+archives disjoint data-relative roots into one 7z output, preserving original
+paths, same-named files in separate directories and empty directories. Source
+paths are confined and checked before accepting work and revalidated under the
+execution lease. Literal include switches disable wildcard matching and avoid
+interpreting `@` filenames as list files; archives store symlinks as links rather
+than reading external target contents. Source argument batches remain below a
+bounded byte budget, so large selections do not depend on a single command-line
+argument limit. Each sequential addition writes the same private stage.
+
+Compression reserves all sources, its independent output and its owned stage.
+Only the completed stage is atomically published. Cancellation drains registered
+7z processes and removes the owned partial stage before releasing resources;
+unknown writers retain their stage and recovery evidence. Packing remains
+independent from direct directory export and uses the durable task center.
+
 Ownership repair reserves the complete data tree until the owned `chown` process
 and cleanup finish. Population atomically reserves maintenance, the data tree,
 its unique stage and its input archive. Its worker rechecks paths and the
@@ -68,7 +133,8 @@ Sessions live in an in-memory dict (`_upload_sessions`) with a TTL; after expiry
 ## Modules
 
 - `base.py` — file CRUD helpers: `get_file_items`, `get_file_content`, `update_file_content`, plus rename/delete via the `types` helpers.
-- `application.py` — owned file commands and background ownership-repair execution.
+- `application.py` — owned file commands, single/batch deletion and background ownership-repair execution.
+- `downloads.py` — generation-bound recursive download pagination and opaque cursor validation.
 - `resources.py` — canonical and lexical claims and acquisition-time revalidation.
 - `population.py` — immutable population plan, stopped-state check and owned extraction stage.
 - `paths.py` — shared HTTP path boundary: resolves symlinks before checking containment, returns 400 on escape, and validates create/rename basenames. Server file operations and archive download/compression/population use the same boundary; multipart validates every destination before writing any part.

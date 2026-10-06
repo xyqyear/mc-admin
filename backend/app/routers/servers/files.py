@@ -6,6 +6,8 @@ from app.auth.schemas import UserPublic
 
 from ...background_tasks import TaskType, get_task_manager
 from ...background_tasks.api_models import TaskAccepted
+from ...config import get_settings
+from ...db.database import get_async_session
 from ...dependencies import get_current_user
 from ...files import (
     CreateFileRequest,
@@ -25,9 +27,16 @@ from ...files import (
     search_files,
     set_upload_policy,
 )
+from ...files.api_models import (
+    DownloadManifestRequest,
+    DownloadManifestResponse,
+    FilePathsRequest,
+)
 from ...files.application import FileApplication
+from ...files.downloads import download_manifest
 from ...files.paths import resolve_file_path
 from ...minecraft import get_docker_mc_manager
+from ...servers.references import resolve_server_ref
 from .admission import admit_server_write
 
 router = APIRouter(
@@ -93,7 +102,7 @@ async def update_file_content_endpoint(
 
 @router.get("/{server_id}/files/download")
 async def download_file(
-    server_id: str, path: str, _: UserPublic = Depends(get_current_user)
+    server_id: str, path: str, _: UserPublic = Depends(get_current_user), expected_generation: int | None = None,
 ):
     """Download a specific file"""
     instance = get_docker_mc_manager().get_instance(server_id)
@@ -103,6 +112,12 @@ async def download_file(
         raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
 
     base_path = instance.get_data_path()
+    if expected_generation is not None:
+        async with get_async_session() as session:
+            reference = await resolve_server_ref(session, server_id, servers_root=get_settings().server_path)
+        if reference.generation != expected_generation:
+            raise HTTPException(status_code=409, detail="服务器实例已变化，请重新开始下载")
+        base_path = reference.data_path
     file_path = await resolve_file_path(base_path, path)
 
     if not await aioos.path.exists(file_path):
@@ -134,6 +149,25 @@ async def create_file_or_directory_endpoint(
     message = await FileApplication(instance, server_id, _.id).create(create_request)
 
     return {"message": message}
+
+
+@router.post("/{server_id}/files/download-manifest", response_model=DownloadManifestResponse)
+async def download_manifest_endpoint(
+    server_id: str, request: DownloadManifestRequest, _: UserPublic = Depends(get_current_user),
+):
+    async with get_async_session() as session:
+        reference = await resolve_server_ref(session, server_id, servers_root=get_settings().server_path)
+    return await download_manifest(reference, request)
+
+
+@router.post("/{server_id}/files/delete-batch", response_model=TaskAccepted, status_code=202)
+async def delete_batch_endpoint(
+    server_id: str, request: FilePathsRequest, _: UserPublic = Depends(get_current_user),
+):
+    instance = get_docker_mc_manager().get_instance(server_id)
+    if not await instance.exists():
+        raise HTTPException(status_code=404, detail="服务器不存在")
+    return await FileApplication(instance, server_id, _.id).submit_delete_batch(request.paths)
 
 
 @router.delete("/{server_id}/files", response_model=TaskAccepted, status_code=202)

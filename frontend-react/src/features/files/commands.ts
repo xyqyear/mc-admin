@@ -1,6 +1,7 @@
 import { waitForTaskResult } from '@/features/tasks/commands';
 import { getErrorMessage, type ApiError } from '@/shared/http/api'
-import type { CreateFileRequest, RenameFileRequest } from "@/features/files/contracts";
+import type { CreateFileRequest, RenameFileRequest, FileBatchDeleteResult } from "@/features/files/contracts";
+import type { BackgroundTask } from '@/features/tasks/contracts';
 import { taskQueryKeys } from "@/features/tasks/queries";
 import { queryKeys } from "@/shared/http/api";
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
@@ -65,22 +66,21 @@ export const useBulkDeleteFiles = (serverId: string | undefined) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (paths: string[]) => {
-      const results = await Promise.allSettled(
-        paths.map(async path => waitForTaskResult(queryClient, await fileApi.deleteFileOrDirectory(serverId!, path)))
-      );
-
-      const successful = results.filter(result => result.status === 'fulfilled').length;
-      const failed = results.filter(result => result.status === 'rejected').length;
-
-      return { successful, failed, total: paths.length };
+      const accepted = await fileApi.deleteFiles(serverId!, [...paths]);
+      try {
+        return await waitForTaskResult<FileBatchDeleteResult>(queryClient, accepted);
+      } catch (error) {
+        const task = queryClient.getQueryData<BackgroundTask>(taskQueryKeys.detail(accepted.task_id));
+        if ((task?.status === 'failed' || task?.status === 'cancelled') && task.result && Array.isArray(task.result.results)) return task.result as unknown as FileBatchDeleteResult;
+        throw error;
+      }
     },
     onSuccess: (result) => {
-      if (result.failed === 0) {
-        toast.success(`成功删除 ${result.successful} 个文件`);
+      if (result.failed === 0 && result.pending === 0) {
+        toast.success(`成功删除 ${result.deleted} 个条目`);
       } else {
-        toast.warning(`删除完成：成功 ${result.successful} 个，失败 ${result.failed} 个`);
+        toast.warning(`删除结果：成功 ${result.deleted} 个，失败 ${result.failed} 个，未执行 ${result.pending} 个`);
       }
-      invalidateFileList(queryClient, serverId);
     },
     onError: (error: ApiError) => {
       toast.error(getErrorMessage(error, "批量删除失败"));

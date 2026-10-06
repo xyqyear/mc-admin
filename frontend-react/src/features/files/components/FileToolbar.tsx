@@ -1,6 +1,5 @@
 import React from 'react'
 import {
-  Trash2,
   Plus,
   ArrowUp,
   Upload,
@@ -12,6 +11,7 @@ import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
 import { RefreshButton } from '@/shared/components/RefreshButton'
 import FileSnapshotActions from '@/features/files/components/FileSnapshotActions'
+import { FileBatchActions } from '@/features/files/components/FileBatchActions'
 
 interface FileToolbarProps {
   currentPath: string
@@ -20,13 +20,12 @@ interface FileToolbarProps {
   isLoadingFiles: boolean
   createArchiveMutation: { isPending: boolean }
   populateServerMutation: { isPending: boolean }
-  bulkDeleteMutation: { isPending: boolean }
   restoreOwnershipMutation: { isPending: boolean }
   onNavigateToParent: () => void
   onRefresh: () => void
   onUpload: () => void
   onCreateFile: () => void
-  onBulkDelete: () => void
+  onDeleted: (paths: string[]) => void
   onCompressServer: () => void
   onReplaceServerFiles: () => void
   onRestoreOwnership: () => void
@@ -39,13 +38,12 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   isLoadingFiles,
   createArchiveMutation,
   populateServerMutation,
-  bulkDeleteMutation,
   restoreOwnershipMutation,
   onNavigateToParent,
   onRefresh,
   onUpload,
   onCreateFile,
-  onBulkDelete,
+  onDeleted,
   onCompressServer,
   onReplaceServerFiles,
   onRestoreOwnership,
@@ -113,17 +111,7 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
       <RefreshButton onClick={onRefresh} isRefreshing={isLoadingFiles} />
 
       {selectedFiles.length > 0 && (
-        <Button
-          variant="destructive"
-          onClick={onBulkDelete}
-          disabled={bulkDeleteMutation.isPending}
-        >
-          {bulkDeleteMutation.isPending
-            ? <Spinner className="mr-2 size-4" />
-            : <Trash2 className="mr-2 h-4 w-4" />
-          }
-          批量删除 ({selectedFiles.length})
-        </Button>
+        <FileBatchActions key={JSON.stringify([serverId, currentPath])} serverId={serverId} paths={selectedFiles} basePath={currentPath} onDeleted={onDeleted} />
       )}
     </>
   )

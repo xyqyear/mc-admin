@@ -1,6 +1,6 @@
 # Server File Management
 
-Per-server file browser, editor, search, upload, and ownership-repair UI. Reached from a server's overview at `/server/{id}/files`. Exposes everything the user might want to do to the server's data directory short of opening a shell.
+Per-server file browser, editor, search, upload, and ownership-repair UI. Reached from a server's overview at `/server/{id}/files`. Batch selection, snapshot scope and browser directory export are described in [file-operations.md](file-operations.md).
 
 ## Layout
 
@@ -29,7 +29,7 @@ keep their separate interactions: upload rows expand, conflict arrows expand
 without changing overwrite selection, and search rows navigate while expanding
 directories. Search results and changed highlight patterns expand the result
 tree automatically. Deep-search navigation combines the selected path with the
-current directory; file selections use literal filenames, and virtual directory
+captured search root; file selections use literal filenames, and virtual directory
 selections preserve the search expression. File icons require only name and
 type, so tree rows do not invent timestamps or other file metadata.
 
@@ -119,6 +119,6 @@ Excluded descendants remain untouched and receive a brief notice.
 
 ## Common snapshot controls
 
-`FileSnapshotRecovery`, mounted once per server file page, owns the selected path, creation/preview dialogs, restoration observation and history. Row and toolbar `FileSnapshotActions` only request an action and show lightweight ignore-rule feedback. Table pagination, removed rows or a page reload cannot create duplicate recovery dialogs or lose an accepted restore. The toolbar's `/` scope means the server data directory; server-project backups remain a distinct public scope.
+`FileSnapshotRecovery`, mounted once per server file page, owns captured path arrays, creation/preview dialogs, restoration observation and history. Row, toolbar and batch controls only request an action and show lightweight ignore-rule feedback. Table pagination, removed rows or a page reload cannot create duplicate recovery dialogs or lose an accepted restore. The toolbar's `/` scope means the server data directory; server-project backups remain a distinct public scope.
 
 Ignored targets disable creation and restoration with a reason; a mixed parent shows a short skip notice. `SnapshotCreateDialog` remains blocked until its task actually ends and displays its current stage. Active restore discovery does not query Restic history. Unknown initial activity or a failed task read keeps writes blocked; navigation does not cancel backend work. History filters by scope, status and originating page and uses the common rollback command.

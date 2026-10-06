@@ -26,6 +26,8 @@ import {
 import type { FileSearchRequest, SearchFileItem } from '@/features/files/contracts'
 import { useSearchFiles } from '@/features/files/commands';
 import FileSearchResultTree from '@/features/files/components/FileSearchResultTree'
+import { FileBatchActions } from '@/features/files/components/FileBatchActions'
+import { includesFilePath, searchResultPath } from '@/features/files/selection'
 
 const sizeUnits = [
   { value: '1', label: 'B' },
@@ -63,6 +65,9 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
   const [totalCount, setTotalCount] = useState(0)
   const [searchPerformed, setSearchPerformed] = useState(false)
   const [currentRegex, setCurrentRegex] = useState('')
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([])
+  const [searchPath, setSearchPath] = useState(currentPath)
+  const requestSequence = useRef(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchFilesMutation = useSearchFiles(serverId)
 
@@ -87,32 +92,32 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
           const fileDirPath = lastSlashIndex > 0 ? filePath.substring(0, lastSlashIndex) : '/'
 
           let absoluteDirPath: string
-          if (currentPath === '/') {
+          if (searchPath === '/') {
             absoluteDirPath = fileDirPath
           } else if (fileDirPath === '/') {
-            absoluteDirPath = currentPath
+            absoluteDirPath = searchPath
           } else {
-            absoluteDirPath = currentPath + (fileDirPath.startsWith('/') ? fileDirPath : '/' + fileDirPath)
+            absoluteDirPath = searchPath + (fileDirPath.startsWith('/') ? fileDirPath : '/' + fileDirPath)
           }
 
           onNavigate(absoluteDirPath, fileName)
         } else {
           let absoluteFolderPath: string
-          if (currentPath === '/') {
+          if (searchPath === '/') {
             absoluteFolderPath = selectedItem.path
           } else {
-            absoluteFolderPath = currentPath + (selectedItem.path.startsWith('/') ? selectedItem.path : '/' + selectedItem.path)
+            absoluteFolderPath = searchPath + (selectedItem.path.startsWith('/') ? selectedItem.path : '/' + selectedItem.path)
           }
           onNavigate(absoluteFolderPath)
         }
       } else {
         let absoluteFolderPath: string
-        if (currentPath === '/') {
+        if (searchPath === '/') {
           absoluteFolderPath = selectedKey
         } else {
-          absoluteFolderPath = currentPath + (selectedKey.startsWith('/') ? selectedKey : '/' + selectedKey)
+          absoluteFolderPath = searchPath + (selectedKey.startsWith('/') ? selectedKey : '/' + selectedKey)
         }
-        onNavigate(absoluteFolderPath, regex, true)
+        onNavigate(absoluteFolderPath, currentRegex, true)
       }
 
       handleReset()
@@ -145,16 +150,24 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
       searchRequest.older_than = new Date(olderThan).toISOString()
     }
 
+    const sequence = ++requestSequence.current
+    const submittedPath = currentPath
+    const submittedRegex = regex
+    setSelectedPaths([])
+    setSearchResults([])
+    setSearchPerformed(false)
     try {
       const searchResponse = await searchFilesMutation.mutateAsync({
-        path: currentPath,
+        path: submittedPath,
         searchRequest
       })
 
+      if (sequence !== requestSequence.current) return
+      setSearchPath(searchResponse.search_path || submittedPath)
       setSearchResults(searchResponse.results)
       setTotalCount(searchResponse.total_count)
       setSearchPerformed(true)
-      setCurrentRegex(regex)
+      setCurrentRegex(submittedRegex)
 
       toast.success(`找到 ${searchResponse.total_count} 个匹配结果`)
     } catch {
@@ -163,6 +176,8 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
   }
 
   const handleReset = () => {
+    requestSequence.current++
+    setSelectedPaths([])
     setRegex('')
     setIgnoreCase(true)
     setSearchSubfolders(true)
@@ -202,7 +217,6 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
                   value={regex}
                   onChange={(e) => {
                     setRegex(e.target.value)
-                    setCurrentRegex(e.target.value)
                   }}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                   className="pl-8"
@@ -335,6 +349,21 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
                 <CardTitle className="text-sm">搜索结果 ({totalCount} 个文件)</CardTitle>
               </CardHeader>
               <CardContent>
+                {searchResults.length > 0 && <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedPaths(searchResults.map(result => result.path))}>选择全部结果</Button>
+                  <Button variant="ghost" size="sm" disabled={!selectedPaths.length} onClick={() => setSelectedPaths([])}>清空选择</Button>
+                </div>}
+                {selectedPaths.length > 0 && <div className="mb-3"><FileBatchActions
+                  serverId={serverId}
+                  paths={selectedPaths.map(path => searchResultPath(searchPath, path))}
+                  basePath={searchPath}
+                  onDeleted={deleted => {
+                    const retained = searchResults.filter(result => !deleted.some(root => includesFilePath(root, searchResultPath(searchPath, result.path))))
+                    setSearchResults(retained)
+                    setTotalCount(retained.length)
+                    setSelectedPaths(previous => previous.filter(path => !deleted.some(root => includesFilePath(root, searchResultPath(searchPath, path)))))
+                  }}
+                /></div>}
                 {searchFilesMutation.isPending ? (
                   <div className="flex justify-center py-8">
                     <Spinner className="size-8" />
@@ -344,6 +373,8 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
                     searchResults={searchResults}
                     currentRegex={currentRegex}
                     onSelect={handleTreeSelect}
+                    selectedPaths={selectedPaths}
+                    onSelectionChange={setSelectedPaths}
                   />
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">

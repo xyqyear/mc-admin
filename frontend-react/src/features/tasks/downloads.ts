@@ -1,5 +1,6 @@
 import { getErrorMessage } from '@/shared/http/api'
 import { useDownloadActions } from '@/features/tasks/downloadStore'
+import type { DownloadFailure, DownloadPathWarning } from '@/features/tasks/downloadStore'
 import { toast } from 'sonner'
 
 export const triggerBrowserDownload = (blob: Blob, filename: string): void => {
@@ -31,6 +32,30 @@ export interface DownloadOptions {
   onSuccess?: () => void
   onError?: (error: any) => void
 }
+
+export interface ManagedDownloadProgress {
+  downloadedSize?: number
+  size?: number
+  progress?: number
+  speed?: number
+  totalFiles?: number
+  completedFiles?: number
+  failedFiles?: number
+  listingComplete?: boolean
+  destination?: string
+  failures?: DownloadFailure[]
+  warnings?: DownloadPathWarning[]
+  warningCount?: number
+}
+
+export interface ManagedDownloadResult extends ManagedDownloadProgress {
+  failedFiles: number
+}
+
+export type ManagedDownloadFunction = (
+  report: (progress: ManagedDownloadProgress) => void,
+  signal: AbortSignal,
+) => Promise<ManagedDownloadResult>
 
 export const useDownloadManager = () => {
   const { addTask, updateTask } = useDownloadActions()
@@ -94,7 +119,59 @@ export const useDownloadManager = () => {
     }
   }
 
+  const executeManagedDownload = async (
+    downloadFn: ManagedDownloadFunction,
+    options: DownloadOptions,
+  ): Promise<void> => {
+    const abortController = new AbortController()
+    const taskId = addTask({
+      fileName: options.filename,
+      serverId: options.serverId,
+      status: 'downloading',
+      progress: 0,
+      completedFiles: 0,
+      failedFiles: 0,
+      totalFiles: 0,
+      listingComplete: false,
+      abortController,
+    })
+
+    try {
+      const result = await downloadFn((progress) => updateTask(taskId, progress), abortController.signal)
+      abortController.signal.throwIfAborted()
+      updateTask(taskId, {
+        ...result,
+        status: result.failedFiles ? 'error' : 'completed',
+        error: result.failedFiles ? `${result.failedFiles} 个文件下载失败，已完成的文件已保留` : undefined,
+        progress: 100,
+        endTime: Date.now(),
+        abortController: undefined,
+      })
+      if (result.failedFiles) {
+        toast.error(`${result.failedFiles} 个文件下载失败，详情见任务中心`)
+      } else {
+        toast.success('下载完成')
+        options.onSuccess?.()
+      }
+    } catch (error: unknown) {
+      const cancelled = abortController.signal.aborted
+      updateTask(taskId, {
+        status: cancelled ? 'cancelled' : 'error',
+        error: cancelled ? undefined : getErrorMessage(error, '下载失败'),
+        endTime: Date.now(),
+        abortController: undefined,
+      })
+      if (cancelled) {
+        toast.info('下载已取消，已完成的文件已保留')
+      } else {
+        toast.error(getErrorMessage(error, '下载失败'))
+        options.onError?.(error)
+      }
+    }
+  }
+
   return {
     executeDownload,
+    executeManagedDownload,
   }
 }
