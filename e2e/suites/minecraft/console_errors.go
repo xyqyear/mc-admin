@@ -35,6 +35,53 @@ func consoleSafeAdapterErrors(ctx context.Context, t *engine.Scope) error {
 	var accepted struct {
 		ID string `json:"task_id"`
 	}
+	t.Cleanup(func(cleanup context.Context) error {
+		if accepted.ID != "" {
+			if err := api.Wait(cleanup, 200*time.Millisecond, "accepted console fault task reaches a terminal state", func(wait context.Context) (bool, error) {
+				var task api.Task
+				if err := c.JSON(wait, "GET", "/api/tasks/"+accepted.ID, nil, &task, 200); err != nil {
+					return false, api.Permanent(err)
+				}
+				switch strings.ToLower(task.Status) {
+				case "completed", "failed", "cancelled":
+					return true, nil
+				}
+				return false, nil
+			}); err != nil {
+				return err
+			}
+		}
+		var current struct {
+			YAML    string `json:"yaml_content"`
+			Version string `json:"version"`
+		}
+		if err := c.JSON(cleanup, "GET", base+"/compose", nil, &current, 200); err != nil {
+			return err
+		}
+		if current.YAML != original.YAML {
+			var restored struct {
+				ID string `json:"task_id"`
+			}
+			if err := c.JSON(cleanup, "POST", base+"/compose", map[string]string{"yaml_content": original.YAML, "version": current.Version}, &restored, 200); err != nil {
+				return err
+			}
+			if _, err := c.Task(cleanup, restored.ID); err != nil {
+				return err
+			}
+			if err := c.JSON(cleanup, "GET", base+"/compose", nil, &current, 200); err != nil {
+				return err
+			}
+		}
+		if current.YAML != original.YAML {
+			return fmt.Errorf("owned console fault cleanup did not restore its original Compose")
+		}
+		if err := fixtures.WaitStatus(cleanup, c, s.ID, "healthy"); err != nil {
+			return err
+		}
+		backend := fixtures.BackendOf(t.Env)
+		_, err := backend.Docker.Run(cleanup, "logs", "mc-"+s.ID)
+		return err
+	})
 	if err = c.JSON(ctx, "POST", base+"/compose", map[string]string{"yaml_content": changed, "version": original.Version}, &accepted, 200); err != nil {
 		return err
 	}

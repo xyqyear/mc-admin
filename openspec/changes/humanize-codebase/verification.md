@@ -11,7 +11,7 @@
 - 删除无消费者的 Compose writer、聚合查询、配置 proxy 任意属性、旧 DNS/Cron 门面及重复 UUID/路径/DTO 解码。真实 HTTP、SDK、数据库和 CLI 契约保留。
 - 前端以 54 个具体命名查询/命令 hooks 和普通下载 hooks 取代二级工厂。地图控制器返回 server/map/claims/players 四个具体分组，共用三个展示组件；维度、模式、视角、侧栏寿命和恢复/裁剪各自交互保留。
 - Cron 零值与明确清空不再被旧草稿覆盖；目录覆盖决策一次应用到全部后代，目录外文件保持自己的决策；嵌套参数表单按 Enter 不会提前保存外层任务。
-- 玩家有限资料流消费失败或没有终态的 EOF 显示重试，同时保留缓存与地图。上传、控制台、Cron、备份和通知不公开凭据、输入值或原始适配器异常；原有状态码、部分结果、维护跳过及取消传播保留。
+- 玩家有限资料流消费失败或没有终态的 EOF 显示重试，同时保留缓存与地图。上传、控制台、Cron、备份和通知的错误输出不公开敏感输入或原始适配器异常；原有状态码、部分结果、维护跳过及取消传播保留。
 - CPU 采用每次新进程对象进行原有一秒线程采样，消除 PID 对象滞留。OCI 大层通过一 MiB 分块校验摘要和实际长度；小 JSON 校验、完整归档哈希和拒绝无效门禁的流程保留。
 
 ## 逐项处置
@@ -124,10 +124,14 @@ OCI 同一 100669440-byte 层 fixture 在两个独立进程的 manifest/config/a
 
 ## 部署与交付记录
 
-待运行：干净当前源码候选镜像上的 `archive.subpath-compression-content`、`files.multipart-safe-failures`、`cron.safe-validation-errors`、`minecraft.console-safe-adapter-errors`，以及实际目录上传浏览器旅程。原生 Chromium FileList 入场探针与 source review 已通过，不能代替真实部署业务结果。浏览器仅将原生选目录 FileList 接入生产 document drop fallback；File、相对路径、字节、对话框、策略、HTTP 和宿主文件均保持真实。
+首次干净候选 `af6d226f373728d746cf0d31655a10604ad05f9a` 的四个新增 API 案例中三个通过，控制台案例的安全错误/真实 stdin/RCON/正常关闭/健康断言通过，但故障注入的 `none` 日志驱动未恢复，导致 runner 原有诊断阶段失败。因此整次 API run 严格保留为失败；四个 owned 环境仍全部完成清理。修正只在用例首次变更前登记真实配置恢复、任务终态、健康及日志可读性清理，不降低业务断言、诊断或超时。
+
+同一初次候选的新增目录上传 browser 旅程真实通过（1 test），官方候选 evidence 的 owned cleanup 完整。它是初次 SHA 的局部证据，不能替代修正后干净候选的验证。
+
+待运行：修正后干净源码候选的四个新增 API 案例 normal/no-reuse 各一轮与实际目录上传 browser 旅程。浏览器仅将原生选目录 FileList 接入生产 document drop fallback；File、相对路径、字节、对话框、策略、HTTP 和宿主文件均保持真实。
 
 待完成：推送最终提交，以 publish=false 触发完整 `Qualify and Publish Application`，统一审计同一 SHA 的 candidate/Go、static/frontend、全部 backend 分片/覆盖、全部普通及 Huawei API E2E/覆盖/清理、全部 browser 分片/覆盖与最终 qualification。普通 push 检查与旧 SHA 绿灯不能代替。
 
 最终证据以本报告的后续交付记录和 GitHub qualification artifacts 为准。当前尚不宣称完整交付通过。
 
-代码与文档总差异：360 个文件，增加 9,067 行，删除 6,183 行（相对审计基线，包含实现、测试、规格和报告）。
+代码与文档总差异：360 个文件，增加 9,118 行，删除 6,183 行（相对审计基线，包含实现、测试、规格和报告）。
