@@ -20,6 +20,11 @@ Every domain is a feature under `src/features/`. The application composes featur
 
 `features/players/queries.ts` streams profiles into normalized per-UUID Query keys. The map subscribes to those entries, including while profile streaming is disabled; it does not maintain a second profile Map in state. Only stream progress/error state remains local. Backend tasks likewise exist only in Query cache; browser downloads and local panel placement are separate client-owned state.
 
+`features/players/identity.ts` is an explicit public entry for pure UUID syntax
+normalization. Profile queries, world controllers, player lists and marker layers
+share its dashless lowercase 32-hex identity. Online-mode eligibility remains a
+backend identity rule; this helper has no network or cache dependency.
+
 The shared Axios instance and `ApiError` live in `shared/http/api.ts`: same-origin cookies, CSRF, bounded timeout, structured detail preservation and session expiry notification. `shouldRetryQuery` skips cancellation and ordinary 4xx, retaining bounded retries for network/5xx/408/429 errors. Commands use the same resource keys as reads. Refresh handlers announcing success must await throwing refetches or inspect their error results.
 
 ## Generated contracts
@@ -29,6 +34,15 @@ The shared Axios instance and `ApiError` live in `shared/http/api.ts`: same-orig
 `pnpm check:contracts` checks generated freshness against the current backend and requires its uv dependencies. Ordinary bundling consumes the checked-in file without running Python. Other DTOs remain explicit feature contracts until their backend schema is complete. Runtime SSE and operation-result validators are preserved: compile-time generated types do not validate stream events or dynamic task results.
 
 ## Writes
+
+Query and mutation modules export concrete hooks such as `useServers`,
+`useServerStatus`, `useCreateFile(serverId)` and `useLogin`. Each hook captures its
+QueryClient and any required router, server or download context directly.
+The resource interfaces include 54 concrete hooks: 20 named query hooks and
+34 named mutation hooks.
+Reusable query options retain their domain polling and retry policies; caller
+options are applied after those defaults. File and archive downloads remain
+ordinary hooks backed by the download manager rather than mutations.
 
 Single-resource writes invalidate their detail key; list/aggregate changes invalidate parent keys. Cross-domain changes explicitly invalidate dependent resources (for example restart schedules invalidate both the server card and cron list/detail). Long management commands return task acceptance; `features/tasks/commands.ts` observes real completion while preserving the initiating view's blocking behavior and retries failed status reads without resubmitting. Server lifecycle commands finish when their Docker command and cleanup settle; Minecraft readiness remains an independent status query. Independent task completion belongs to the application observer below.
 
@@ -91,11 +105,34 @@ File, global template/default-variable and dynamic-config editors use `useEditor
 
 `src/test/http.ts` creates isolated real QueryClients and Axios-adapter responses; `TestProviders.tsx` supplies the client and router. Existing page tests preserve real query/mutation hooks while replacing transport and heavyweight editors. Query retry tests verify actual attempt counts.
 
-`features/configuration/ConfigurationScreen.test.tsx` and `app/operations/OperationObserver.test.tsx` use MSW HTTP handlers with real QueryClients. They exercise delayed loads, intentional empty writes, draft preservation, synchronous/async conflicts, explicit acceptance and resubmission, mode conversion, leaving/returning to the page, terminal deduplication, paginated reconnection and logout cleanup. They do not mock query hooks or invalidate methods to manufacture results.
+`features/configuration/ConfigurationScreen.test.tsx` and `app/operations/OperationObserver.test.tsx` use MSW HTTP handlers with real QueryClients. They exercise delayed loads, intentional empty writes, draft preservation, synchronous/async conflicts, explicit acceptance and resubmission, mode conversion, leaving/returning to the page, terminal deduplication, paginated reconnection and remounted session isolation. `App.test.tsx` exercises production AUTH-event and HTTP-401 cache cleanup, login cache/navigation, new-owner resource reads and cancellation of late old-session observation. Query hooks and invalidation remain real.
+
+Archive upload integration keeps native File/Blob bytes, the real SHA256
+implementation and the real task waiter. A fixed `abc` digest independently
+checks verification; unequal bytes and missing digests reject publication and
+clean up the session. Running tasks at 100% and temporary status-read failures
+remain pending until a successful terminal outcome. Lifecycle unit tests retain
+controlled transport and hashing for queue, pause, retry, unmount and close
+boundaries.
 
 ## File and world controllers
 
 Files own typed contracts/API/query/commands, draft and navigation controllers, upload sessions and UI. World owns common layout/map/layers and feature-specific restore/prune controllers. Shared map code has no reverse dependency on restore; files and world publish their own terminal resource mappings to the application observer. File keys scope invalidation by server; explicit global file-root resources conservatively refresh all affected server caches. Archive-root resources alone do not invalidate unrelated servers.
+
+`useWorldMapController` exposes concrete `server`, `map`, `claims` and `players`
+groups. `WorldDimensionSelect`, `WorldMapInitialization` and
+`WorldPlayerLocationList` present shared dimension, initialization and player
+inputs. Restore retains its mode-change confirmation, selected scope and stable
+backup/history sidebar; prune owns its full-dimension preview/apply guards and
+read-only claims list. Map-status error presentation remains specific to restore.
+
+The common controller owns pending cross-dimension pan. Only the matching
+dimension's overlay render applies it, before attaching layers; a microtask
+clears the target so later renders do not replay it. Hidden player markers retain
+a lightweight initialized overlay for this callback. Coordinate helpers preserve
+Leaflet `[-Z, X]`, 16-block chunks, 512-block regions and floor division for
+negative cells. See [server-map.md](server-map.md) and
+[player-locations-overlay.md](player-locations-overlay.md).
 
 Map initialization terminal outcomes refresh that server's map status and region
 queries even after leaving the page. Individual `map_render` operations do not

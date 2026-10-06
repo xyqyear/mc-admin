@@ -5,7 +5,7 @@ Surface for everything the backend's player-tracking system records: who's been 
 ## Pages and components
 
 - `features/players/PlayerManagementScreen.tsx` — global page at `/players`. Sortable, filterable table of every recorded player.
-- `features/players/ui/PlayerFilters.tsx` — search box (name / UUID substring), online-only toggle, server dropdown. Filters cascade into `usePlayerQueries({ online_only, server_id })`.
+- `features/players/ui/PlayerFilters.tsx` — search box (name / UUID substring), online-only toggle, server dropdown. Filters feed `useAllPlayers({ online_only, server_id })`.
 - `features/players/ui/PlayerCleanupDialog.tsx` — shared preview-and-confirm dialog for deleting stored players excluded by current identity rules: non-online UUIDs and names matching `players.ignored_name_prefixes`.
 - `features/players/ui/PlayerDetailDialog.tsx` — detail dialog with four tabs:
   - **基本信息** — UUID (formatted `8-4-4-4-12`), current name, first seen, last seen, total playtime

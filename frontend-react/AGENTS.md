@@ -37,13 +37,17 @@ React Router 7 is used in declarative mode; import router APIs from `react-route
 
 Features own their contracts, API calls, query policy, commands/controllers and UI. Modules are `servers`, `configuration`, `files`, `world`, `archives`, `backups`, `players`, `schedules`, `templates`, `tasks`, `users`, `settings`, `health`, `dns` and `system`. A feature's `contracts.ts` owns DTOs; `api.ts` contains transport only; `queries.ts` owns keys, retries, polling and reusable TanStack `queryOptions`; `commands.ts` owns writes and immediate invalidation. Feature controllers coordinate user workflows, while screens and UI present them.
 
+Read and write modules expose concrete hooks, including 20 named query hooks and 34 named mutation hooks at the resource interfaces. Hooks capture their own QueryClient and required server/router context; query options retain the domain policy and caller override order. Download commands remain ordinary hooks backed by the download manager. See `docs/data-architecture.md`.
+
 `app/` owns the authenticated shell, aggregate overview, operation observation and version notification. `shared/` owns HTTP/SSE transport, reusable UI, editors, generic hooks and finite request ownership. It cannot import feature or application code. Server route adapters under `pages/` only read route parameters and mount feature screens.
 
 `app/version/config.ts` owns release notes and SemVer precedence, including prerelease identifiers and ignored build metadata. The notification hook, newest-first dialog and current-version selection share that comparator; release entries are appended to the list.
 
 `scripts/import-boundaries.mjs` declares executable public entries: contracts/API/queries/commands, operation resource registries, reusable `ui/`, and a small explicit set of read helpers. Screens are for application/route composition only. Cross-feature private imports, reverse dependencies and deleted compatibility-layer imports fail `pnpm check:boundaries` (also part of lint). No large universal barrel loads all feature implementations.
 
-`app/overview/useOverviewData.ts` and `features/servers/useServerDetailData.ts` share resource query-option factories; consumers do not copy polling/retry policy. Player profile streams populate individual Query entries, and map consumers observe those entries without a second profile store.
+`app/overview/useOverviewData.ts` and `features/servers/useServerDetailData.ts` share resource query-option factories; consumers do not copy polling/retry policy. Player profile streams populate individual Query entries, and map consumers observe those entries without a second profile store. Restore/prune player tabs expose non-blocking finite-stream failures and explicit profile retry while keeping cached profiles and locations usable.
+
+`features/players/identity.ts` is a public pure helper shared by profile queries, world controllers, player lists and map layers. It normalizes UUID syntax to dashless lowercase 32-hex strings; backend online-mode eligibility remains separate.
 
 HTTP consumers use the normalized `ApiError` (`Error.message`, `status`, `code`, original `detail`) from `shared/http/api.ts`; Axios response internals stay in the interceptor. `shouldRetryQuery` applies the shared status policy. A refresh handler that reports success/failure must use `refetch({ throwOnError: true })` or explicitly inspect its result.
 
@@ -114,7 +118,7 @@ Saved cron `status` is displayed as enabled/paused/cancelled. `registration_stat
 
 `features/files/` contains contracts, API, queries, commands, language/search rules, upload controller and UI. `useFileNavigation` owns path/search URL state; `useFileEditor` owns the loaded baseline/draft; `useFileBrowser` coordinates CRUD and task presentation. `pages/server/servers/ServerFiles.tsx` delegates to `FileBrowserScreen`. Ordinary online edits, deliberately empty files, deep regex filtering, diff and per-file overwrite policies remain available.
 
-`features/world/` owns layout/dimensions/map/claims/player-layer contracts, API and queries. `useWorldMapController` owns common map initialization, URL view/dimension, layer visibility, cross-dimension pan and explicit refresh. Restore and prune controllers own their respective selection and preview/apply lifecycles; route files delegate to feature screens. Claims/player implementations do not depend on the restore feature.
+`features/world/` owns layout/dimensions/map/claims/player-layer contracts, API and queries. `useWorldMapController` groups its state and actions under `server`, `map`, `claims` and `players`. `WorldDimensionSelect`, `WorldMapInitialization` and `WorldPlayerLocationList` bind concrete shared presentation inputs. Restore and prune controllers own their respective selection and preview/apply lifecycles; route files delegate to feature screens. Claims/player implementations do not depend on the restore feature.
 
 `WorldRestoreSidebar` keeps the backup panel mounted at a stable position while map status, layout and optional layer tabs load. Snapshot and restoration-history drawers retain their local state across these responses; map rendering readiness does not gate access to recovery history.
 
@@ -123,6 +127,8 @@ Saved cron `status` is displayed as enabled/paused/cancelled. `registration_stat
 ## Server Map Reuse
 
 `features/world/map/ServerMap.tsx` is the shared Leaflet surface. Map pages compose optional `ServerMapOverlay` layers; FTB claims and player locations are imported from `features/world/layers/*`, and world/dimension relpath helpers live in `features/world/map/worldDimensions.ts`.
+
+`mapConfig.blockToLatLng` preserves `[-Z, X]`; `coords.ts` uses floor division for negative block/chunk/region cells. The common controller applies a pending pan only on the matching dimension's overlay render, before layer attachment, then clears it in a microtask. Hidden player markers retain the initialized overlay callback. See `docs/server-map.md` and `docs/player-locations-overlay.md`.
 
 ## SSE consumer
 
