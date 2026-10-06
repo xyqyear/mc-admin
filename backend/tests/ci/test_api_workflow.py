@@ -23,7 +23,7 @@ def test_api_cases_share_one_matrix_with_dependency_scoped_credentials():
     assert job["environment"]["name"] == "dns-e2e"
     assert "matrix.environment" not in json.dumps(job)
     assert job["strategy"]["fail-fast"] is False
-    assert job["strategy"]["max-parallel"] == 8
+    assert job["strategy"]["max-parallel"] == 16
     assert "fromJSON(needs.plan.outputs.matrix)" in job["strategy"]["matrix"]
     assert job["env"]["E2E_PROVIDERS"] == "${{ toJSON(matrix.providers) }}"
     credential_steps = [step for step in job["steps"] if "HUAWEICLOUD_SK" in step.get("env", {})]

@@ -69,7 +69,7 @@ jobs:
             --directory candidate-artifacts --revision "${{ inputs.source_sha }}"
           matrix=$(uv run --no-project python scripts/ci/browser_shards.py plan \
             --inventory .browser-plan/inventory.json --history .browser-plan/history.json \
-            --candidate candidate-artifacts/candidate.json --target 300 --max-shards 8 \
+            --candidate candidate-artifacts/candidate.json --target 300 --max-shards 16 \
             --output .browser-plan/plan.json)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
@@ -87,7 +87,7 @@ jobs:
     timeout-minutes: 35
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 16
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     env:
       BROWSER_DIRECTORY: ${{ github.workspace }}/.browser-runs

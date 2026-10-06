@@ -81,7 +81,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 16
       matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
     defaults:
       run:

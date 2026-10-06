@@ -22,7 +22,7 @@ The system SHALL build each test family's current plan from its complete current
 - **THEN** it cannot replace the successful historical costs used for subsequent plans
 
 ### Requirement: Bounded five-minute execution target
-The system SHALL automatically choose shard counts targeting 300 seconds of execution including fixture initialization and cleanup, separately from CI installation and queueing. The target SHALL NOT shorten business deadlines or fail otherwise successful tests. Indivisible oversized units and fixed overhead SHALL be reported, with bounded shard counts and concurrency.
+The system SHALL automatically choose shard counts targeting 300 seconds of execution including fixture initialization and cleanup, separately from CI installation and queueing. Each test family SHALL permit at most 16 concurrent shard jobs. Backend planning SHALL permit at most 32 shards; API and browser planning SHALL each permit at most 16 shards. The target SHALL NOT shorten business deadlines or fail otherwise successful tests. Indivisible oversized units and fixed overhead SHALL be reported, with bounded shard counts and concurrency.
 
 #### Scenario: More shards can meet the target
 - **WHEN** the estimated allocation exceeds 300 seconds and additional eligible shards can reduce it
@@ -59,7 +59,7 @@ API E2E SHALL own external-provider scenarios, their costs, execution plans and 
 - **THEN** API qualification fails and retains the non-secret recovery evidence
 
 ### Requirement: Unified global API scheduling
-The API planner SHALL globally allocate every selected atomic group for a profile into one immutable plan and one job matrix. It SHALL retain Fresh/reusable group boundaries, permit groups with different provider dependencies in the same shard, and use at most 16 shards and eight concurrent jobs with two workers and one Minecraft slot per runner. Provider requirements SHALL supply dependency metadata and credential/recovery bindings without imposing separate shard allocation or provider-specific concurrency limits. CI SHALL offer only `regression`, `qualification` and `dnspod` profiles; only DNSPod SHALL require explicit selection. Local case/tag filters SHALL remain available.
+The API planner SHALL globally allocate every selected atomic group for a profile into one immutable plan and one job matrix. It SHALL retain Fresh/reusable group boundaries, permit groups with different provider dependencies in the same shard, and use at most 16 shards and 16 concurrent jobs with two workers and one Minecraft slot per runner. Provider requirements SHALL supply dependency metadata and credential/recovery bindings without imposing separate shard allocation or provider-specific concurrency limits. CI SHALL offer only `regression`, `qualification` and `dnspod` profiles; only DNSPod SHALL require explicit selection. Local case/tag filters SHALL remain available.
 
 #### Scenario: Groups with different dependencies share capacity
 - **WHEN** an API plan selects groups with different provider dependencies
