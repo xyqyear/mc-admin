@@ -132,12 +132,10 @@ def _validate_filename(filename: str) -> str:
 
 async def _resolve_under_base(base_path: Path, path: str) -> Path:
     base = await async_fs.resolve(base_path)
-    candidate = await async_fs.resolve(base / path.lstrip("/"), strict=False)
     try:
-        candidate.relative_to(base)
-    except ValueError:
+        return await async_fs.resolve_inside(base, base / path.lstrip("/"))
+    except async_fs.PathOutsideBaseError:
         raise HTTPException(status_code=400, detail="Path escapes archive directory")
-    return candidate
 
 
 async def _cleanup_expired_sessions_locked() -> None:
@@ -202,8 +200,8 @@ async def init_archive_upload(
     target_path = target_dir / filename
     resolved_target = await async_fs.resolve(target_path, strict=False)
     try:
-        resolved_target.relative_to(await async_fs.resolve(base_path))
-    except ValueError:
+        await async_fs.resolve_inside(base_path, resolved_target)
+    except async_fs.PathOutsideBaseError:
         raise HTTPException(status_code=400, detail="Path escapes archive directory")
 
     if await aioos.path.isdir(target_path):

@@ -148,6 +148,19 @@ class TestCreateServerArchiveStream:
 
             assert result is not None
             assert "plugins" in result["filename"]
+            archive = archive_dir / result["filename"]
+            destination = archive_dir / "extracted-plugins"
+            process = await asyncio.create_subprocess_exec(
+                "7z", "x", str(archive), f"-o{destination}", "-y",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            output, error = await process.communicate()
+            assert process.returncode == 0, (output, error)
+            assert {
+                path.relative_to(destination).as_posix()
+                for path in destination.rglob("*") if path.is_file()
+            } == {"plugins/plugin.jar"}
+            assert (destination / "plugins/plugin.jar").read_bytes() == b"\x00\x01\x02\x03" * 100
 
     @pytest.mark.asyncio
     @pytest.mark.binary("7z")
@@ -172,6 +185,20 @@ class TestCreateServerArchiveStream:
         assert results[0]["filename"] != results[1]["filename"]
         assert (archive_dir / results[0]["filename"]).read_bytes() == original
         assert (archive_dir / results[1]["filename"]).stat().st_size == results[1]["size"]
+        for index, expected in enumerate((b"first", b"second contents")):
+            destination = archive_dir / f"extracted-{index}"
+            process = await asyncio.create_subprocess_exec(
+                "7z", "x", str(archive_dir / results[index]["filename"]),
+                f"-o{destination}", "-y",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            output, error = await process.communicate()
+            assert process.returncode == 0, (output, error)
+            assert {
+                path.relative_to(destination).as_posix()
+                for path in destination.rglob("*") if path.is_file()
+            } == {"test.txt"}
+            assert (destination / "test.txt").read_bytes() == expected
 
     @pytest.mark.asyncio
     async def test_stream_nonexistent_path_raises(self, mock_instance, archive_dir):
