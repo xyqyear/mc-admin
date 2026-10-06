@@ -78,27 +78,3 @@ class ConfigMigrator:
         # Create an instance with all defaults
         instance = schema_cls()
         return instance.model_dump()
-
-    @staticmethod
-    def validate_config(
-        data: dict[str, Any], schema_cls: type[BaseConfigSchema]
-    ) -> list[str]:
-        """
-        Validate configuration data against schema without migration.
-
-        Args:
-            data: Configuration data to validate
-            schema_cls: Schema to validate against
-
-        Returns:
-            List of validation error messages (empty if valid)
-        """
-        try:
-            # Try to create instance - this will validate all fields
-            schema_cls.model_validate(data)
-            return []
-        except (ValueError, TypeError) as e:
-            return [str(e)]
-        except Exception as e:
-            logger.exception("Operation validate_config failed")
-            return [str(e)]

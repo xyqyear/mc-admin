@@ -203,24 +203,6 @@ class TestConfigMigrator:
         assert migrated_data["nested_list"][0]["nested_value"] == "item1"
         assert "old_field" not in migrated_data["nested_list"][0]
 
-    def test_validate_config(self):
-        """Test configuration validation."""
-        valid_data = {"simple_field": "valid_string", "number_field": 123}
-
-        invalid_data = {
-            "simple_field": "valid_string",
-            "number_field": "not_a_number",  # Invalid type
-        }
-
-        # Valid data should pass
-        errors = ConfigMigrator.validate_config(valid_data, TestConfigSchema)
-        assert len(errors) == 0
-
-        # Invalid data should fail
-        errors = ConfigMigrator.validate_config(invalid_data, TestConfigSchema)
-        assert len(errors) > 0
-
-
 class TestConfigManager:
     """Test the ConfigManager functionality."""
 
@@ -287,6 +269,3 @@ class TestConfigManager:
 
         with pytest.raises(RuntimeError, match="not initialized"):
             manager.get_config("test_module")
-
-        with pytest.raises(RuntimeError, match="not initialized"):
-            manager.get_all_configs()

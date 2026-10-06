@@ -47,27 +47,6 @@ class ConfigProxy:
     def self_check(self):
         return cast(SelfCheckConfig, self._manager.get_config("self_check"))
 
-    def __getattr__(self, module_name: str):
-        """
-        Get configuration instance for the specified module.
-
-        Args:
-            module_name: Name of the configuration module
-
-        Returns:
-            Configuration instance with full type safety
-
-        Raises:
-            AttributeError: If module not found or not registered
-        """
-        try:
-            return self._manager.get_config(module_name)
-        except (ValueError, RuntimeError) as e:
-            raise AttributeError(
-                f"Configuration module '{module_name}' not available: {e}"
-            )
-
-
 def get_config() -> ConfigProxy:
     from ..runtime_resources import current_runtime
 

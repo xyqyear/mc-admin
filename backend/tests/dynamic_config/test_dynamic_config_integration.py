@@ -421,57 +421,38 @@ class TestConfigManagerIntegration:
         assert updated_config.deprecated_field == "updated_top_deprecated"
 
 
-class TestConfigProxy:
-    """Test the ConfigProxy functionality."""
+class TestGenericConfigAccess:
 
     @pytest.mark.asyncio
-    async def test_config_proxy_access(self, test_config_manager):
-        """Test ConfigProxy provides type-safe access to configurations."""
-        from app.dynamic_config import ConfigProxy
-
+    async def test_registered_configuration_access(self, test_config_manager):
         manager = test_config_manager
         await manager.initialize_all_configs()
 
-        # Create proxy
-        proxy = ConfigProxy(manager)
-
-        # Test attribute access
-        simple_config = cast(SimpleTestConfig, proxy.simple)
+        simple_config = cast(SimpleTestConfig, manager.get_config("simple"))
         assert simple_config.name == "simple_test"
         assert simple_config.enabled is True
 
-        complex_config = cast(ComplexTestConfig, proxy.complex)
+        complex_config = cast(ComplexTestConfig, manager.get_config("complex"))
         assert complex_config.simple_field == "test_value"
         assert complex_config.nested.value == "nested_default"
 
     @pytest.mark.asyncio
-    async def test_config_proxy_error_handling(self, test_config_manager):
-        """Test ConfigProxy error handling for unknown modules."""
-        from app.dynamic_config import ConfigProxy
-
+    async def test_unregistered_configuration_access(self, test_config_manager):
         manager = test_config_manager
         await manager.initialize_all_configs()
 
-        proxy = ConfigProxy(manager)
-
-        # Test accessing unknown module
-        with pytest.raises(AttributeError, match="not available"):
-            _ = proxy.unknown_module
+        with pytest.raises(ValueError, match="not found"):
+            manager.get_config("unknown_module")
 
     @pytest.mark.asyncio
-    async def test_config_proxy_uninitialized_manager(self):
-        """Test ConfigProxy with uninitialized manager."""
+    async def test_typed_view_requires_initialized_manager(self):
         from app.dynamic_config import ConfigProxy
 
-        # Create uninitialized manager
         manager = ConfigManager()
-        manager.register_config("test", SimpleTestConfig)
-
         proxy = ConfigProxy(manager)
 
-        # Should raise AttributeError for uninitialized manager
-        with pytest.raises(AttributeError, match="not available"):
-            _ = proxy.test
+        with pytest.raises(RuntimeError, match="not initialized"):
+            _ = proxy.dns
 
 
 if __name__ == "__main__":

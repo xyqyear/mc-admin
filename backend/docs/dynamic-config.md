@@ -2,9 +2,9 @@
 
 Runtime-editable configuration with schema migration. Settings that change behavior of running services (DNS provider credentials, snapshot retention, log-parsing regex, mcmap render parallelism, world layout discovery, world-restore preview behavior, self-check thresholds) live here, not in `config.toml`. Editable through the web UI; persisted in the `DynamicConfig` table; cached in memory; survives schema upgrades.
 
-## Why a separate config layer
+## Startup and editable settings
 
-`config.toml` is read at process start and never re-read. It's right for things that don't change (database URL, JWT secret, server path). For everything operationally tunable, restarting the service to flip a flag is a non-starter — especially for self-hosted setups where the admin and the operator are the same person clicking around the UI.
+`config.toml` supplies startup settings such as the database URL, JWT secret and server path. Operational settings in the registered dynamic modules are editable through the API and UI while the application runs.
 
 ## How it stores config
 
@@ -39,11 +39,16 @@ if config.snapshots.time_restriction.enabled:
 
 Updates flow through `get_config_manager().update_config(module_name, new_data)` which validates, persists, and refreshes the cache. The frontend's dynamic-config UI calls this through `/api/config/`.
 
+The view has seven explicit properties: `dns`, `snapshots`, `log_parser`,
+`players`, `mcmap`, `world` and `self_check`. A held view observes a successfully
+replaced cached model on its next property read. Reading before the owning manager
+has initialized raises an error. Acquiring the view through `get_config()` requires
+an explicitly bound runtime; subsequent property reads use its captured manager.
+
 After structural validation, `BaseConfigSchema.validate_update()` checks domain rules for newly submitted settings before persistence. Log-parser settings compile each pattern and require the capture groups used by the parser: UUID and achievement need two, join and leave need one, chat needs three, and stop needs none. Invalid submissions preserve the existing cache and stored configuration. The write-only check leaves legacy loading unchanged, so an administrator can still open settings to repair previously stored invalid rules.
 
-Runtime-tunable values are read at the point of behavior, not copied into
-long-lived singletons during construction. If a subsystem must cache derived
-state from dynamic config, it needs an explicit refresh/rebuild path.
+Runtime-tunable values are read at the point of behavior. Subsystems that cache
+derived state use an explicit refresh/rebuild path.
 
 ## Registered modules
 

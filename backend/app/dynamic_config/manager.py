@@ -187,14 +187,6 @@ class ConfigManager:
 
         return self._configs[module_name]
 
-    def get_all_configs(self) -> dict[str, BaseConfigSchema]:
-        if not self._initialized:
-            raise RuntimeError(
-                "ConfigManager not initialized. Call initialize_all_configs() first."
-            )
-
-        return self._configs.copy()
-
     def get_schema_info(self, module_name: str) -> dict[str, Any]:
         if module_name not in self._schemas:
             raise ValueError(f"Module '{module_name}' not registered")
