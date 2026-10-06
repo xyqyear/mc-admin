@@ -3,6 +3,7 @@ Multi-file upload operations with conflict detection and session management.
 """
 
 from pathlib import Path
+from typing import cast
 
 import aiofiles
 from aiofiles import os as aioos
@@ -114,18 +115,10 @@ async def upload_multiple_files(
     if not session.reusable:
         remove_upload_session(session_id)
 
-    # Process upload policy - build overwrite decisions map
-    overwrite_decisions = {}
-    policy = session_copy.policy
-    if policy and policy.mode == "always_overwrite":
-        for conflict in session_copy.conflicts:
-            overwrite_decisions[conflict.path] = True
-    elif policy and policy.mode == "never_overwrite":
-        for conflict in session_copy.conflicts:
-            overwrite_decisions[conflict.path] = False
-    elif policy and policy.mode == "per_file":
-        for decision in policy.decisions or []:
-            overwrite_decisions[decision.path] = decision.overwrite
+    policy = cast(OverwritePolicy, session_copy.policy)
+    overwrite_decisions = {
+        decision.path: decision.overwrite for decision in policy.decisions or []
+    } if policy.mode == "per_file" else {}
 
     results: dict[str, UploadFileResult] = {}
 
@@ -150,25 +143,18 @@ async def upload_multiple_files(
 
             # Check if file exists and handle overwrite logic
             if await aioos.path.exists(target_path):
-                if file_relative_path in overwrite_decisions:
-                    if not overwrite_decisions[file_relative_path]:
-                        results[result_key] = UploadFileResult(
-                            status="skipped", reason="exists"
-                        )
-                        continue
-                elif policy:
-                    if policy.mode == "always_overwrite":
-                        pass  # Overwrite
-                    elif policy.mode == "never_overwrite":
-                        results[result_key] = UploadFileResult(
-                            status="skipped", reason="exists"
-                        )
-                        continue
-                    else:
-                        results[result_key] = UploadFileResult(
-                            status="skipped", reason="no_decision"
-                        )
-                        continue
+                reason = None
+                if policy.mode == "never_overwrite":
+                    reason = "exists"
+                elif policy.mode == "per_file":
+                    decision = overwrite_decisions.get(file_relative_path)
+                    if decision is None:
+                        reason = "no_decision"
+                    elif not decision:
+                        reason = "exists"
+                if reason is not None:
+                    results[result_key] = UploadFileResult(status="skipped", reason=reason)
+                    continue
 
             try:
                 # Upload file
