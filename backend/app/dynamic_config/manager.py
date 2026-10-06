@@ -243,4 +243,4 @@ def create_config_manager(*, session_factory: Callable[[], AbstractAsyncContextM
 
 
 def get_config_manager() -> ConfigManager:
-    return current_runtime().resource('config_manager')
+    return current_runtime().config_manager

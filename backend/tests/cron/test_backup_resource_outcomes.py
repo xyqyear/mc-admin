@@ -17,13 +17,14 @@ from app.servers.models import Server
 from app.snapshots import ResticClient, SnapshotService
 from app.utils.exec import exec_command
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
+from tests.support.runtime import replace_runtime_resource
 
 
 @pytest.mark.binary("restic")
 @pytest.mark.parametrize("busy", [False, True])
 async def test_global_backup_records_success_or_skip_with_nested_file_scope(isolated_runtime, tmp_path, busy):
     runtime = isolated_runtime
-    runtime.resources["dynamic_configuration"] = SimpleNamespace(snapshots=SnapshotsConfig())
+    replace_runtime_resource(runtime, "dynamic_configuration", SimpleNamespace(snapshots=SnapshotsConfig()))
     async with runtime.database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
@@ -47,7 +48,7 @@ async def test_global_backup_records_success_or_skip_with_nested_file_scope(isol
     client = ResticClient(str(tmp_path / "repository"), password="cron-backup-test")
     await exec_command(str(client.binary_path), "init", env=client.env)
     snapshots = SnapshotService(client, get_docker_mc_manager())
-    runtime.resources["snapshot_service"] = snapshots
+    replace_runtime_resource(runtime, "snapshot_service", snapshots)
     (project / "data" / "settings.txt").write_text("retained cron data")
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal

@@ -39,7 +39,7 @@ from app.snapshots.restoration_models import RestorationType
 from app.snapshots.scopes import WorldScope
 from app.snapshots.selection_models import RestorationSelection
 from app.world.locks import ServerOperationLock
-from tests.support.runtime import set_runtime_resource
+from tests.support.runtime import replace_runtime_resource, set_runtime_resource
 
 
 @pytest.fixture
@@ -67,9 +67,9 @@ async def daemon_runtime(isolated_runtime, monkeypatch):
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal
     recovery = RecoveryService(journal, servers_root=runtime.settings.server_path)
-    runtime.resources["operation_recovery"] = recovery
+    replace_runtime_resource(runtime, "operation_recovery", recovery)
     lock = ServerOperationLock(get_operation_coordinator())
-    runtime.resources["server_operation_lock"] = lock
+    replace_runtime_resource(runtime, "server_operation_lock", lock)
     instance = SimpleNamespace(
         exists=AsyncMock(return_value=True),
         running=AsyncMock(return_value=True),
@@ -220,9 +220,9 @@ async def test_cancelled_cli_cannot_release_restore_before_daemon_block(
     getattr(
         env.instance, "restart" if action == "cron" else action
     ).side_effect = cli_command
-    env.runtime.resources["dynamic_configuration"] = SimpleNamespace(
+    replace_runtime_resource(env.runtime, "dynamic_configuration", SimpleNamespace(
         world=WorldConfig()
-    )
+    ))
     world = env.runtime.settings.server_path / "first" / "data" / "world"
     region = world / "region"
     region.mkdir(parents=True)

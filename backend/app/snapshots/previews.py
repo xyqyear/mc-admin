@@ -357,4 +357,4 @@ class SnapshotPreviews:
 
 
 def get_snapshot_previews() -> SnapshotPreviews | None:
-    return current_runtime().resource("snapshot_previews")
+    return current_runtime().snapshot_previews

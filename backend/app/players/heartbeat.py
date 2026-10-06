@@ -79,4 +79,4 @@ class HeartbeatManager:
 
 
 def get_heartbeat_manager() -> HeartbeatManager:
-    return current_runtime().resource('heartbeat_manager')
+    return current_runtime().heartbeat_manager

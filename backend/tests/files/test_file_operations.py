@@ -442,7 +442,7 @@ class TestFileOperations:
         server_id, instance = mock_instance
 
         with mock_file_operations_setup(instance):
-            with patch.object(current_runtime().resource('task_manager'), 'submit') as submit_mock:
+            with patch.object(current_runtime().task_manager, 'submit') as submit_mock:
                 submit_mock.return_value.task_id = "ownership-task-id"
                 response = client.post(
                     f"/servers/{server_id}/files/ownership/restore",

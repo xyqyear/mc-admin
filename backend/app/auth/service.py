@@ -122,4 +122,4 @@ class IdentityService:
 
 
 def get_identity_service() -> IdentityService:
-    return current_runtime().resource("identity_service")
+    return current_runtime().identity_service

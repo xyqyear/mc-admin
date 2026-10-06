@@ -45,7 +45,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test successful conflict checking."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -88,7 +88,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test conflict checking with non-existent server."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance that doesn't exist
@@ -124,7 +124,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test successful policy setting."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -178,7 +178,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test setting policy with invalid session."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -206,7 +206,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test successful multi-file upload."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -289,7 +289,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test uploading with invalid session."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -317,7 +317,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test uploading to non-existent server."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance that doesn't exist
@@ -345,7 +345,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test request validation with invalid file type."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -381,7 +381,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test request validation with missing required fields."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -416,7 +416,7 @@ class TestMultiFileUploadAPI:
     ):
         """Test policy validation for per_file mode without decisions."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance

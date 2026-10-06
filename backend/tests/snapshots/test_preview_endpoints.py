@@ -57,7 +57,10 @@ async def test_preview_metadata_pages_heartbeat_and_cleanup_tasks(http, world_ca
     assert unknown.status_code == 404
     tile = await http.get(base + "/tiles/0/0.png")
     assert tile.status_code == 404
-    directory = current_runtime().resource("snapshot_previews").manager.get_session_dir(preview_id)
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
+    directory = previews.manager.get_session_dir(preview_id)
+    assert directory is not None
     closed = await http.delete(base)
     assert closed.status_code == 202
     await complete(case, closed.json())
@@ -84,7 +87,8 @@ async def test_preview_tile_renders_staged_snapshot_through_owned_queue(
 
     case = world_case
     data_path = case.data
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     cache = ServerMapCache(data_path)
     cache.cache_dir.mkdir()
     cache.palette_json.write_text("{}")

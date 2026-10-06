@@ -74,7 +74,7 @@ async def test_profile_returns_cached_player_without_mojang(test_db_session, mon
     async def fail_fetch(uuid: str):
         raise AssertionError("Mojang should not be called")
 
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fail_fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fail_fetch)
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
@@ -95,7 +95,7 @@ async def test_profile_upserts_mojang_result(test_db_session, monkeypatch):
             avatar_data=b"avatar",
         )
 
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fetch)
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
@@ -129,7 +129,7 @@ async def test_profile_skips_ignored_mojang_name(test_db_session, monkeypatch):
             avatar_data=b"avatar",
         )
 
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fetch)
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
@@ -155,7 +155,7 @@ async def test_profile_returns_unresolved_when_mojang_fails(
     async def fetch(uuid: str):
         return None
 
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fetch)
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
@@ -180,7 +180,7 @@ async def test_profile_returns_cached_when_mojang_fails(test_db_session, monkeyp
     async def fetch(uuid: str):
         return None
 
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fetch)
 
     result = await get_player_map_profile(
         "0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0",
@@ -197,7 +197,7 @@ async def test_profile_returns_unresolved_for_non_v4_uuid(test_db_session, monke
     async def fail_fetch(uuid: str):
         raise AssertionError("Mojang should not be called")
 
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fail_fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fail_fetch)
 
     uuid = make_offline_uuid("OfflinePlayer")
     result = await get_player_map_profile(
@@ -244,7 +244,7 @@ async def test_profile_stream_returns_cached_players_first(
         "app.routers.players.players.get_async_session",
         test_db_maker,
     )
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fail_fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fail_fetch)
 
     events = await _collect_profile_stream(
         ["0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0"]
@@ -275,7 +275,7 @@ async def test_profile_stream_upserts_missing_profiles(
         "app.routers.players.players.get_async_session",
         test_db_maker,
     )
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fetch)
 
     events = await _collect_profile_stream(
         ["0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0"]
@@ -313,7 +313,7 @@ async def test_profile_stream_dedupes_and_skips_non_online_uuids(
         "app.routers.players.players.get_async_session",
         test_db_maker,
     )
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), 'fetch_player_profile', fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fetch)
 
     offline_uuid = make_offline_uuid("OfflinePlayer")
     events = await _collect_profile_stream(
@@ -375,7 +375,7 @@ async def test_profile_stream_reports_safe_error_and_drains_other_fetches(
             other_cancelled.set()
 
     monkeypatch.setattr("app.routers.players.players.get_async_session", short_session)
-    monkeypatch.setattr(current_runtime().resource("skin_fetcher"), "fetch_player_profile", fetch)
+    monkeypatch.setattr(current_runtime().skin_fetcher, "fetch_player_profile", fetch)
     monkeypatch.setitem(api_app.dependency_overrides, get_current_user, _test_user)
     with caplog.at_level(logging.ERROR):
         async with AsyncClient(transport=ASGITransport(app=api_app), base_url="http://test") as client:

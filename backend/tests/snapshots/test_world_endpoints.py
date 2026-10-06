@@ -117,7 +117,7 @@ async def test_world_task_acceptance_returns_before_safety_and_keeps_maintenance
         await asyncio.wait_for(creating.wait(), 2)
         row = await case.commands.store.get(response.json()["restoration_id"])
         assert row.safety_snapshot_id is None
-        lock = current_runtime().resource("server_operation_lock")
+        lock = current_runtime().server_operation_lock
         assert lock.is_locked("survival")
         blocked = await http.post("/api/snapshots", json=target())
         assert blocked.status_code == 423
@@ -139,7 +139,7 @@ async def test_world_restore_requires_stopped_server_and_rejects_occupied_scope(
     )
     assert response.status_code == 409
     case.instance.status = MCServerStatus.EXISTS
-    lock = current_runtime().resource("server_operation_lock")
+    lock = current_runtime().server_operation_lock
     holder = LockHolder(ServerOperationKind.RESTORE, datetime.now(UTC), 1, "恢复世界")
     async with lock.acquire("survival", holder):
         response = await http.post(

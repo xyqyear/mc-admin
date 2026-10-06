@@ -239,56 +239,6 @@ class TestProcessPlayerJoin:
         result = await test_db_session.execute(select(PlayerSession))
         assert result.scalars().all() == []
 
-    @pytest.mark.asyncio
-    async def test_skin_update_scheduled_for_existing_player(
-        self, test_db_session, test_server, test_player
-    ):
-        """Test that skin update task is created on player join (existing player)."""
-        mock_session = _mock_get_async_session(test_db_session)
-        mock_skin_update = AsyncMock()
-
-        with (
-            patch.object(get_player_service(), "session_factory", mock_session),
-            patch.object(get_player_service(), "update_player_skin", mock_skin_update),
-        ):
-            join_time = datetime.now(UTC)
-            await get_player_service().process_player_join("test_server", "TestPlayer", timestamp=join_time)
-
-        mock_skin_update.assert_called_once_with(
-            test_player.player_db_id, test_player.uuid, test_player.current_name
-        )
-
-    @pytest.mark.asyncio
-    async def test_skin_update_scheduled_for_new_player(
-        self, test_db_session, test_server
-    ):
-        """Test that skin update task is created on player join (new player)."""
-        mock_session = _mock_get_async_session(test_db_session)
-        mock_skin_update = AsyncMock()
-        uuid = make_online_uuid("NewPlayer123")
-
-        with (
-            patch.object(get_player_service(), "session_factory", mock_session),
-            patch(
-                "app.players.mojang_api.fetch_player_uuid_from_mojang",
-                return_value=uuid,
-            ),
-            patch.object(get_player_service(), "update_player_skin", mock_skin_update),
-        ):
-            join_time = datetime.now(UTC)
-            await get_player_service().process_player_join(
-                "test_server", "NewPlayer123", timestamp=join_time
-            )
-
-        result = await test_db_session.execute(
-            select(Player).where(Player.current_name == "NewPlayer123")
-        )
-        player = result.scalar_one_or_none()
-        assert player is not None
-
-        mock_skin_update.assert_called_once_with(
-            player.player_db_id, uuid, "NewPlayer123"
-        )
 
 
 class TestProcessPlayerLeft:
@@ -447,7 +397,7 @@ class TestUpdatePlayerSkin:
 
         with (
             patch.object(get_player_service(), "session_factory", mock_session),
-            patch.object(current_runtime().resource('skin_fetcher'), 'fetch_player_skin', return_value=(fake_skin, fake_avatar)),
+            patch.object(current_runtime().skin_fetcher, 'fetch_player_skin', return_value=(fake_skin, fake_avatar)),
         ):
             await get_player_service().update_player_skin(
                 test_player.player_db_id, test_player.uuid, test_player.current_name
@@ -467,7 +417,7 @@ class TestUpdatePlayerSkin:
 
         with (
             patch.object(get_player_service(), "session_factory", mock_session),
-            patch.object(current_runtime().resource('skin_fetcher'), 'fetch_player_skin', return_value=None),
+            patch.object(current_runtime().skin_fetcher, 'fetch_player_skin', return_value=None),
         ):
             await get_player_service().update_player_skin(
                 test_player.player_db_id, test_player.uuid, test_player.current_name

@@ -33,10 +33,12 @@ async def test_map_preview_preserves_source_protected_and_unselected_external_ch
     cache.mkdir()
     (cache / "palette.json").write_text("{}")
     scope = WorldScope(server_id="survival", selection=RestorationSelection(type=RestorationType(kind), region_dir_relpath="world/region", regions=[(0, 0)] if kind == "regions" else [], chunks=[(0, 0), (1, 0)] if kind == "chunks" else []))
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     result = await complete(case, await previews.submit(scope, source["snapshot"]["id"], 1))
     assert result["kind"] == "map" and result["skipped_count"] > 0
     directory = previews.manager.get_session_dir(result["preview_id"])
+    assert directory is not None
     staged = case.snapshots.stage_destination(directory / ("preview" if kind == "chunks" else "source"), case.region)
     assert zlib.decompress((staged / "c.0.0.mcc").read_bytes()) == b"live 0"
     assert zlib.decompress((staged / "c.1.0.mcc").read_bytes()) == b"source 1"

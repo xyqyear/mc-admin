@@ -654,4 +654,4 @@ class CronManager:
                     )
 
 def get_cron_manager() -> CronManager:
-    return current_runtime().resource('cron_manager')
+    return current_runtime().cron_manager

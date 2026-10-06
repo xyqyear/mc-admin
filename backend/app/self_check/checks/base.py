@@ -40,7 +40,7 @@ class SelfCheckDependencies:
 
 
 def get_self_check_dependencies() -> SelfCheckDependencies:
-    return current_runtime().resource("self_check_dependencies")
+    return current_runtime().self_check_dependencies
 
 
 @dataclass(frozen=True)

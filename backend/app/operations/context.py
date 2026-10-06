@@ -95,7 +95,7 @@ async def mark_cache_degraded(server_id: str) -> None:
         return
     await execution.journal.mark_cache_degraded(execution.operation_id)
     execution.cache_degraded = True
-    recovery = current_runtime().resources.get("operation_recovery")
+    recovery = current_runtime().operation_recovery
     if recovery is not None:
         for server in execution.servers:
             if server.server_id == server_id:

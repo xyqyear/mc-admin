@@ -24,7 +24,7 @@ async def test_identity_service_keeps_own_database_and_signing_key_across_contex
         for index, runtime in enumerate(runtimes):
             async with runtime.database.engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
-            service = runtime.resource("identity_service")
+            service = runtime.identity_service
             services.append(service)
             async with runtime.database.session_factory() as session:
                 user = User(
@@ -56,7 +56,7 @@ async def test_identity_service_keeps_own_database_and_signing_key_across_contex
 
 def test_invalid_signed_claims_do_not_disclose_claim_values(isolated_runtime):
     secret = "synthetic-secret-in-invalid-session-claim"
-    service = isolated_runtime.resource("identity_service")
+    service = isolated_runtime.identity_service
     token = jwt.encode({"alg": "HS256"}, {"user_id": secret}, service.signing_key)
     with pytest.raises(TokenValidationError) as caught:
         service.decode_session_claims(token)

@@ -24,12 +24,10 @@ class Database:
         await self.engine.dispose()
 
 
-def get_database() -> Database:
-    return current_runtime().resource('database')
 def get_engine() -> AsyncEngine:
-    return current_runtime().resource('database_engine')
+    return current_runtime().database_engine
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
-    return current_runtime().resource('session_factory')
+    return current_runtime().session_factory
 
 
 async def get_db() -> AsyncGenerator[AsyncSession]:

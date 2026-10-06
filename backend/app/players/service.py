@@ -440,4 +440,4 @@ class PlayerService:
 
 
 def get_player_service() -> PlayerService:
-    return cast(PlayerService, current_runtime().resource("player_service"))
+    return cast(PlayerService, current_runtime().player_service)

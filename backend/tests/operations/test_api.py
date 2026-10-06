@@ -18,6 +18,7 @@ from app.operations.journal_types import (
     ResourceReference,
 )
 from app.operations.recovery import RecoveryService
+from tests.support.runtime import replace_runtime_resource
 
 
 @pytest.fixture
@@ -26,7 +27,7 @@ async def operation_client(journal, isolated_runtime):
         await connection.run_sync(Base.metadata.create_all)
     isolated_runtime.journal = journal
     recovery = RecoveryService(journal, probe=AsyncMock(return_value=False), validate_resource=AsyncMock(return_value=True))
-    isolated_runtime.resources["operation_recovery"] = recovery
+    replace_runtime_resource(isolated_runtime, "operation_recovery", recovery)
     await journal.accept(OperationSpec("world_restore", (ResourceReference("world", "survival", 12),), operation_id="retained", actor_id=41))
     await journal.start("retained")
     await journal.register_process("retained", ProcessIdentity(123, 123, 456, "synthetic-boot", 12, 34))

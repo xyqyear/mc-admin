@@ -27,7 +27,7 @@ def _mock_usercache(monkeypatch, tmp_path: Path, entries) -> Path:
         json.dumps(entries),
         encoding="utf-8",
     )
-    monkeypatch.setattr(current_runtime().resource('docker_mc_manager'), 'get_instance', lambda server_id: _FakeInstance(data_path))
+    monkeypatch.setattr(current_runtime().docker_mc_manager, 'get_instance', lambda server_id: _FakeInstance(data_path))
     return data_path
 
 

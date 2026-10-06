@@ -528,4 +528,4 @@ class BackgroundTaskManager:
 
 
 def get_task_manager() -> BackgroundTaskManager:
-    return current_runtime().resource('task_manager')
+    return current_runtime().task_manager

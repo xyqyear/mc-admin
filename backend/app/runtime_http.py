@@ -2,16 +2,11 @@
 
 import asyncio
 
-from fastapi import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .operations.context import bind_execution
 from .runtime import Runtime
-
-
-def get_runtime(request: Request) -> Runtime:
-    return request.app.state.runtime
 
 
 class RuntimeMiddleware:

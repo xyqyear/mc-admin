@@ -21,7 +21,7 @@ def test_event_trigger_skips_when_config_is_unavailable(
         coro.close()
         raise AssertionError("event-triggered self-check should not be scheduled")
 
-    monkeypatch.setitem(current_runtime().resources, "dynamic_configuration", UnavailableConfig())
+    monkeypatch.setattr(current_runtime(), "_dynamic_configuration", UnavailableConfig())
     monkeypatch.setattr(events_module, "spawn_background", fail_create_task)
 
     events_module.schedule_self_check_event(SERVER_CREATED_TRIGGER, requested_by_user_id=1)
@@ -39,11 +39,7 @@ def test_event_trigger_schedules_when_enabled(
         coro.close()
         return object()
 
-    monkeypatch.setitem(
-        current_runtime().resources,
-        "dynamic_configuration",
-        SimpleNamespace(self_check=SelfCheckConfig()),
-    )
+    monkeypatch.setattr(current_runtime(), "_dynamic_configuration", SimpleNamespace(self_check=SelfCheckConfig()))
     monkeypatch.setattr(events_module, "spawn_background", capture_create_task)
 
     events_module.schedule_self_check_event(SERVER_CREATED_TRIGGER, requested_by_user_id=1)

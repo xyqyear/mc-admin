@@ -32,7 +32,7 @@ async def tracking_system(isolated_runtime, tmp_path, monkeypatch):
     runtime = isolated_runtime
     async with runtime.database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-    await runtime.resource("config_manager").initialize_all_configs()
+    await runtime.config_manager.initialize_all_configs()
     db = runtime.database.session_factory
     now = datetime.now(UTC)
     async with db() as session:
@@ -105,6 +105,96 @@ async def test_log_tail_commits_in_order_and_preserves_chat_cursor(tracking_syst
     system.mojang.assert_not_awaited()
 
 
+@pytest.mark.parametrize("existing", [False, True])
+async def test_join_hands_skin_update_to_owned_work(tracking_system, monkeypatch, existing):
+    system = tracking_system
+    uuid = make_online_uuid("SkinPlayer")
+    started = asyncio.Event()
+    release = asyncio.Event()
+    system.data.joinpath("usercache.json").write_text(json.dumps([{"name": "SkinPlayer", "uuid": str(UUID(uuid))}]))
+    old_time = system.now - timedelta(days=1)
+    if existing:
+        async with system.db() as session:
+            session.add(Player(uuid=uuid, current_name="SkinPlayer", skin_data=b"old-skin", avatar_data=b"old-avatar", last_skin_update=old_time))
+            await session.commit()
+
+    async def fetch_skin(requested_uuid):
+        assert requested_uuid == uuid
+        assert [event.type for event in system.events] == ["player_join"]
+        started.set()
+        await release.wait()
+        return b"new-skin", b"new-avatar"
+
+    monkeypatch.setattr(system.service.skin_client, "fetch_player_skin", fetch_skin)
+    try:
+        await asyncio.wait_for(system.service.process_player_join("observed", "SkinPlayer", timestamp=system.now), timeout=5)
+        await asyncio.wait_for(started.wait(), timeout=5)
+        async with system.db() as session:
+            player = (await session.scalars(select(Player).where(Player.uuid == uuid))).one()
+            player_id = player.player_db_id
+            rows = (await session.scalars(select(PlayerSession))).all()
+            assert len(rows) == 1
+            assert rows[0].player_db_id == player_id
+            assert rows[0].server_db_id == system.generation
+            assert rows[0].joined_at == system.now and rows[0].left_at is None
+            assert player.skin_data == (b"old-skin" if existing else None)
+            assert player.avatar_data == (b"old-avatar" if existing else None)
+            assert player.last_skin_update == (old_time if existing else None)
+        assert len(system.events) == 1
+        assert system.events[0].player.player_db_id == player_id
+        owned_work = list(system.runtime._background)
+        assert owned_work and not any(task.done() for task in owned_work)
+        release.set()
+        await asyncio.wait_for(asyncio.gather(*owned_work), timeout=5)
+        async with system.db() as session:
+            player = (await session.scalars(select(Player).where(Player.uuid == uuid))).one()
+            assert player.player_db_id == player_id
+            assert player.skin_data == b"new-skin"
+            assert player.avatar_data == b"new-avatar"
+            assert player.last_skin_update == system.now
+    finally:
+        release.set()
+        await system.runtime.close()
+
+
+async def test_failed_skin_handoff_preserves_committed_join(tracking_system, monkeypatch):
+    system = tracking_system
+    uuid = make_online_uuid("SkinPlayer")
+    old_time = system.now - timedelta(days=1)
+    system.data.joinpath("usercache.json").write_text(json.dumps([{"name": "SkinPlayer", "uuid": str(UUID(uuid))}]))
+    async with system.db() as session:
+        session.add(Player(uuid=uuid, current_name="SkinPlayer", skin_data=b"old-skin", avatar_data=b"old-avatar", last_skin_update=old_time))
+        await session.commit()
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def failing_skin(_uuid):
+        started.set()
+        await release.wait()
+        raise OSError("skin provider unavailable")
+
+    monkeypatch.setattr(system.service.skin_client, "fetch_player_skin", failing_skin)
+    try:
+        await asyncio.wait_for(system.service.process_player_join("observed", "SkinPlayer", timestamp=system.now), timeout=5)
+        await asyncio.wait_for(started.wait(), timeout=5)
+        assert [event.type for event in system.events] == ["player_join"]
+        release.set()
+        await asyncio.wait_for(asyncio.gather(*list(system.runtime._background)), timeout=5)
+        async with system.db() as session:
+            player = (await session.scalars(select(Player).where(Player.uuid == uuid))).one()
+            rows = (await session.scalars(select(PlayerSession))).all()
+            assert len(rows) == 1
+            assert rows[0].player_db_id == player.player_db_id
+            assert rows[0].server_db_id == system.generation
+            assert rows[0].left_at is None
+            assert player.skin_data == b"old-skin"
+            assert player.avatar_data == b"old-avatar"
+            assert player.last_skin_update == old_time
+    finally:
+        release.set()
+        await system.runtime.close()
+
+
 async def test_log_and_rcon_share_one_session_with_independent_connections(tracking_system, monkeypatch):
     system = tracking_system
     uuid = make_online_uuid("ObservedPlayer")
@@ -122,7 +212,7 @@ async def test_log_and_rcon_share_one_session_with_independent_connections(track
         return ["ObservedPlayer"]
 
     instance.list_players = list_players
-    monkeypatch.setattr(current_runtime().resource('docker_mc_manager'), 'get_instance', lambda _: instance)
+    monkeypatch.setattr(current_runtime().docker_mc_manager, 'get_instance', lambda _: instance)
     rcon = asyncio.create_task(syncer._validate_server("observed", system.generation))
     try:
         await asyncio.wait_for(entered.wait(), 5)
@@ -164,7 +254,7 @@ async def test_crash_closes_at_heartbeat_before_rcon_reopens(tracking_system, mo
         assert [event.type for event in system.events] == ["player_leave"]
         await system.service.reconcile_online("observed", system.generation, ["ObservedPlayer"])
 
-    monkeypatch.setattr(current_runtime().resource('player_syncer'), 'validate_all_servers', resync)
+    monkeypatch.setattr(current_runtime().player_syncer, 'validate_all_servers', resync)
     await HeartbeatManager(players=system.service)._check_crash()
     assert [event.type for event in system.events] == ["player_leave", "player_join"]
     assert system.events[0].timestamp == crash
@@ -199,7 +289,7 @@ async def test_failed_rcon_observation_preserves_online_session(tracking_system,
     instance = MagicMock()
     instance.get_status = AsyncMock(return_value=MCServerStatus.HEALTHY)
     instance.list_players = AsyncMock(side_effect=RuntimeError("unavailable"))
-    monkeypatch.setattr(current_runtime().resource('docker_mc_manager'), 'get_instance', lambda _: instance)
+    monkeypatch.setattr(current_runtime().docker_mc_manager, 'get_instance', lambda _: instance)
     await PlayerSyncer(players=system.service)._validate_server("observed", system.generation)
     async with system.db() as session:
         row = (await session.scalars(select(PlayerSession))).one()
@@ -230,7 +320,7 @@ async def test_service_dependencies_stay_with_the_owner_runtime(tracking_system,
             await connection.run_sync(Base.metadata.create_all)
         with other.bind():
             second = get_player_service()
-            subscription = other.resource("event_bus").subscribe()
+            subscription = other.event_bus.subscribe()
             assert second is not system.service
             await system.service.process_player_join("observed", "ObservedPlayer")
             assert subscription.queue.empty()

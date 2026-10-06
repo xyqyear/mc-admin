@@ -97,4 +97,4 @@ class DockerMCManager:
 
 # Singleton instance
 def get_docker_mc_manager() -> DockerMCManager:
-    return current_runtime().resource('docker_mc_manager')
+    return current_runtime().docker_mc_manager

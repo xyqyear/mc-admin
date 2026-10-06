@@ -49,7 +49,7 @@ class TestFileSearchAPI:
     ):
         """Test basic regex file search."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -106,7 +106,7 @@ class TestFileSearchAPI:
     ):
         """Test case sensitivity in file search."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -150,7 +150,7 @@ class TestFileSearchAPI:
     ):
         """Test file size filtering."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -198,7 +198,7 @@ class TestFileSearchAPI:
     ):
         """Test date filtering."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -250,7 +250,7 @@ class TestFileSearchAPI:
     ):
         """Test combining multiple filters."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -292,7 +292,7 @@ class TestFileSearchAPI:
     ):
         """Test searching in a custom path."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -326,7 +326,7 @@ class TestFileSearchAPI:
     ):
         """Test search that returns no results."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -355,7 +355,7 @@ class TestFileSearchAPI:
     def test_search_files_server_not_found(self, test_client, auth_headers):
         """Test searching for files on non-existent server."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance that doesn't exist
@@ -399,7 +399,7 @@ class TestFileSearchAPI:
     ):
         """Test search with invalid regex pattern."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -427,7 +427,7 @@ class TestFileSearchAPI:
         self, test_client, auth_headers, server_id
     ):
         """Test search with invalid request body."""
-        with patch.object(current_runtime().resource('settings'), 'master_token', "test_master_token"):
+        with patch.object(current_runtime().settings, 'master_token', "test_master_token"):
             # Missing required 'regex' field
             invalid_request = {"ignore_case": True}
 
@@ -444,7 +444,7 @@ class TestFileSearchAPI:
         self, test_client, auth_headers, server_id
     ):
         """Test search with invalid size values."""
-        with patch.object(current_runtime().resource('settings'), 'master_token', "test_master_token"):
+        with patch.object(current_runtime().settings, 'master_token', "test_master_token"):
             # Negative size values
             invalid_request = {"regex": r".*", "min_size": -100}
 
@@ -461,7 +461,7 @@ class TestFileSearchAPI:
         self, test_client, auth_headers, server_id
     ):
         """Test search with invalid datetime format."""
-        with patch.object(current_runtime().resource('settings'), 'master_token', "test_master_token"):
+        with patch.object(current_runtime().settings, 'master_token', "test_master_token"):
             invalid_request = {"regex": r".*", "newer_than": "invalid-datetime"}
 
             response = test_client.post(
@@ -478,7 +478,7 @@ class TestFileSearchAPI:
     ):
         """Test complex regex patterns."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -513,7 +513,7 @@ class TestFileSearchAPI:
     ):
         """Test API search with subfolders enabled."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -558,7 +558,7 @@ class TestFileSearchAPI:
     ):
         """Test API search with subfolders disabled."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -603,7 +603,7 @@ class TestFileSearchAPI:
     ):
         """Test that search_subfolders defaults to True in API."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -644,7 +644,7 @@ class TestFileSearchAPI:
     ):
         """Test subfolder search control combined with custom search path."""
         with (
-            patch.object(current_runtime().resource('settings'), 'master_token', 'test_master_token'),
+            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
             patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
             # Setup mock instance
@@ -695,7 +695,7 @@ class TestFileSearchAPI:
         self, test_client, auth_headers, server_id
     ):
         """Test search with invalid search_subfolders value."""
-        with patch.object(current_runtime().resource('settings'), 'master_token', "test_master_token"):
+        with patch.object(current_runtime().settings, 'master_token', "test_master_token"):
             # Invalid boolean value
             invalid_request = {"regex": r".*", "search_subfolders": "not_a_boolean"}
 

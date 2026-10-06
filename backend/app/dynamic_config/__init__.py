@@ -71,7 +71,7 @@ class ConfigProxy:
 def get_config() -> ConfigProxy:
     from ..runtime_resources import current_runtime
 
-    return current_runtime().resource("dynamic_configuration")
+    return current_runtime().dynamic_configuration
 
 __all__ = [
     "BaseConfigSchema",

@@ -125,4 +125,4 @@ class SkinFetcher:
 
 
 def get_skin_fetcher() -> SkinFetcher:
-    return current_runtime().resource('skin_fetcher')
+    return current_runtime().skin_fetcher

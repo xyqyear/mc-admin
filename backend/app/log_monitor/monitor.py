@@ -238,4 +238,4 @@ class LogMonitor:
 
 
 def get_log_monitor() -> LogMonitor:
-    return current_runtime().resource('log_monitor')
+    return current_runtime().log_monitor

@@ -29,6 +29,7 @@ from app.operations.journal_types import (
 from app.servers.models import Server, ServerStatus
 from app.utils import async_fs
 from app.world.locks import ServerOperationLock
+from tests.support.runtime import replace_runtime_resource
 
 pytestmark = [pytest.mark.binary("mcmap"), pytest.mark.binary("fd")]
 TEAM = "11111111-1111-4111-8111-111111111111"
@@ -90,10 +91,10 @@ async def prune_case(isolated_runtime, tmp_path):
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal
     manager = BackgroundTaskManager(journal)
-    runtime.resources["task_manager"] = manager
+    replace_runtime_resource(runtime, "task_manager", manager)
     lock = ServerOperationLock()
     service = ChunkPruneService(docker=cast(DockerMCManager, StoppedDocker()), operation_lock=lock, temp_base_dir=tmp_path / "prune")
-    runtime.resources["chunk_prune_service"] = service
+    replace_runtime_resource(runtime, "chunk_prune_service", service)
     await service.start()
     try:
         yield service, manager, journal, region, claims, runtime

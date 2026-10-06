@@ -52,7 +52,12 @@ async def test_delete_refuses_accepted_snapshots_without_cancelling_other_work(
 
     monkeypatch.setattr(case.journal, "start", paused)
     scope = GlobalScope() if global_scope else PathsScope(server_id="survival", paths=("keep.txt",))
-    accepted = await case.commands.create(scope, 1) if source is None else await current_runtime().resource("snapshot_previews").submit(scope, source.id, 1)
+    if source is None:
+        accepted = await case.commands.create(scope, 1)
+    else:
+        previews = current_runtime().snapshot_previews
+        assert previews is not None
+        accepted = await previews.submit(scope, source.id, 1)
     try:
         with pytest.raises(HTTPException) as rejected:
             if entry == "admission":

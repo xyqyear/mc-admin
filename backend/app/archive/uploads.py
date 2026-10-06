@@ -96,9 +96,9 @@ class ArchiveUploadSession:
 
 
 def get_archive_upload_sessions() -> dict[str, ArchiveUploadSession]:
-    return current_runtime().resource('archive_upload_sessions')
+    return current_runtime().archive_upload_sessions
 def get_archive_upload_lock() -> asyncio.Lock:
-    return current_runtime().resource('archive_upload_lock')
+    return current_runtime().archive_upload_lock
 
 
 def _now() -> float:

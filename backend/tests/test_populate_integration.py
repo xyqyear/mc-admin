@@ -106,8 +106,8 @@ def mock_settings_and_auth(temp_dirs, test_db):
         patch_settings() as settings,
         patch_runtime_resource('docker_mc_manager', DockerMCManager(server_path)),
         patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
-        patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
-        patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
+        patch.object(current_runtime().log_monitor, 'start_server', new_callable=AsyncMock),
+        patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
     ):
         settings.server_path = server_path
         settings.archive_path = archive_path
@@ -493,7 +493,7 @@ services:
     def test_unauthorized_access(self, client, mock_settings_and_auth):
         """Test populate endpoint without authentication."""
         _ = mock_settings_and_auth
-        with patch.object(current_runtime().resource("task_manager"), "submit_durable", new_callable=AsyncMock) as submit:
+        with patch.object(current_runtime().task_manager, "submit_durable", new_callable=AsyncMock) as submit:
             response = client.post(
                 "/api/servers/test_server/populate", json={"archive_filename": "test.zip"}
             )

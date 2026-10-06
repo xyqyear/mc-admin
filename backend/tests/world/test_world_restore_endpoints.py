@@ -7,6 +7,7 @@ from httpx2 import ASGITransport, AsyncClient
 from app.config import get_settings
 from app.main import api_app
 from app.runtime_resources import current_runtime
+from tests.support.runtime import replace_runtime_resource
 
 pytestmark = pytest.mark.binary("fd")
 
@@ -20,7 +21,7 @@ async def http(tmp_path, monkeypatch):
     (data / "world" / "region" / "r.0.0.mca").write_bytes(bytes(8192))
     (data / "world" / "DIM-1" / "region" / "r.0.0.mca").write_bytes(bytes(8192))
     instance = SimpleNamespace(exists=AsyncMock(return_value=True), get_data_path=lambda: data)
-    current_runtime().resources["docker_mc_manager"] = SimpleNamespace(get_instance=lambda name: instance)
+    replace_runtime_resource(current_runtime(), "docker_mc_manager", SimpleNamespace(get_instance=lambda name: instance))
     monkeypatch.setattr(get_settings(), "master_token", "layout-test")
     async with AsyncClient(transport=ASGITransport(app=api_app), base_url="http://test", headers={"Authorization": "Bearer layout-test"}) as client:
         yield client

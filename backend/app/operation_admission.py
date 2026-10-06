@@ -122,4 +122,4 @@ class ServerWriteAdmission:
 
 
 def get_server_write_admission() -> ServerWriteAdmission:
-    return current_runtime().resource('server_write_admission')
+    return current_runtime().server_write_admission

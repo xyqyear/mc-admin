@@ -155,4 +155,4 @@ class OperationCoordinator:
 
 
 def get_operation_coordinator() -> OperationCoordinator:
-    return current_runtime().resource('operation_coordinator')
+    return current_runtime().operation_coordinator

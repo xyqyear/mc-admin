@@ -60,7 +60,7 @@ async def protected_artifacts(kind: str) -> set[str]:
 async def restore_stage() -> AsyncGenerator[Path]:
     token = secrets.token_hex(16)
     path = artifact_root("restore-stage") / token
-    active = current_runtime().resources.setdefault("world_restore_stages", set())
+    active = current_runtime().world_restore_stages
     active.add(token)
     try:
         await retain_artifact("world_restore_stage", token)
@@ -83,7 +83,7 @@ async def reap_restore_stages() -> None:
         if not valid_artifact_id(path.name) or await aioos.path.islink(path):
             continue
         protected = await protected_artifacts("world_restore_stage")
-        active = current_runtime().resources.get("world_restore_stages", set())
+        active = current_runtime().world_restore_stages
         if path.name not in active and path.name not in protected:
             try:
                 await async_fs.rmtree(path, ignore_errors=False)

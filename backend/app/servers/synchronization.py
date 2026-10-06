@@ -31,7 +31,7 @@ from .references import ServerRef, resolve_server_ref
 
 
 def get_sync_lock() -> asyncio.Lock:
-    return current_runtime().resource('server_sync_lock')
+    return current_runtime().server_sync_lock
 
 
 async def synchronize(db: AsyncSession, body: SyncRequest, references: tuple[ServerRef, ...]) -> SyncResult:

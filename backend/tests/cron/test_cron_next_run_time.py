@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.db.metadata import Base
 from app.main import app
 from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_settings
+from tests.support.runtime import patch_settings, replace_runtime_resource
 
 from .test_cron_manager import test_cron_registry
 
@@ -37,7 +37,7 @@ async def test_db():
     import app.db.database as db_module
 
     original_db_session = db_module.get_session_factory()
-    current_runtime().resources["session_factory"] = TestSessionLocal
+    replace_runtime_resource(current_runtime(), "session_factory", TestSessionLocal)
 
     def get_test_session():
         return TestSessionLocal()
@@ -54,8 +54,8 @@ async def test_db():
     original_cron_manager = cron_router_module.get_cron_manager()
     original_cron_registry = cron_router_module.get_cron_registry()
 
-    current_runtime().resources["cron_manager"] = fresh_test_cron_manager
-    current_runtime().resources["cron_registry"] = test_cron_registry
+    replace_runtime_resource(current_runtime(), "cron_manager", fresh_test_cron_manager)
+    replace_runtime_resource(current_runtime(), "cron_registry", test_cron_registry)
 
     await fresh_test_cron_manager.initialize()
 
@@ -63,10 +63,10 @@ async def test_db():
 
     await fresh_test_cron_manager.shutdown()
 
-    current_runtime().resources["session_factory"] = original_db_session
+    replace_runtime_resource(current_runtime(), "session_factory", original_db_session)
     manager_module.get_async_session = original_get_session
-    current_runtime().resources["cron_manager"] = original_cron_manager
-    current_runtime().resources["cron_registry"] = original_cron_registry
+    replace_runtime_resource(current_runtime(), "cron_manager", original_cron_manager)
+    replace_runtime_resource(current_runtime(), "cron_registry", original_cron_registry)
 
     await engine.dispose()
     Path(database_path).unlink(missing_ok=True)

@@ -46,7 +46,7 @@ from app.snapshots.commands import SnapshotCommands
 from app.snapshots.scopes import PathsScope
 from app.utils.exec import exec_command
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
-from tests.support.runtime import set_runtime_resource
+from tests.support.runtime import replace_runtime_resource, set_runtime_resource
 
 
 @pytest.fixture
@@ -68,9 +68,9 @@ async def file_application(isolated_runtime, monkeypatch):
     journal = OperationJournal(isolated_runtime.database.session_factory)
     isolated_runtime.journal = journal
     tasks = BackgroundTaskManager(journal)
-    isolated_runtime.resources["task_manager"] = tasks
+    replace_runtime_resource(isolated_runtime, "task_manager", tasks)
     recovery = RecoveryService(journal, probe=AsyncMock(return_value=True), servers_root=isolated_runtime.settings.server_path, archive_root=isolated_runtime.settings.archive_path)
-    isolated_runtime.resources["operation_recovery"] = recovery
+    replace_runtime_resource(isolated_runtime, "operation_recovery", recovery)
     yield SimpleNamespace(application=FileApplication(instance, "first", 0), instance=instance, data=data, manager=manager, journal=journal, runtime=isolated_runtime, tasks=tasks, recovery=recovery)
     await tasks.shutdown()
 
@@ -218,7 +218,7 @@ async def test_upload_conflict_keeps_session_and_cancellation_preserves_finished
         entered.set()
         await release.wait()
 
-    monkeypatch.setattr(multi_file, "_write_file", write_then_pause)
+    monkeypatch.setattr(multi_file, "write_file", write_then_pause)
     files.append(UploadFile(filename="later.txt", file=io.BytesIO(b"second")))
     task = asyncio.create_task(app.upload(upload.session_id, "/", files))
     try:

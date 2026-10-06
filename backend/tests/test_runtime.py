@@ -32,9 +32,10 @@ from app.operations.context import OperationExecution, bind_execution, current_e
 from app.operations.journal import OperationJournal
 from app.operations.journal_types import ProcessIdentity
 from app.operations.single_writer import SingleWriterGuard
-from app.runtime import Runtime, RuntimeHooks
+from app.runtime import UNINITIALIZED, Runtime, RuntimeHooks
 from app.runtime_resources import current_runtime, spawn_background
 from app.snapshots.preview_sessions import PreviewSessionManager
+from tests.support.runtime import patch_runtime_resource, replace_runtime_resource
 
 
 def make_runtime(tmp_path: Path, name: str, *, hooks: RuntimeHooks | None = None, **overrides) -> Runtime:
@@ -42,11 +43,14 @@ def make_runtime(tmp_path: Path, name: str, *, hooks: RuntimeHooks | None = None
     for directory in ("servers", "archives", "logs", "static/static", "static/assets"):
         (root / directory).mkdir(parents=True, exist_ok=True)
     (root / "static/index.html").write_text(f"<html>{name}</html>")
-    return Runtime(Settings(  # type: ignore
+    runtime = Runtime(Settings(  # type: ignore
         server_path=root / "servers", archive_path=root / "archives", logs_dir=root / "logs",
         static_path=root / "static", database_url=f"sqlite+aiosqlite:///{root / 'app.sqlite3'}",
         jwt=JWTSettings(secret_key=f"{name}-synthetic-jwt-secret-{'x' * 32}"), restic=None,
-    ), overrides=overrides, hooks=hooks)
+    ), hooks=hooks)
+    for resource_name, resource in overrides.items():
+        setattr(runtime, f"_{resource_name}", resource)
+    return runtime
 
 
 async def test_two_running_apps_own_database_configuration_auth_events_and_tasks(tmp_path):
@@ -88,9 +92,9 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
                 submission = await get_task_manager().submit_durable(TaskType.ARCHIVE_CREATE, "owned writer", writer(index))
                 task_ids.append(submission.task_id)
         await asyncio.gather(*(started.wait() for started in writers_started))
-        assert first.resource("task_manager").get_task(task_ids[1]) is None
-        assert second.resource("task_manager").get_task(task_ids[0]) is None
-        subscriptions = [runtime.resource("event_bus").subscribe() for runtime in (first, second)]
+        assert first.task_manager.get_task(task_ids[1]) is None
+        assert second.task_manager.get_task(task_ids[0]) is None
+        subscriptions = [runtime.event_bus.subscribe() for runtime in (first, second)]
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=apps[0]), base_url="http://first") as a, httpx.AsyncClient(transport=httpx.ASGITransport(app=apps[1]), base_url="http://second") as b:
             responses = await asyncio.gather(a.get("/api/runtime-probe"), b.get("/api/runtime-probe"))
         assert [r.status_code for r in responses] == [200, 200]
@@ -100,7 +104,7 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
         assert set(seen) == {first, second}
         assert all(subscription.queue.qsize() == 1 for subscription in subscriptions)
         for name in ("task_manager", "event_bus", "config_manager", "cron_manager", "dns_manager", "database", "login_code_manager", "chunk_prune_service"):
-            assert first.resource(name) is not second.resource(name)
+            assert getattr(first, name) is not getattr(second, name)
         with first.bind():
             token = jwt.encode({"alg": "HS256"}, {"exp": (datetime.now(UTC) + timedelta(minutes=1)).timestamp()}, get_identity_service().signing_key)
         with second.bind(), pytest.raises(BadSignatureError):
@@ -114,10 +118,11 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
         await first.close()
         assert writers_stopped[0].is_set()
         assert not writers_stopped[1].is_set()
-        assert first.resource("task_manager").get_task(task_ids[0]).status is TaskStatus.CANCELLED
+        cancelled_task = first.task_manager.get_task(task_ids[0])
+        assert cancelled_task is not None and cancelled_task.status is TaskStatus.CANCELLED
         assert subscriptions[0].lagged
         assert not subscriptions[1].lagged
-        assert second.resource("cron_manager").scheduler.running
+        assert second.cron_manager.scheduler.running
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=apps[1]), base_url="http://second") as client:
             assert (await client.get("/api/runtime-probe")).status_code == 200
     finally:
@@ -125,7 +130,7 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
         await second.close()
     assert all(runtime.closed and not runtime.requests for runtime in (first, second))
     assert writers_stopped[1].is_set()
-    assert all(not runtime.resource("cron_manager").scheduler.running for runtime in (first, second))
+    assert all(not runtime.cron_manager.scheduler.running for runtime in (first, second))
     for name, other, runtime in (("first", "second", first), ("second", "first", second)):
         application_log = (runtime.settings.logs_dir / "app.log").read_text()
         operation_log = (runtime.settings.logs_dir / "operations.log").read_text()
@@ -133,8 +138,9 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
         assert f"owned application log: {other}" not in application_log
         assert f"owned audit log: {name}" in operation_log
         assert f"owned audit log: {other}" not in operation_log
-        assert not runtime.resource("app_logger").handlers
-        assert not runtime.resource("audit_logger").handlers
+        assert not runtime.app_logger.handlers
+        audit_logger = runtime.audit_logger
+        assert audit_logger is not None and not audit_logger.handlers
 
 
 @pytest.mark.parametrize("stage", ["migrate", "config", "recover", "prune", "previews", "players", "cron", "janitor"])
@@ -163,7 +169,12 @@ async def test_partial_startup_closes_acquired_resources_and_releases_writer_gua
         if stage == "janitor":
             raise RuntimeError("failure at janitor")
     world.start_janitor = start_janitor
-    runtime.resources.update(database=database, config_manager=configuration, dns_manager=dns, cron_manager=cron, snapshot_previews=world, chunk_prune_service=prune)
+    replace_runtime_resource(runtime, "database", database)
+    replace_runtime_resource(runtime, "config_manager", configuration)
+    replace_runtime_resource(runtime, "dns_manager", dns)
+    replace_runtime_resource(runtime, "cron_manager", cron)
+    replace_runtime_resource(runtime, "snapshot_previews", world)
+    replace_runtime_resource(runtime, "chunk_prune_service", prune)
     monkeypatch.setattr("app.players.start_player_system", lambda: execute("players"))
     with pytest.raises(RuntimeError, match=f"failure at {stage}"):
         await runtime.start()
@@ -367,7 +378,7 @@ async def test_shutdown_preserves_artifacts_for_unconfirmed_writers_and_still_cl
     upload_path = None
     try:
         with runtime.bind():
-            prune = runtime.resource("chunk_prune_service")
+            prune = runtime.chunk_prune_service
             claims = scratch / "claims.json"
             claims.write_text("{}")
             prune._metadata["preserved"] = ChunkPruneTaskMetadata(
@@ -380,13 +391,13 @@ async def test_shutdown_preserves_artifacts_for_unconfirmed_writers_and_still_cl
             queue = AsyncMock()
             previews.attach_render_queue(preview.name, queue=queue, affected_keys=set())
             previews.start_janitor()
-            runtime.resources["snapshot_previews"] = previews
+            replace_runtime_resource(runtime, "snapshot_previews", previews)
             upload = await init_archive_upload(runtime.settings.archive_path, ArchiveUploadInitRequest(filename="owned.zip", size=1))
-            upload_path = runtime.resource("archive_upload_sessions")[upload.upload_id].temp_path
+            upload_path = runtime.archive_upload_sessions[upload.upload_id].temp_path
             database_close = AsyncMock(wraps=runtime.database.close)
             runtime.database.close = database_close
-            dns_close = AsyncMock(wraps=runtime.resource("dns_manager").close)
-            runtime.resource("dns_manager").close = dns_close
+            dns_close = AsyncMock(wraps=runtime.dns_manager.close)
+            runtime.dns_manager.close = dns_close
             submitted = await get_task_manager().submit_durable(TaskType.ARCHIVE_CREATE, "unconfirmed writer", writer())
         await started.wait()
         if evidence == "unreadable_journal":
@@ -461,3 +472,73 @@ async def test_runtime_access_without_binding_cannot_create_an_implicit_applicat
         context.run(current_runtime)
     with pytest.raises(RuntimeError, match="No application runtime"):
         context.run(get_settings)
+
+
+async def test_optional_lazy_resources_cache_disabled_none(tmp_path, monkeypatch):
+    runtime = make_runtime(tmp_path, "disabled-snapshots")
+    calls = []
+
+    def disabled_snapshots(owner) -> None:
+        assert current_runtime() is owner
+        calls.append(owner)
+
+    monkeypatch.setattr("app.runtime_factories.create_snapshot_service", disabled_snapshots)
+    assert runtime._snapshot_service is UNINITIALIZED
+    try:
+        assert runtime.snapshot_service is None
+        assert runtime.snapshot_service is None
+        assert runtime.snapshot_commands is None
+        assert runtime.snapshot_previews is None
+        assert calls == [runtime]
+    finally:
+        await runtime.close()
+
+
+async def test_close_does_not_construct_unvisited_resources(tmp_path, monkeypatch):
+    from app import runtime_factories
+
+    runtime = make_runtime(tmp_path, "unused-resources")
+    attempted = []
+
+    def unvisited_factory(owner):
+        attempted.append(owner)
+        raise AssertionError("Shutdown constructed an unvisited resource")
+
+    for name in (
+        "create_database", "create_config_manager", "create_dynamic_configuration",
+        "create_app_logger", "create_audit_logger", "create_event_bus",
+        "create_login_code_manager", "create_dns_manager", "create_mcmap_manager",
+        "create_snapshot_service", "create_snapshot_previews", "create_chunk_prune_service",
+        "create_task_manager", "create_heartbeat_manager", "create_log_monitor",
+        "create_player_syncer", "create_cron_manager", "create_server_write_admission",
+    ):
+        monkeypatch.setattr(runtime_factories, name, unvisited_factory)
+    await runtime.close()
+    assert runtime.closed
+    assert attempted == []
+
+
+async def test_database_engine_and_session_overrides_restore_independent_lazy_fields(tmp_path):
+    first, second = make_runtime(tmp_path, "database-owner"), make_runtime(tmp_path, "foreign-fixture")
+    owner_database = first.database
+    try:
+        assert first._database_engine is UNINITIALIZED
+        assert first._session_factory is UNINITIALIZED
+        with first.bind():
+            with patch_runtime_resource("database_engine", second.database.engine):
+                assert first.database_engine is second.database.engine
+                assert first.session_factory is owner_database.session_factory
+                assert first.database is owner_database
+                with patch_runtime_resource("session_factory", second.database.session_factory):
+                    assert first.session_factory is second.database.session_factory
+                    assert first.database_engine is second.database.engine
+                    assert first.database is owner_database
+                assert first.session_factory is owner_database.session_factory
+            assert first._database_engine is UNINITIALIZED
+            assert first.database_engine is owner_database.engine
+        with first.bind(), patch_runtime_resource("audit_logger", None):
+            assert first.audit_logger is None
+        assert first._audit_logger is UNINITIALIZED
+    finally:
+        await first.close()
+        await second.close()

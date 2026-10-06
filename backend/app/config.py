@@ -106,4 +106,4 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    return current_runtime().resource('settings')
+    return current_runtime().settings

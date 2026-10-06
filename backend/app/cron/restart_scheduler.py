@@ -157,4 +157,4 @@ class RestartScheduler:
 
 
 def get_restart_scheduler() -> RestartScheduler:
-    return current_runtime().resource('restart_scheduler')
+    return current_runtime().restart_scheduler

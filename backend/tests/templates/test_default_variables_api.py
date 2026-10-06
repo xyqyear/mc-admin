@@ -43,7 +43,7 @@ def test_client(test_db):
 
     api_app.dependency_overrides[get_db] = override_get_db
 
-    with patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"):
+    with patch.object(current_runtime().settings, 'master_token', "test-master-token"):
         client = TestClient(api_app, raise_server_exceptions=False)
         yield client
 

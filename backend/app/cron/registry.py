@@ -194,4 +194,4 @@ def create_cron_registry() -> CronRegistry:
 
 
 def get_cron_registry() -> CronRegistry:
-    return current_runtime().resource('cron_registry')
+    return current_runtime().cron_registry

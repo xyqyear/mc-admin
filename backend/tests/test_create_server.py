@@ -164,12 +164,12 @@ def test_client_with_temp_path(temp_server_path, test_db):
     from app.minecraft import DockerMCManager
 
     with (
-        patch.object(current_runtime().resource('settings'), 'server_path', temp_server_path),
-        patch.object(current_runtime().resource('settings'), 'master_token', 'test-master-token'),
+        patch.object(current_runtime().settings, 'server_path', temp_server_path),
+        patch.object(current_runtime().settings, 'master_token', 'test-master-token'),
         patch_runtime_resource('docker_mc_manager', DockerMCManager(temp_server_path)),
         patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
-        patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
-        patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
+        patch.object(current_runtime().log_monitor, 'start_server', new_callable=AsyncMock),
+        patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
         TestClient(api_app, raise_server_exceptions=False) as client,
     ):
         yield client

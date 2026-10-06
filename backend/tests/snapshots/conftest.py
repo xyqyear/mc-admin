@@ -15,6 +15,7 @@ from app.snapshots.restic import ResticClient
 from app.snapshots.service import SnapshotService
 from app.utils.exec import exec_command
 from tests.support.regions import region_bytes
+from tests.support.runtime import replace_runtime_resource
 
 
 @pytest.fixture
@@ -54,7 +55,8 @@ async def case(tmp_path):
             return instance
 
     config = SimpleNamespace(snapshots=SimpleNamespace(ignored_paths=[], world_restore=WorldRestoreConfig()))
-    runtime.resources.update(docker_mc_manager=Manager(), dynamic_configuration=config)
+    replace_runtime_resource(runtime, "docker_mc_manager", Manager())
+    replace_runtime_resource(runtime, "dynamic_configuration", config)
     async with runtime.database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
@@ -62,14 +64,14 @@ async def case(tmp_path):
         await session.commit()
     runtime.journal = OperationJournal(runtime.database.session_factory)
     tasks = BackgroundTaskManager(runtime.journal)
-    runtime.resources["task_manager"] = tasks
+    replace_runtime_resource(runtime, "task_manager", tasks)
     client = ResticClient(
         repository_path=str(tmp_path / "repository"), password="command-test"
     )
     await exec_command(str(client.binary_path), "init", env=client.env)
     snapshots = SnapshotService(client, Manager())
-    runtime.resources["snapshot_service"] = snapshots
-    commands = runtime.resource("snapshot_commands")
+    replace_runtime_resource(runtime, "snapshot_service", snapshots)
+    commands = runtime.snapshot_commands
     assert isinstance(commands, SnapshotCommands)
     yield SimpleNamespace(
         commands=commands,
@@ -82,7 +84,9 @@ async def case(tmp_path):
         client=client,
     )
     await tasks.shutdown()
-    await runtime.resource("snapshot_previews").close()
+    previews = runtime.snapshot_previews
+    assert previews is not None
+    await previews.close()
 
 
 @pytest.fixture

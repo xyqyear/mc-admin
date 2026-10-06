@@ -101,9 +101,9 @@ def patch_singletons(temp_server_path):
         patch_runtime_resource('docker_mc_manager', mgr),
         patch_runtime_resource('docker_mc_manager', mgr),
         patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
-        patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
-        patch.object(current_runtime().resource('log_monitor'), 'stop_watching', new_callable=AsyncMock),
-        patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
+        patch.object(current_runtime().log_monitor, 'start_server', new_callable=AsyncMock),
+        patch.object(current_runtime().log_monitor, 'stop_watching', new_callable=AsyncMock),
+        patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
         patch(
             "app.servers.lifecycle.orchestrators.close_open_sessions",
             new_callable=AsyncMock,

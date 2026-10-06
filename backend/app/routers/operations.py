@@ -29,7 +29,7 @@ def _journal() -> OperationJournal:
 
 
 def _recovery() -> RecoveryService:
-    recovery = current_runtime().resources.get("operation_recovery")
+    recovery = current_runtime().operation_recovery
     if not isinstance(recovery, RecoveryService):
         raise HTTPException(status_code=503, detail="操作恢复尚未初始化")
     return recovery

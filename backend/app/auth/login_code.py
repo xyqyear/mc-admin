@@ -137,4 +137,4 @@ class LoginCodeManager:
 
 
 def get_login_code_manager() -> LoginCodeManager:
-    return current_runtime().resource('login_code_manager')
+    return current_runtime().login_code_manager

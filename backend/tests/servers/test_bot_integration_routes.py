@@ -21,7 +21,7 @@ def auth_headers() -> dict[str, str]:
 
 @pytest.fixture
 def client():
-    with patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"):
+    with patch.object(current_runtime().settings, 'master_token', "test-master-token"):
         yield TestClient(api_app, raise_server_exceptions=False)
 
 

@@ -16,8 +16,8 @@ async def test_config_reads_current_values_and_persists_to_own_database(tmp_path
         for runtime in runtimes:
             async with runtime.database.engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
-        first = runtimes[0].resource("config_manager")
-        second = runtimes[1].resource("config_manager")
+        first = runtimes[0].config_manager
+        second = runtimes[1].config_manager
         with runtimes[0].bind():
             view = ConfigProxy()
         with runtimes[1].bind():

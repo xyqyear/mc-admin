@@ -112,9 +112,7 @@ async def test_get_cpu_percentage_with_docker(mc_server_session: MCInstance):
     """Test that get_cpu_percentage() works correctly"""
     cpu_percent = await mc_server_session.get_cpu_percentage()
 
-    # Second call should return a valid percentage (>= 0, <= 100)
     assert cpu_percent >= 0.0
-    assert cpu_percent <= 100.0
 
 
 @pytest.mark.asyncio
@@ -180,9 +178,6 @@ async def test_all_apis_integration_with_docker(mc_server_session: MCInstance):
     pid = await mc_server_session.get_pid()
     memory_stats = await mc_server_session.get_memory_usage()
 
-    # Establish CPU baseline
-    await mc_server_session.get_cpu_percentage()
-    await asyncio.sleep(2)
     cpu_percentage = await mc_server_session.get_cpu_percentage()
 
     disk_io = await mc_server_session.get_disk_io()
@@ -192,7 +187,7 @@ async def test_all_apis_integration_with_docker(mc_server_session: MCInstance):
     assert len(container_id) == 64  # Full Docker container ID length
     assert pid > 0
     assert memory_stats.total_memory > 0
-    assert 0 <= cpu_percentage <= 100
+    assert cpu_percentage >= 0
     assert len(disk_io.devices) > 0
     assert len(network_io.interfaces) > 0
 

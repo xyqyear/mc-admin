@@ -33,6 +33,7 @@ from app.operations.journal_types import (
 from app.operations.recovery import RecoveryService
 from app.servers.models import Server
 from app.servers.references import resolve_server_ref
+from tests.support.runtime import replace_runtime_resource
 
 COMPOSE = """services:
   mc:
@@ -60,7 +61,7 @@ async def configuration_runtime(isolated_runtime):
     journal = OperationJournal(isolated_runtime.database.session_factory)
     isolated_runtime.journal = journal
     recovery = RecoveryService(journal, servers_root=isolated_runtime.settings.server_path)
-    isolated_runtime.resources["operation_recovery"] = recovery
+    replace_runtime_resource(isolated_runtime, "operation_recovery", recovery)
     return isolated_runtime, journal, recovery
 
 

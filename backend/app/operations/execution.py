@@ -90,18 +90,18 @@ async def settle_execution(execution: OperationExecution, state: OperationState)
     execution.outcome = record.state
     if reconcile:
         runtime = current_runtime()
-        recovery = runtime.resources.get("operation_recovery")
+        recovery = runtime.operation_recovery
         if recovery is None:
             recovery = RecoveryService(
                 execution.journal, probe=confirm_runtime_writers_stopped,
                 servers_root=runtime.settings.server_path,
                 archive_root=runtime.settings.archive_path,
             )
-            runtime.resources["operation_recovery"] = recovery
+            runtime.operation_recovery = recovery
         await recovery.reconcile_terminal(record.operation_id)
         await recovery.apply_blocks(get_server_write_admission())
     if not stopped:
-        recovery = current_runtime().resources.get("operation_recovery")
+        recovery = current_runtime().operation_recovery
         if recovery is not None:
             await recovery.apply_blocks(get_server_write_admission())
         execution.settled = True
@@ -226,12 +226,11 @@ async def recover_runtime(runtime: "Runtime") -> None:
 
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal
-    runtime.resources["operation_journal"] = journal
     recovery = RecoveryService(
         journal, probe=confirm_runtime_writers_stopped, servers_root=runtime.settings.server_path,
         archive_root=runtime.settings.archive_path,
     )
-    runtime.resources["operation_recovery"] = recovery
+    runtime.operation_recovery = recovery
     await recovery.recover()
     await recovery.apply_blocks(get_server_write_admission())
     await mark_running_restorations_interrupted()

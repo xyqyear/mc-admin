@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 
 import httpx2 as httpx
 import pytest
@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.auth.models import UserRole
 from app.auth.schemas import UserPublic
+from app.cron.jobs.backup import BackupJobParams
 from app.cron.jobs.restart import ServerRestartParams
 from app.cron.manager import CronManager
 from app.cron.models import CronJob, CronJobStatus
+from app.cron.restart_scheduler import RestartScheduler
 from app.db.metadata import Base
 from app.dependencies import get_current_user
 from app.routers import cron as cron_routes
@@ -217,6 +219,38 @@ async def test_slot_selection_excludes_only_current_managed_plan(schedules):
     assert (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).status_code == 200
     await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival"), "5 6 * * *", name="restart-survival")
     assert await RestartScheduler(manager).get_restart_time_slots("survival") == {(6, 5)}
+
+
+async def test_auto_schedule_persists_selected_slot_and_preserves_custom_cron(schedules, monkeypatch):
+    client, manager, factory = schedules
+    set_runtime_resource(monkeypatch, "restart_scheduler", RestartScheduler(manager, restart_start_time=time(6, 0)))
+    custom_cron = "15 6 1 */2 1-5"
+    created = await client.post("/servers/survival/restart-schedule", json={"custom_cron": custom_cron})
+    assert created.status_code == 200 and created.json()["cron"] == custom_cron
+    managed_id = created.json()["cronjob_id"]
+    assert (await client.get("/servers/survival/restart-schedule")).json()["cron"] == custom_cron
+    backup_id = await manager.create_cronjob("backup", BackupJobParams(enable_forget=False), "0 * * * *")
+    await manager.pause_cronjob(backup_id)
+    independent_id = await manager.create_cronjob(
+        "restart_server", ServerRestartParams(server_id="survival"), "5 6 * * *", name="restart-survival",
+    )
+    await manager.pause_cronjob(independent_id)
+    other_id = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival2"), "10 6 * * *")
+    async with factory() as session:
+        original = await session.scalar(select(CronJob).where(CronJob.cronjob_id == managed_id))
+        assert original is not None and original.cron == custom_cron
+        generation = original.managed_server_generation
+    for _ in range(2):
+        response = await client.post("/servers/survival/restart-schedule", json={})
+        assert response.status_code == 200
+        assert response.json()["cronjob_id"] == managed_id
+        assert response.json()["cron"] == "15 6 * * *" and response.json()["scheduled_time"] == "06:15"
+        async with factory() as session:
+            rows = {row.cronjob_id: row for row in await session.scalars(select(CronJob))}
+            assert rows[managed_id].cron == "15 6 * * *" and rows[managed_id].managed_server_generation == generation
+            assert rows[backup_id].status == rows[independent_id].status == CronJobStatus.PAUSED
+            assert rows[independent_id].cron == "5 6 * * *" and rows[independent_id].managed_server_generation is None
+            assert rows[other_id].cron == "10 6 * * *" and rows[other_id].status == CronJobStatus.ACTIVE
 
 
 async def test_restart_revalidates_generation_after_acquiring_maintenance(schedules, monkeypatch):

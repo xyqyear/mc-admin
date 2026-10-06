@@ -84,7 +84,7 @@ async def test_restore_stage_survives_unconfirmed_writer_and_restart_cleanup(iso
     assert any(ref.kind == "world_restore_stage" and not ref.resolved for ref in retained.recovery_refs)
     await journal.resolve(record.operation_id, actor_id=1, writers_stopped=True)
     await reap_restore_stages()
-    assert not runtime.resources["world_restore_stages"]
+    assert not runtime.world_restore_stages
     assert stage.exists()
     await journal.resolve(record.operation_id, actor_id=1, writers_stopped=True, resolve_references=True)
     await reap_restore_stages()

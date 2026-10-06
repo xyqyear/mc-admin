@@ -124,4 +124,4 @@ class ServerOperationLock:
 
 
 def get_server_operation_lock() -> ServerOperationLock:
-    return current_runtime().resource('server_operation_lock')
+    return current_runtime().server_operation_lock

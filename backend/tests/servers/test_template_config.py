@@ -99,8 +99,8 @@ def test_client(temp_server_path, test_db):
     api_app.dependency_overrides[get_db] = override_get_db
 
     with (
-        patch.object(current_runtime().resource('settings'), 'server_path', temp_server_path),
-        patch.object(current_runtime().resource('settings'), 'master_token', 'test-master-token'),
+        patch.object(current_runtime().settings, 'server_path', temp_server_path),
+        patch.object(current_runtime().settings, 'master_token', 'test-master-token'),
     ):
         real_mc_manager = DockerMCManager(temp_server_path)
         with (
@@ -109,8 +109,8 @@ def test_client(temp_server_path, test_db):
             patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
-            patch.object(current_runtime().resource('log_monitor'), 'start_server', new_callable=AsyncMock),
-            patch.object(current_runtime().resource('dns_manager'), 'update', new_callable=AsyncMock),
+            patch.object(current_runtime().log_monitor, 'start_server', new_callable=AsyncMock),
+            patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
             TestClient(api_app, raise_server_exceptions=False) as client,
         ):
             yield client

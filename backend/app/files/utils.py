@@ -15,7 +15,7 @@ from .types import UploadSession
 
 # Global upload session storage
 def get_upload_sessions() -> dict[str, UploadSession]:
-    return current_runtime().resource('file_upload_sessions')
+    return current_runtime().file_upload_sessions
 _SESSION_TIMEOUT = 3600  # 1 hour timeout
 
 

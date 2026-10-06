@@ -82,4 +82,4 @@ class PlayerSyncer:
 
 
 def get_player_syncer() -> PlayerSyncer:
-    return current_runtime().resource('player_syncer')
+    return current_runtime().player_syncer

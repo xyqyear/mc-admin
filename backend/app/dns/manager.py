@@ -413,4 +413,4 @@ class SimpleDNSManager:
 
 
 def get_dns_manager() -> SimpleDNSManager:
-    return cast(SimpleDNSManager, current_runtime().resource("dns_manager"))
+    return cast(SimpleDNSManager, current_runtime().dns_manager)

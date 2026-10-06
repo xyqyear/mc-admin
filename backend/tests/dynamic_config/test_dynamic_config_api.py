@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import get_settings
 from app.db.metadata import Base
 from app.dynamic_config import BaseConfigSchema
+from app.dynamic_config.configs.dns import DNSManagerConfig
 from app.dynamic_config.manager import ConfigManager
 from app.main import app
 from app.runtime_resources import current_runtime
@@ -75,7 +76,8 @@ async def test_api_db(monkeypatch):
     test_manager = ConfigManager(session_factory=TestSessionLocal)
     test_manager.register_config("api_test", ApiTestConfig)
     test_manager.register_config("api_complex", ApiComplexConfig)
-    monkeypatch.setitem(current_runtime().resources, "config_manager", test_manager)
+    test_manager.register_config("dns", DNSManagerConfig)
+    monkeypatch.setattr(current_runtime(), "_config_manager", test_manager)
     await test_manager.initialize_all_configs()
     yield test_manager
     await engine.dispose()
@@ -97,6 +99,21 @@ async def authenticated_headers():
 
 class TestConfigAPI:
     """Test the dynamic configuration API endpoints."""
+
+    async def test_dns_schema_exposes_provider_discriminator_and_manual_addresses(
+        self, test_api_db, api_client, authenticated_headers
+    ):
+        response = api_client.get("/api/config/modules/dns/schema", headers=authenticated_headers)
+        assert response.status_code == 200
+        schema = response.json()["json_schema"]
+        provider = schema["properties"]["dns"]
+        assert provider["discriminator"]["propertyName"] == "type"
+        assert set(provider["discriminator"]["mapping"]) == {"huawei", "dnspod"}
+        assert len(provider["oneOf"]) == 2
+        addresses = schema["properties"]["addresses"]
+        assert addresses["type"] == "array"
+        assert addresses["items"]["$ref"] == "#/$defs/Manual"
+        assert schema["$defs"]["Manual"]["properties"]["type"]["const"] == "manual"
 
     @pytest.mark.asyncio
     async def test_list_all_modules(

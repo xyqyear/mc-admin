@@ -30,13 +30,15 @@ async def prepared(case, count=1):
 
 async def test_file_preview_pages_actual_changes_without_safety_or_history(case):
     target, scope, source = await prepared(case, 205)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     before = len(await case.snapshots.list_snapshots())
     result = await complete(case, await previews.submit(scope, source, 1))
     assert result["updated"] == 205
     preview_id = result["preview_id"]
     actions, cursor = [], 0
     for expected in (100, 100, 5):
+        assert cursor is not None
         page = await previews.actions(preview_id, cursor, 100)
         assert len(page.actions) == expected
         actions.extend(page.actions)
@@ -51,6 +53,7 @@ async def test_file_preview_pages_actual_changes_without_safety_or_history(case)
     with pytest.raises(HTTPException):
         await case.snapshots.forget_id(source)
     directory = previews.manager.get_session_dir(preview_id)
+    assert directory is not None
     await complete(case, await previews.end(preview_id, 1))
     assert not directory.exists()
     await case.snapshots.forget_id(source)
@@ -58,7 +61,8 @@ async def test_file_preview_pages_actual_changes_without_safety_or_history(case)
 
 async def test_matching_preview_restores_and_rolls_back_live_state(case):
     target, scope, source = await prepared(case)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     result = await complete(case, await previews.submit(scope, source, 1))
     accepted = await case.commands.restore(scope, source, 1, preview_id=result["preview_id"])
     await complete(case, accepted)
@@ -70,7 +74,8 @@ async def test_matching_preview_restores_and_rolls_back_live_state(case):
 @pytest.mark.parametrize("change", ["source", "scope", "rules", "expiry", "generation", "target"])
 async def test_stale_preview_rejects_before_safety_and_live_write(case, change):
     target, scope, source = await prepared(case)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     result = await complete(case, await previews.submit(scope, source, 1))
     preview_id = result["preview_id"]
     if change == "source":
@@ -80,7 +85,9 @@ async def test_stale_preview_rejects_before_safety_and_live_write(case, change):
     elif change == "rules":
         case.config.snapshots.ignored_paths = ["config/ignored"]
     elif change == "expiry":
-        previews.manager.get_session(preview_id).last_seen -= timedelta(days=1)
+        preview = previews.manager.get_session(preview_id)
+        assert preview is not None
+        preview.last_seen -= timedelta(days=1)
     elif change == "generation":
         from app.servers.models import Server
         async with current_runtime().database.session_factory() as session:
@@ -101,7 +108,8 @@ async def test_stale_preview_rejects_before_safety_and_live_write(case, change):
 
 async def test_failed_preview_reports_terminal_failure_and_cleans_private_output(case, monkeypatch):
     _, scope, source = await prepared(case)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     async def fail(*args, **kwargs):
         raise RuntimeError("private adapter secret")
         yield
@@ -118,7 +126,8 @@ async def test_failed_preview_reports_terminal_failure_and_cleans_private_output
 
 async def test_preparing_preview_outlives_observer_and_explicit_cancel_cleans(case, monkeypatch):
     _, scope, source = await prepared(case)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     started, release = asyncio.Event(), asyncio.Event()
     original = case.snapshots.restore
     async def pause(*args, **kwargs):
@@ -146,7 +155,8 @@ async def test_cancel_during_ready_preview_finalization_releases_result_before_t
     from app.snapshots import previews as preview_module
 
     target, scope, source = await prepared(case)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     finalizing, release = asyncio.Event(), asyncio.Event()
     original = preview_module.release_artifact
 
@@ -166,6 +176,7 @@ async def test_cancel_during_ready_preview_finalization_releases_result_before_t
         assert task is not None and task.result is not None
         preview_id = task.result["preview_id"]
         directory = previews.manager.get_session_dir(preview_id)
+        assert directory is not None
         assert directory is not None and directory.exists()
         cancelling = asyncio.create_task(case.tasks.cancel(accepted["task_id"]))
         await asyncio.sleep(0)
@@ -192,7 +203,8 @@ async def test_cancel_during_ready_preview_finalization_releases_result_before_t
 async def test_application_observed_writes_invalidate_only_the_selected_path(case, inside):
     from app.files.application import FileApplication
     target, scope, source = await prepared(case)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     preview_id = (await complete(case, await previews.submit(scope, source, 1)))["preview_id"]
     before = target.stat().st_mtime_ns
     await FileApplication(case.instance, "survival", 1).update("config/000.txt" if inside else "server.properties", "an application edit")
@@ -211,7 +223,8 @@ async def test_application_observed_writes_invalidate_only_the_selected_path(cas
 async def test_target_changed_during_preparation_does_not_publish_a_ready_preview(case, monkeypatch):
     from app.files.application import FileApplication
     target, scope, source = await prepared(case)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     entered, resume = asyncio.Event(), asyncio.Event()
     original = case.snapshots.restore
     async def slow(*args, **kwargs):
@@ -233,7 +246,8 @@ async def test_target_changed_during_preparation_does_not_publish_a_ready_previe
 async def test_large_preview_fails_explicitly_and_releases_partial_pages(case, monkeypatch):
     from app.snapshots import previews as preview_module
     target, scope, source = await prepared(case, 3)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     monkeypatch.setattr(preview_module, "MAX_ACTION_BYTES", 1)
     accepted = await previews.submit(scope, source, 1)
     await complete(case, accepted, success=False)
@@ -244,7 +258,8 @@ async def test_large_preview_fails_explicitly_and_releases_partial_pages(case, m
 
 async def test_bound_restore_rechecks_target_after_safety_before_writing(case, monkeypatch):
     target, scope, source = await prepared(case)
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     preview_id = (await complete(case, await previews.submit(scope, source, 1)))["preview_id"]
     saving, resume = asyncio.Event(), asyncio.Event()
     original = case.snapshots.create_snapshot
@@ -277,7 +292,8 @@ async def test_preview_includes_restoration_of_an_empty_file(case):
     scope = PathsScope(server_id="survival", paths=("empty.txt",))
     source = (await complete(case, await case.commands.create(scope, 1)))["snapshot"]["id"]
     target.unlink()
-    previews = current_runtime().resource("snapshot_previews")
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
     result = await complete(case, await previews.submit(scope, source, 1))
     actions = await previews.actions(result["preview_id"], 0, 100)
     assert any(action.item == str(target) and action.action == "restored" and action.size == 0 for action in actions.actions)

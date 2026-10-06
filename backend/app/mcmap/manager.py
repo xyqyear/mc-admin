@@ -31,4 +31,4 @@ class MCMapManager:
 
 
 def get_mcmap_manager() -> MCMapManager:
-    return current_runtime().resource('mcmap_manager')
+    return current_runtime().mcmap_manager

@@ -56,7 +56,7 @@ async def dummy_session():
 
 @pytest.fixture
 def client():
-    with patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"):
+    with patch.object(current_runtime().settings, 'master_token', "test-master-token"):
         yield TestClient(api_app)
 
 
@@ -67,7 +67,7 @@ def test_websocket_replays_chat_since_cursor(client):
             "app.routers.events.get_chat_messages_after",
             AsyncMock(return_value=[chat_info(2, "replayed")]),
         ),
-        patch.object(current_runtime().resource('event_bus'), 'subscribe', return_value=subscription_with()),client.websocket_connect(
+        patch.object(current_runtime().event_bus, 'subscribe', return_value=subscription_with()),client.websocket_connect(
         "/events?since=1",
         headers=auth_headers(),
     ) as websocket
@@ -83,7 +83,7 @@ def test_websocket_replays_chat_since_cursor(client):
 def test_websocket_forwards_live_events(client):
     live = chat_event("4", "live")
 
-    with patch.object(current_runtime().resource('event_bus'), 'subscribe', return_value=subscription_with(live)), client.websocket_connect("/events", headers=auth_headers()) as websocket:
+    with patch.object(current_runtime().event_bus, 'subscribe', return_value=subscription_with(live)), client.websocket_connect("/events", headers=auth_headers()) as websocket:
         frame = websocket.receive_json()
 
     assert frame["type"] == "chat"
@@ -101,7 +101,7 @@ def test_websocket_dedupes_live_event_already_seen_in_replay(client):
             "app.routers.events.get_chat_messages_after",
             AsyncMock(return_value=[chat_info(2, "replayed")]),
         ),
-        patch.object(current_runtime().resource('event_bus'), 'subscribe', return_value=subscription_with(duplicate, live)),client.websocket_connect(
+        patch.object(current_runtime().event_bus, 'subscribe', return_value=subscription_with(duplicate, live)),client.websocket_connect(
         "/events?since=1",
         headers=auth_headers(),
     ) as websocket
@@ -118,7 +118,7 @@ def test_websocket_dedupes_live_event_already_seen_in_replay(client):
 def test_websocket_invalid_cursor_sends_stream_reset_and_goes_live(client):
     live = chat_event("5", "after reset")
 
-    with patch.object(current_runtime().resource('event_bus'), 'subscribe', return_value=subscription_with(live)), client.websocket_connect(
+    with patch.object(current_runtime().event_bus, 'subscribe', return_value=subscription_with(live)), client.websocket_connect(
         "/events?since=not-an-int",
         headers=auth_headers(),
     ) as websocket:
@@ -131,7 +131,7 @@ def test_websocket_invalid_cursor_sends_stream_reset_and_goes_live(client):
 
 
 def test_websocket_lag_reset_frame_is_sent_then_closed(client):
-    with patch.object(current_runtime().resource('event_bus'), 'subscribe', return_value=subscription_with(StreamResetFrame(reason="cursor_too_old"))), client.websocket_connect("/events", headers=auth_headers()) as websocket:
+    with patch.object(current_runtime().event_bus, 'subscribe', return_value=subscription_with(StreamResetFrame(reason="cursor_too_old"))), client.websocket_connect("/events", headers=auth_headers()) as websocket:
         frame = websocket.receive_json()
 
     assert frame == {"type": "stream_reset", "reason": "cursor_too_old"}
@@ -140,7 +140,7 @@ def test_websocket_lag_reset_frame_is_sent_then_closed(client):
 def test_websocket_sends_heartbeat_after_silence(client):
     with (
         patch("app.routers.events.HEARTBEAT_INTERVAL", 0.01),
-        patch.object(current_runtime().resource('event_bus'), 'subscribe', return_value=subscription_with()),client.websocket_connect("/events", headers=auth_headers()) as websocket
+        patch.object(current_runtime().event_bus, 'subscribe', return_value=subscription_with()),client.websocket_connect("/events", headers=auth_headers()) as websocket
     ):
         frame = websocket.receive_json()
 

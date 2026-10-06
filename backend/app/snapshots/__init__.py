@@ -19,7 +19,7 @@ from .service import SnapshotService
 
 
 def get_snapshot_service() -> SnapshotService | None:
-    return current_runtime().resource('snapshot_service')
+    return current_runtime().snapshot_service
 
 __all__ = [
     "NodeKind",

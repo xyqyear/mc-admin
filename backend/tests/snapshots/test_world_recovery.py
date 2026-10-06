@@ -203,7 +203,7 @@ async def test_safety_persists_before_writes_and_cancel_retains_recovery(
     assert row.safety_snapshot_id in [
         item.id for item in await case.snapshots.list_snapshots()
     ]
-    holder = current_runtime().resource("server_operation_lock").get_holder("survival")
+    holder = current_runtime().server_operation_lock.get_holder("survival")
     assert holder and holder.user_id == 7 and holder.restoration_id == row.id
     assert await case.tasks.cancel(accepted["task_id"])
     await asyncio.wait_for(case.tasks.get_future(accepted["task_id"]), 10)
@@ -211,7 +211,7 @@ async def test_safety_persists_before_writes_and_cancel_retains_recovery(
     row = await case.commands.store.get(row.id)
     assert row.status is RestorationStatus.CANCELLED and row.finished_at
     assert (case.region / "r.0.0.mca").read_bytes() == original
-    assert not current_runtime().resource("server_operation_lock").is_locked("survival")
+    assert not current_runtime().server_operation_lock.is_locked("survival")
 
 
 @pytest.mark.parametrize("fault", ["write", "cache"])
@@ -254,7 +254,7 @@ async def test_world_failure_keeps_history_recoverable_and_reports_degraded_cach
         and operation.writers_stopped
         and operation.cache_degraded == (fault == "cache")
     )
-    assert not current_runtime().resource("server_operation_lock").is_locked("survival")
+    assert not current_runtime().server_operation_lock.is_locked("survival")
     if fault == "cache":
         assert "数据已恢复，但地图缓存更新失败" in row.error_message
         assert chunk_value(live, 0) == "source zero"
@@ -294,7 +294,7 @@ async def test_cancel_during_cache_finalization_waits_for_cleanup_and_preserves_
         assert row and row.safety_snapshot_id
         assert await case.tasks.cancel(accepted["task_id"])
         assert future is not None and not future.done()
-        assert current_runtime().resource("server_operation_lock").is_locked("survival")
+        assert current_runtime().server_operation_lock.is_locked("survival")
         with pytest.raises(HTTPException):
             case.commands.require_deletable("survival")
     finally:
@@ -305,6 +305,6 @@ async def test_cancel_during_cache_finalization_waits_for_cleanup_and_preserves_
     row = await case.commands.store.get(accepted["restoration_id"])
     assert row.status is RestorationStatus.CANCELLED and row.safety_snapshot_id
     assert not affected.exists() and unrelated.read_bytes() == b"unrelated"
-    assert not current_runtime().resource("server_operation_lock").is_locked("survival")
+    assert not current_runtime().server_operation_lock.is_locked("survival")
     await complete(case, await case.commands.rollback(row.id, 1))
     assert chunk_value(live, 0) == "live before recovery"

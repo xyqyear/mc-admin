@@ -65,4 +65,4 @@ class EventBus:
 
 
 def get_event_bus() -> EventBus:
-    return current_runtime().resource('event_bus')
+    return current_runtime().event_bus

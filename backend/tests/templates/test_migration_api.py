@@ -115,7 +115,7 @@ def test_client(test_db, mock_docker_instance, isolated_runtime):
     api_app.dependency_overrides[get_db] = override_get_db
 
     with (
-        patch.object(current_runtime().resource('settings'), 'master_token', "test-master-token"),
+        patch.object(current_runtime().settings, 'master_token', "test-master-token"),
         patch("app.configuration.application.get_async_session", test_db),
         patch_runtime_resource('docker_mc_manager') as mock_manager,
     ):

@@ -213,4 +213,4 @@ class SelfCheckService:
 
 
 def get_self_check_service() -> SelfCheckService:
-    return current_runtime().resource("self_check_service")
+    return current_runtime().self_check_service

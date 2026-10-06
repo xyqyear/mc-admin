@@ -26,8 +26,8 @@ async def test_health_run_keeps_dependencies_and_history_owned_and_isolates_fail
         for runtime in runtimes:
             async with runtime.database.engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
-            await runtime.resource("config_manager").initialize_all_configs()
-        service = runtimes[0].resource("self_check_service")
+            await runtime.config_manager.initialize_all_configs()
+        service = runtimes[0].self_check_service
         storage = "storage.server_directory_usage"
         binary = "dependency.binaries"
         service.definitions = {
@@ -56,7 +56,7 @@ async def test_health_run_keeps_dependencies_and_history_owned_and_isolates_fail
                         run = await session.get(SelfCheckRun, result.id)
                         assert run is not None and run.requested_by_user_id == 73
 
-            manager = runtimes[0].resource("config_manager")
+            manager = runtimes[0].config_manager
             values = service.dependencies.configuration.self_check.model_dump()
             values["checks"]["dependency_binaries"] = False
             await manager.update_config("self_check", values)

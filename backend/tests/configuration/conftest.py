@@ -13,6 +13,7 @@ from app.operations.journal import OperationJournal
 from app.operations.recovery import RecoveryService
 from app.runtime import Runtime
 from app.servers.models import Server
+from tests.support.runtime import replace_runtime_resource
 
 COMPOSE = '''services:
   mc:
@@ -71,8 +72,8 @@ async def configuration(isolated_runtime, monkeypatch):
     journal = OperationJournal(isolated_runtime.database.session_factory)
     tasks = BackgroundTaskManager(journal)
     isolated_runtime.journal = journal
-    isolated_runtime.resources["task_manager"] = tasks
+    replace_runtime_resource(isolated_runtime, "task_manager", tasks)
     recovery = RecoveryService(journal, probe=AsyncMock(return_value=True), servers_root=isolated_runtime.settings.server_path)
-    isolated_runtime.resources["operation_recovery"] = recovery
+    replace_runtime_resource(isolated_runtime, "operation_recovery", recovery)
     yield ConfigurationHarness(isolated_runtime, journal, tasks, recovery, instance.get_project_path() / "docker-compose.yml", down, up, status, created)
     await tasks.shutdown()

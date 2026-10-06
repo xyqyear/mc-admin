@@ -309,4 +309,4 @@ def seconds_to_ticks(seconds: int) -> int:
 
 
 def get_chunk_prune_service() -> ChunkPruneService:
-    return current_runtime().resource('chunk_prune_service')
+    return current_runtime().chunk_prune_service

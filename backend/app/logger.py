@@ -30,7 +30,7 @@ def create_logger() -> OwnedLogger:
 
 
 def get_logger() -> OwnedLogger:
-    return current_runtime().resource('app_logger')
+    return current_runtime().app_logger
 
 
 P = ParamSpec("P")

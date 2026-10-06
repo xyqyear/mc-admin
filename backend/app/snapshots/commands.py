@@ -736,7 +736,7 @@ class SnapshotCommands:
 
 
 def get_snapshot_commands() -> SnapshotCommands | None:
-    return current_runtime().resource("snapshot_commands")
+    return current_runtime().snapshot_commands
 
 
 def require_snapshot_tasks_finished(server_id: str) -> None:

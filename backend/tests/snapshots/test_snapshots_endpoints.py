@@ -2,8 +2,13 @@ import asyncio
 
 from app.config import ResticSettings
 from app.dynamic_config.configs.snapshots import WorldRestoreConfig
+from app.runtime import UNINITIALIZED
 from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_runtime_resource, patch_settings
+from tests.support.runtime import (
+    patch_runtime_resource,
+    patch_settings,
+    replace_runtime_resource,
+)
 from tests.support.tasks import task_result, wait_task
 
 """
@@ -270,7 +275,7 @@ def mock_snapshot_dependencies_setup(
         patch_settings() as mock_settings,
         patch_settings() as mock_dep_settings,
         patch_runtime_resource('dynamic_configuration', mock_config),
-        patch.object(current_runtime().resource('restart_scheduler'), 'get_backup_minutes', return_value=set()),  # No backup jobs by default
+        patch.object(current_runtime().restart_scheduler, 'get_backup_minutes', return_value=set()),  # No backup jobs by default
         patch_runtime_resource('snapshot_service', test_snapshot_service),
     ):
         # Mock settings for snapshots
@@ -287,7 +292,7 @@ def mock_snapshot_dependencies_setup(
         # the await doesn't blow up on a bare MagicMock.
         mock_manager.get_all_instances = AsyncMock(return_value=[instance])
 
-        current_runtime().resources.pop("snapshot_commands", None)
+        replace_runtime_resource(current_runtime(), "snapshot_commands", UNINITIALIZED)
         yield
 
 
@@ -1726,7 +1731,7 @@ class TestPathContainmentEndpoints:
         outside.mkdir(exist_ok=True)
 
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
-            with patch.object(current_runtime().resource('docker_mc_manager'), 'get_instance', side_effect=lambda sid: MCInstance(instance.base_path, sid)):
+            with patch.object(current_runtime().docker_mc_manager, 'get_instance', side_effect=lambda sid: MCInstance(instance.base_path, sid)):
                 response = client.post(
                     "/snapshots",
                     headers=self._auth(),

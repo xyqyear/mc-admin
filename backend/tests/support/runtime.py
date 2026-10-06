@@ -8,15 +8,16 @@ import pytest
 from app.runtime import Runtime
 from app.runtime_resources import current_runtime
 
-_MISSING = object()
-
 
 def replace_runtime_resource(runtime: Runtime, name: str, value: Any) -> None:
-    runtime.resources[name] = value
+    field = name if name in {"settings", "operation_recovery", "world_restore_stages"} else f"_{name}"
+    getattr(runtime, field)
+    setattr(runtime, field, value)
 
 
 def set_runtime_resource(monkeypatch: pytest.MonkeyPatch, name: str, value: Any) -> None:
-    monkeypatch.setitem(current_runtime().resources, name, value)
+    field = name if name in {"settings", "operation_recovery", "world_restore_stages"} else f"_{name}"
+    monkeypatch.setattr(current_runtime(), field, value)
 
 
 class patch_runtime_resource:
@@ -25,26 +26,24 @@ class patch_runtime_resource:
         self.new = new
         self.new_callable = new_callable or MagicMock
         self.kwargs = kwargs
-        self.resources: dict[str, Any] | None = None
-        self.original: Any = _MISSING
+        self.runtime: Runtime | None = None
+        self.field = name if name in {"settings", "operation_recovery", "world_restore_stages"} else f"_{name}"
+        self.original: Any = None
 
     def start(self) -> Any:
-        if self.resources is not None:
+        if self.runtime is not None:
             raise RuntimeError("Runtime resource override is already active")
-        self.resources = current_runtime().resources
-        self.original = self.resources.get(self.name, _MISSING)
+        self.runtime = current_runtime()
+        self.original = getattr(self.runtime, self.field)
         value = self.new_callable(**self.kwargs) if self.new is DEFAULT else self.new
-        self.resources[self.name] = value
+        setattr(self.runtime, self.field, value)
         return value
 
     def stop(self) -> None:
-        if self.resources is None:
+        if self.runtime is None:
             return
-        if self.original is _MISSING:
-            self.resources.pop(self.name, None)
-        else:
-            self.resources[self.name] = self.original
-        self.resources = None
+        setattr(self.runtime, self.field, self.original)
+        self.runtime = None
 
     __enter__ = start
 

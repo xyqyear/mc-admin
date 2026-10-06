@@ -27,7 +27,7 @@ def create_audit_logger() -> OwnedLogger | None:
 
 
 def get_audit_logger() -> OwnedLogger | None:
-    return current_runtime().resource('audit_logger')
+    return current_runtime().audit_logger
 
 
 class OperationAuditMiddleware(BaseHTTPMiddleware):

@@ -1,5 +1,5 @@
 from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_settings
+from tests.support.runtime import patch_settings, replace_runtime_resource
 
 """Cron job management REST API tests via TestClient."""
 
@@ -44,7 +44,7 @@ async def test_db():
 
     original_db_session = db_module.get_session_factory()
 
-    current_runtime().resources["session_factory"] = TestSessionLocal
+    replace_runtime_resource(current_runtime(), "session_factory", TestSessionLocal)
 
     def get_test_session():
         return TestSessionLocal()
@@ -57,8 +57,8 @@ async def test_db():
     original_cron_manager = cron_router_module.get_cron_manager()
     original_cron_registry = cron_router_module.get_cron_registry()
 
-    current_runtime().resources["cron_manager"] = test_cron_manager
-    current_runtime().resources["cron_registry"] = test_cron_registry
+    replace_runtime_resource(current_runtime(), "cron_manager", test_cron_manager)
+    replace_runtime_resource(current_runtime(), "cron_registry", test_cron_registry)
 
     await test_cron_manager.initialize()
 
@@ -66,10 +66,10 @@ async def test_db():
 
     await test_cron_manager.shutdown()
 
-    current_runtime().resources["session_factory"] = original_db_session
+    replace_runtime_resource(current_runtime(), "session_factory", original_db_session)
     manager_module.get_async_session = original_get_session
-    current_runtime().resources["cron_manager"] = original_cron_manager
-    current_runtime().resources["cron_registry"] = original_cron_registry
+    replace_runtime_resource(current_runtime(), "cron_manager", original_cron_manager)
+    replace_runtime_resource(current_runtime(), "cron_registry", original_cron_registry)
 
     await engine.dispose()
     Path(database_path).unlink(missing_ok=True)
