@@ -2,7 +2,7 @@
 
 审计基线：`a773bbe5e3f7787c180b115ac0c40ff61d1e675e`。实施分支：`refactor/code-humanizer-cleanup`。
 
-66 项保留发现已实施，独立代理审查及修正循环已收敛。两个否决项保持原有业务边界：DM-05 不统一游戏与 RCON 端口扫描的不同失败政策；ST-07 不统一严格文件所有权与地图缓存的 best-effort 修复。逐项约束和原审查理由见 [reviewed-scope.md](reviewed-scope.md)。这里的“稳定”表示实施审查没有待修意见，完整交付仍取决于当前提交的部署验证与 GitHub 资格门禁。
+66 项保留发现已实施，独立代理审查及修正循环已收敛。两个否决项保持原有业务边界：DM-05 不统一游戏与 RCON 端口扫描的不同失败政策；ST-07 不统一严格文件所有权与地图缓存的 best-effort 修复。逐项约束和原审查理由见 [reviewed-scope.md](reviewed-scope.md)。这里的“稳定”表示实施审查没有待修意见。实施源码已通过部署及完整远端资格门禁，精确版本与收据见文末。
 
 ## 主要结果
 
@@ -161,8 +161,32 @@ OCI 同一 100669440-byte 层 fixture 在两个独立进程的 manifest/config/a
 - 快照 server_id 筛选覆盖整个服务器目录，应精确匹配已创建 server+global ID；原 harness 错配 paths+server。用显式命名 ID 修正，全部/子路径/删除后空集合与重复 ID 拒绝保持。确切案例 normal/no-reuse 各通过，分别 coverage=1/1/1、owned cleanup 完整；这两次明确为冻结 76e 后端与修改 runner 的局部观察，不伪称新源码不可变候选证明。
 - 发布脚本只将两处 BinaryIO 返回注解调整为 tarfile 实际 IO[bytes]，执行 AST 保持；CI 同范围脚本 Pyright/Ruff 和七个 OCI 归档节点通过。
 
-以上修复按不同作者与独立复审者交叉检查，不降低原业务断言、诊断或 CI 门禁。待完成：以 publish=false 对包含上述修正的最新 SHA 重新运行全部完整资格门禁，并统一核对所有覆盖/清理审计与 qualification。
+以上修复按不同作者与独立复审者交叉检查，不降低原业务断言、诊断或 CI 门禁。修正提交的完整资格验证已通过，实际收据如下。
 
-最终证据以本报告的后续交付记录和 GitHub qualification artifacts 为准。当前尚不宣称完整交付通过。
+## 完整远端资格收据
 
-代码与文档总差异：362 个文件，增加 9,228 行，删除 6,195 行（相对审计基线，包含实现、测试、规格和报告）。
+完整验证：[Qualify and Publish Application — 37436211339](https://github.com/xyqyear/mc-admin/actions/runs/37436211339)，源码 `f5863a3e9ce6058654deba2a34d15ebbbaca4750`，publish=false，最终 success。主 agent 只启动一次持久 watch，静默等待退出后统一读取结果；没有通过重复轮询拼接局部绿灯。
+
+| 必需门禁 | 正式结果 |
+| --- | --- |
+| candidate / Go | success，单平台 OCI 与 race-tested runner 来自同一 clean source |
+| static / frontend | success，后端及发布脚本 Ruff/Pyright、Go format/vet、前端 lint/types/全量 operation-flow tests/build |
+| backend | 18 个分片、2,511 个选中节点全部通过；完整重复排除/成功执行审计及合并覆盖通过 |
+| API | 5 个分片、89 个场景全部通过；含 dns.huawei-minecraft-connectivity 与 dns.huawei-reconciliation，两项 cloud recovery/cleanup 由严格完整审计确认 |
+| API 观察与覆盖 | 159/159 操作成功观察；无缺失案例/分片/追踪/运行错误；计划、镜像、runner、local/cloud cleanup 完整一致 |
+| browser | 2 个分片、9 个当前旅程全部通过；exact-once、候选绑定、owned cleanup 与覆盖审计通过 |
+| qualification | candidate/static/backend/api/browser 五项均 success；非发布 promotion 及使用共享 candidate 的 API 重复 build 按原规则跳过 |
+
+| 远端候选证据 | 值 |
+| --- | --- |
+| clean source fingerprint | `sha256:e99a2be047e5e2bf25398b88c3cf976fa076fe77352e6413295d658eb0e1d29b` |
+| OCI manifest | `sha256:df07455426f851b5ec393eec7d9ed538833f99b43bb3e6af8c2643318e86ae85` |
+| Docker/config image ID | `sha256:b8de21c4eeff138a92cf8d0e953e2891ae8bfac12da4e575bc902e656ee03d20` |
+| archive SHA256 | `sha256:5792196a678f4ffd5d446c449e8aba02a4f2fb9d9f192c9a5c8df2210186ac3c` |
+| runner SHA256 | `sha256:7d8d72c8ee17c07c9b61befb45c1cc78ae7060e58f5a06f7726f63c24d3633e3` |
+
+主 agent 下载正式 qualification、backend inventory/reports、API plan/coverage、browser plan/coverage，独立核对上述 SHA、全部必需 job、精确分片数量、完整 ID 集合与三个家族的覆盖。正式 backend collection audit 再次核验 2,511 个节点恰好进入 18 个分片；这是审计远端结果，未执行本地全量测试。
+
+本节固定记录已验证实施版本的不可变证据。本报告入库属于后续文档提交；最终交付提交也执行同样的完整资格验证，精确最终 SHA 与 Actions 链接以交付答复及该提交对应 qualification artifact 为准，不能用本节旧 SHA 的绿灯替代。
+
+代码与文档总差异：362 个文件，增加 9,252 行，删除 6,195 行（相对审计基线，包含实现、测试、规格和报告）。
