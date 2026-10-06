@@ -192,12 +192,7 @@ func cancellation(ctx context.Context, t *engine.Scope) error {
 	}
 	id := fixtures.ServerOf(t.Env).ID
 	// A real incompressible input keeps the compression task active until cancellation.
-	var data strings.Builder
-	for n := 0; n < 260000; n++ {
-		sum := sha256.Sum256([]byte(fmt.Sprintf("e2e-archive-%d", n)))
-		fmt.Fprintf(&data, "%x", sum)
-	}
-	if err = fixtures.CreateFile(ctx, c, id, "/large.txt", data.String()); err != nil {
+	if err = fixtures.CreateFile(ctx, c, id, "/large.txt", compressionWorkload("e2e-archive")); err != nil {
 		return err
 	}
 	var task struct {

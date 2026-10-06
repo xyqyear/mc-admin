@@ -1,13 +1,12 @@
 package world
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 
+	"mc-admin/e2e/internal/api"
 	"mc-admin/e2e/internal/fixtures"
 )
 
@@ -45,21 +44,14 @@ func (s *scenario) checkScopedFiles(ctx context.Context, uploadSession, fileSnap
 			return fmt.Errorf("overlapping file mutation must conflict with world restore: %w", err)
 		}
 	}
-	var body bytes.Buffer
-	form := multipart.NewWriter(&body)
-	for _, name := range []string{"e2e-scope.txt", "new-scope.txt"} {
-		part, err := form.CreateFormFile("files", name)
-		if err != nil {
-			return err
-		}
-		if _, err = part.Write([]byte("must reject")); err != nil {
-			return err
-		}
-	}
-	if err := form.Close(); err != nil {
+	body, contentType, err := api.MultipartFiles([]api.FilePart{
+		{Filename: "e2e-scope.txt", Content: []byte("must reject")},
+		{Filename: "new-scope.txt", Content: []byte("must reject")},
+	})
+	if err != nil {
 		return err
 	}
-	response, err := s.client.Do(ctx, "POST", s.base+"/files/upload/multiple?path=/"+fixtureRegion+"&session_id="+uploadSession, body.Bytes(), http.Header{"Content-Type": {form.FormDataContentType()}})
+	response, err := s.client.Do(ctx, "POST", s.base+"/files/upload/multiple?path=/"+fixtureRegion+"&session_id="+uploadSession, body, http.Header{"Content-Type": {contentType}})
 	if err != nil {
 		return err
 	}

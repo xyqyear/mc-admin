@@ -114,28 +114,20 @@ class Deployment:
         return self.request("POST", "/snapshots", {"server_id": self.server, "paths": ["/world"]})["snapshot"]["id"]
 
     def snapshot_task(self):
-        accepted = self.request("POST", "/snapshots", {"scope": {"kind": "paths", "server_id": self.server, "paths": ["world"]}}, expected=202)
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            task = self.request("GET", "/tasks/" + accepted["task_id"])
-            if task["status"] in {"completed", "failed", "cancelled"}:
-                if task["status"] != "completed":
-                    raise AssertionError("Candidate snapshot task failed")
-                return task["result"]["snapshot"]["id"]
-            time.sleep(0.2)
-        raise AssertionError("Candidate snapshot task did not finish")
+        result = self.task("/snapshots", {"scope": {"kind": "paths", "server_id": self.server, "paths": ["world"]}}, timeout=180, label="snapshot")
+        return result["snapshot"]["id"]
 
-    def task(self, path, data=None):
+    def task(self, path, data=None, *, timeout=120, label="recovery"):
         accepted = self.request("POST", path, data, expected=202)
-        deadline = time.monotonic() + 120
+        deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             task = self.request("GET", "/tasks/" + accepted["task_id"])
             if task["status"] in {"completed", "failed", "cancelled"}:
                 if task["status"] != "completed":
-                    raise AssertionError("Candidate recovery task failed")
+                    raise AssertionError(f"Candidate {label} task failed")
                 return task["result"]
             time.sleep(0.2)
-        raise AssertionError("Candidate recovery task did not finish")
+        raise AssertionError(f"Candidate {label} task did not finish")
 
     def append(self, *lines):
         path = Path(self.fixture["server_path"]) / "data/logs/latest.log"

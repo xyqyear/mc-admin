@@ -26,6 +26,23 @@ func updateConfig(ctx context.Context, client *api.Client, mutate func(map[strin
 	return client.JSON(ctx, "PUT", "/api/config/modules/snapshots", map[string]any{"config_data": config.Data}, nil, 200)
 }
 
+func checkSnapshotIDs(actual, expected []string) error {
+	if len(actual) != len(expected) {
+		return fmt.Errorf("snapshot listing returned %d identities, expected %d", len(actual), len(expected))
+	}
+	wanted := make(map[string]bool, len(expected))
+	for _, id := range expected {
+		wanted[id] = true
+	}
+	for _, id := range actual {
+		if !wanted[id] {
+			return fmt.Errorf("snapshot listing returned unexpected or duplicate ID %q", id)
+		}
+		delete(wanted, id)
+	}
+	return nil
+}
+
 func repository(ctx context.Context, t *engine.Scope) error {
 	client, err := fixtures.Session(ctx, t, "owner")
 	if err != nil {
@@ -115,21 +132,28 @@ func repository(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 	}
-	for _, suffix := range []string{"", "?server_id=" + id, "?server_id=" + id + "&path=" + url.QueryEscape("/alpha")} {
+	for _, query := range []struct {
+		suffix string
+		ids    []string
+	}{
+		{"", ids},
+		{"?server_id=" + id, []string{ids[0], ids[1]}},
+		{"?server_id=" + id + "&path=" + url.QueryEscape("/alpha"), ids},
+	} {
 		var listed struct {
 			Snapshots []struct {
 				ID string `json:"id"`
 			} `json:"snapshots"`
 		}
-		if err = client.JSON(ctx, "GET", "/api/snapshots"+suffix, nil, &listed, 200); err != nil {
+		if err = client.JSON(ctx, "GET", "/api/snapshots"+query.suffix, nil, &listed, 200); err != nil {
 			return err
 		}
-		expected := 3
-		if suffix == "?server_id="+id {
-			expected = 2
+		actual := make([]string, 0, len(listed.Snapshots))
+		for _, snapshot := range listed.Snapshots {
+			actual = append(actual, snapshot.ID)
 		}
-		if len(listed.Snapshots) != expected {
-			return fmt.Errorf("snapshot coverage listing %q returned %d, expected %d", suffix, len(listed.Snapshots), expected)
+		if err = checkSnapshotIDs(actual, query.ids); err != nil {
+			return fmt.Errorf("snapshot coverage listing %q: %w", query.suffix, err)
 		}
 	}
 	if err = client.JSON(ctx, "POST", "/api/snapshots/previews", map[string]any{"source_snapshot_id": ids[2], "scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"world/protected.txt"}}}, nil, 400); err != nil {

@@ -22,6 +22,7 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 		{ID: "archive.task-cancellation", Suite: "archive", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: cancellation},
 		{ID: "archive.task-permissions", Suite: "archive", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: taskPermissions},
 		{ID: "archive.formats-and-extraction-errors", Suite: "archive", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: formats},
+		{ID: "archive.subpath-compression-content", Suite: "archive", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: subpathCompression},
 	}
 }
 

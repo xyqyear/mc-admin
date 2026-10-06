@@ -16,6 +16,36 @@ import (
 	"mc-admin/e2e/internal/fixtures"
 )
 
+type configuration struct {
+	Data map[string]any `json:"config_data"`
+}
+
+func persistedConfiguration(ctx context.Context, client *api.Client, name string, acknowledged map[string]any) (map[string]any, error) {
+	var persisted configuration
+	if err := client.JSON(ctx, "GET", "/api/config/modules/"+name, nil, &persisted, 200); err != nil {
+		return nil, err
+	}
+	if !reflect.DeepEqual(persisted.Data, acknowledged) {
+		return nil, fmt.Errorf("%s read differs from acknowledged update", name)
+	}
+	return persisted.Data, nil
+}
+
+func rejectConfigurationUpdate(ctx context.Context, client *api.Client, name string, invalid, baseline map[string]any) error {
+	path := "/api/config/modules/" + name
+	if err := client.JSON(ctx, "PUT", path, map[string]any{"config_data": invalid}, nil, 400); err != nil {
+		return err
+	}
+	var actual configuration
+	if err := client.JSON(ctx, "GET", path, nil, &actual, 200); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(actual.Data, baseline) {
+		return fmt.Errorf("invalid %s update changed persistent configuration", name)
+	}
+	return nil
+}
+
 func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 	client, err := fixtures.Session(ctx, t, "admin")
 	if err != nil {
@@ -37,20 +67,18 @@ func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 	for _, change := range changes {
 		if err = t.Step("mutate and validate "+change.name+" without losing valid state", func() error {
 			path := "/api/config/modules/" + change.name
-			var module struct {
-				Data map[string]any `json:"config_data"`
-			}
-			if err := client.JSON(ctx, "GET", path, nil, &module, 200); err != nil {
+			var draft configuration
+			if err := client.JSON(ctx, "GET", path, nil, &draft, 200); err != nil {
 				return err
 			}
 			for key, value := range change.valid {
-				module.Data[key] = value
+				draft.Data[key] = value
 			}
 			var updated struct {
 				Success bool           `json:"success"`
 				Data    map[string]any `json:"updated_config"`
 			}
-			if err := client.JSON(ctx, "PUT", path, map[string]any{"config_data": module.Data}, &updated, 200); err != nil {
+			if err := client.JSON(ctx, "PUT", path, map[string]any{"config_data": draft.Data}, &updated, 200); err != nil {
 				return err
 			}
 			if !updated.Success {
@@ -72,23 +100,12 @@ func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 					return fmt.Errorf("%s ignored requested field %s", change.name, key)
 				}
 			}
-			if err := client.JSON(ctx, "GET", path, nil, &module, 200); err != nil {
+			baseline, err := persistedConfiguration(ctx, client, change.name, updated.Data)
+			if err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(module.Data, updated.Data) {
-				return fmt.Errorf("%s read differs from acknowledged update", change.name)
-			}
-			stored[change.name] = module.Data
-			if err := client.JSON(ctx, "PUT", path, map[string]any{"config_data": change.invalid}, nil, 400); err != nil {
-				return err
-			}
-			if err := client.JSON(ctx, "GET", path, nil, &module, 200); err != nil {
-				return err
-			}
-			if !reflect.DeepEqual(module.Data, stored[change.name]) {
-				return fmt.Errorf("invalid %s update changed persistent configuration", change.name)
-			}
-			return nil
+			stored[change.name] = baseline
+			return rejectConfigurationUpdate(ctx, client, change.name, change.invalid, baseline)
 		}); err != nil {
 			return err
 		}
@@ -99,22 +116,21 @@ func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 		}
 		for name, expected := range stored {
 			path := "/api/config/modules/" + name
-			var module struct {
-				Data map[string]any `json:"config_data"`
-			}
-			if err := client.JSON(ctx, "GET", path, nil, &module, 200); err != nil {
+			var restarted configuration
+			if err := client.JSON(ctx, "GET", path, nil, &restarted, 200); err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(module.Data, expected) {
+			if !reflect.DeepEqual(restarted.Data, expected) {
 				return fmt.Errorf("%s lost configuration on restart", name)
 			}
 			if err := client.JSON(ctx, "POST", path+"/reset", nil, nil, 200); err != nil {
 				return err
 			}
-			if err := client.JSON(ctx, "GET", path, nil, &module, 200); err != nil {
+			var reset configuration
+			if err := client.JSON(ctx, "GET", path, nil, &reset, 200); err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(module.Data, fixtures.BackendOf(t.Env).Configs[name]) {
+			if !reflect.DeepEqual(reset.Data, fixtures.BackendOf(t.Env).Configs[name]) {
 				return fmt.Errorf("%s reset differs from initial defaults", name)
 			}
 		}

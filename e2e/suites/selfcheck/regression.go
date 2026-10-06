@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -75,6 +74,13 @@ func history(ctx context.Context, t *engine.Scope) error {
 	if len(catalog) != 15 {
 		return fmt.Errorf("expected 15 documented checks, got %d; update scenario for catalog changes", len(catalog))
 	}
+	checkIDs := map[string]bool{}
+	for _, entry := range catalog {
+		if entry.Check == "" || checkIDs[entry.Check] {
+			return fmt.Errorf("self-check catalog has an empty or repeated check ID")
+		}
+		checkIDs[entry.Check] = true
+	}
 	var full run
 	if err = t.Step("full self-check runs every registered check and persists all healthy and unhealthy findings", func() error {
 		if err := c.RunTask(ctx, "POST", "/api/self-check/run", nil, &full); err != nil {
@@ -114,35 +120,17 @@ func history(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	if err = t.Step("task execution retains every check result", func() error {
-		var result run
-		if err := c.RunTask(ctx, "POST", "/api/self-check/run", nil, &result); err != nil {
-			return err
-		}
-		if result.ID == "" || result.Error != nil || len(result.Findings) == 0 {
-			return fmt.Errorf("task has no valid self-check result")
-		}
-		for _, entry := range catalog {
-			found := false
-			for _, finding := range result.Findings {
-				if finding.Check == entry.Check {
-					found = true
-				}
-			}
-			if !found {
-				return fmt.Errorf("task omitted check %s", entry.Check)
-			}
-		}
-		return c.JSON(ctx, "GET", "/api/self-check/runs/"+result.ID, nil, nil, 200)
-	}); err != nil {
-		return err
-	}
+	created := map[string]run{full.ID: full}
 
 	for _, entry := range catalog {
 		result, err := single(ctx, c, entry.Check)
 		if err != nil {
 			return err
 		}
+		if _, exists := created[result.ID]; exists {
+			return fmt.Errorf("self-check reused run ID %s", result.ID)
+		}
+		created[result.ID] = result
 		for _, f := range result.Findings {
 			if f.Check != entry.Check || f.Status == "failed" {
 				return fmt.Errorf("single-check %s returned unrelated or failed finding", entry.Check)
@@ -153,18 +141,43 @@ func history(ctx context.Context, t *engine.Scope) error {
 		if err := fixtures.BackendOf(t.Env).Restart(ctx); err != nil {
 			return err
 		}
-		var history struct {
-			Total int   `json:"total"`
-			Runs  []run `json:"runs"`
+		seen := map[string]bool{}
+		total := 0
+		for offset := 0; offset == 0 || offset < total; offset += 2 {
+			var page struct {
+				Total int   `json:"total"`
+				Runs  []run `json:"runs"`
+			}
+			if err := c.JSON(ctx, "GET", fmt.Sprintf("/api/self-check/runs?limit=2&offset=%d", offset), nil, &page, 200); err != nil {
+				return err
+			}
+			if offset == 0 {
+				total = page.Total
+			}
+			if total < len(created) || page.Total != total || len(page.Runs) != min(2, total-offset) {
+				return fmt.Errorf("inconsistent retained history total=%d page=%d offset=%d", page.Total, len(page.Runs), offset)
+			}
+			for _, item := range page.Runs {
+				if item.ID == "" || seen[item.ID] {
+					return fmt.Errorf("history contains empty or duplicate run ID %q", item.ID)
+				}
+				seen[item.ID] = true
+				if expected, exists := created[item.ID]; exists && (item.Scope != expected.Scope || item.Check != expected.Check) {
+					return fmt.Errorf("history changed run %s scope or check", item.ID)
+				}
+			}
 		}
-		if err := c.JSON(ctx, "GET", "/api/self-check/runs?limit=2&offset=1", nil, &history, 200); err != nil {
-			return err
-		}
-		if history.Total < 17 || len(history.Runs) != 2 {
-			return fmt.Errorf("unexpected retained history total=%d page=%d", history.Total, len(history.Runs))
-		}
-		if err := c.JSON(ctx, "GET", "/api/self-check/runs/"+full.ID, nil, nil, 200); err != nil {
-			return err
+		for id, expected := range created {
+			if !seen[id] {
+				return fmt.Errorf("history lost created run %s", id)
+			}
+			var detail run
+			if err := c.JSON(ctx, "GET", "/api/self-check/runs/"+id, nil, &detail, 200); err != nil {
+				return err
+			}
+			if detail.ID != id || detail.Scope != expected.Scope || detail.Check != expected.Check || !reflect.DeepEqual(detail.Findings, expected.Findings) {
+				return fmt.Errorf("retained run %s changed its identity, scope, check or findings", id)
+			}
 		}
 		var status struct {
 			State *struct {
@@ -434,19 +447,11 @@ func upload(ctx context.Context, c *api.Client, id, path, name string, data []by
 	if err := c.JSON(ctx, "POST", base+"/policy?session_id="+url.QueryEscape(prepared.ID), map[string]string{"mode": "always_overwrite"}, nil, 200); err != nil {
 		return err
 	}
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("files", name)
+	body, contentType, err := api.MultipartFiles([]api.FilePart{{Filename: name, Content: data}})
 	if err != nil {
 		return err
 	}
-	if _, err = part.Write(data); err != nil {
-		return err
-	}
-	if err = writer.Close(); err != nil {
-		return err
-	}
-	response, err := c.Do(ctx, "POST", base+"/multiple?session_id="+url.QueryEscape(prepared.ID)+"&path="+url.QueryEscape(path), body.Bytes(), http.Header{"Content-Type": {writer.FormDataContentType()}})
+	response, err := c.Do(ctx, "POST", base+"/multiple?session_id="+url.QueryEscape(prepared.ID)+"&path="+url.QueryEscape(path), body, http.Header{"Content-Type": {contentType}})
 	if err != nil {
 		return err
 	}

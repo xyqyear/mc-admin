@@ -2,12 +2,10 @@ package archive
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"net/url"
 	"reflect"
-	"strings"
 	"time"
 
 	"mc-admin/e2e/internal/api"
@@ -58,13 +56,9 @@ func taskPermissions(ctx context.Context, t *engine.Scope) error {
 	if err = owner.JSON(ctx, "GET", "/api/tasks/"+completed, nil, &original, 200); err != nil {
 		return err
 	}
-	var input strings.Builder
-	for n := 0; n < 260000; n++ {
-		sum := sha256.Sum256([]byte(fmt.Sprintf("task-permissions-%d", n)))
-		fmt.Fprintf(&input, "%x", sum)
-	}
+	input := compressionWorkload("task-permissions")
 	for _, path := range []string{"/task-permissions.txt", "/task-cancel.txt"} {
-		if err = fixtures.CreateFile(ctx, owner, id, path, input.String()); err != nil {
+		if err = fixtures.CreateFile(ctx, owner, id, path, input); err != nil {
 			return err
 		}
 	}

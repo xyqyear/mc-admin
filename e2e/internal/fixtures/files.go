@@ -22,13 +22,16 @@ func WriteFile(ctx context.Context, client *api.Client, serverID, file, content 
 
 func CheckFile(ctx context.Context, client *api.Client, serverID, file, expected string) error {
 	var response struct {
-		Content string `json:"content"`
+		Content *string `json:"content"`
 	}
 	if err := client.JSON(ctx, "GET", "/api/servers/"+serverID+"/files/content?path="+url.QueryEscape(file), nil, &response, 200); err != nil {
 		return err
 	}
-	if response.Content != expected {
-		return fmt.Errorf("%s content=%q, expected %q", file, response.Content, expected)
+	if response.Content == nil {
+		return fmt.Errorf("%s response omitted string content", file)
+	}
+	if *response.Content != expected {
+		return fmt.Errorf("%s content=%q, expected %q", file, *response.Content, expected)
 	}
 	return nil
 }

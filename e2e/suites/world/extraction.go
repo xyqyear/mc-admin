@@ -5,8 +5,60 @@ import (
 	"fmt"
 	"reflect"
 
+	"mc-admin/e2e/internal/api"
 	"mc-admin/e2e/internal/engine"
 )
+
+type claimsResponse struct {
+	Available bool   `json:"available"`
+	Format    string `json:"detected_format"`
+	Teams     []struct {
+		ID       string `json:"id"`
+		Name     string `json:"display_name"`
+		Total    int    `json:"total_chunks"`
+		Clusters []struct {
+			ID       string     `json:"id"`
+			Region   *string    `json:"region_dir_relpath"`
+			Chunks   [][2]int   `json:"chunks"`
+			Forced   [][2]int   `json:"force_loaded"`
+			Centroid [2]float64 `json:"centroid_block"`
+		} `json:"clusters"`
+	} `json:"teams"`
+}
+
+type playerLocationsResponse struct {
+	Players []struct {
+		UUID      string                    `json:"uuid"`
+		Dimension string                    `json:"dimension_id"`
+		Region    *string                   `json:"region_dir_relpath"`
+		Pos       struct{ X, Y, Z float64 } `json:"pos"`
+	} `json:"players"`
+	Skipped []struct {
+		Reason string `json:"reason"`
+	} `json:"skipped"`
+}
+
+func claimsAliasMatches(ctx context.Context, client *api.Client, base string, expected claimsResponse) error {
+	var actual claimsResponse
+	if err := client.JSON(ctx, "GET", base+"/claims", nil, &actual, 200); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		return fmt.Errorf("claims alias or cluster IDs are unstable")
+	}
+	return nil
+}
+
+func playerLocationsAliasMatches(ctx context.Context, client *api.Client, base string, expected playerLocationsResponse) error {
+	var actual playerLocationsResponse
+	if err := client.JSON(ctx, "GET", base+"/player-locations", nil, &actual, 200); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(actual, expected) {
+		return fmt.Errorf("player location alias differs")
+	}
+	return nil
+}
 
 func extraction(ctx context.Context, t *engine.Scope) error {
 	s, err := open(ctx, t)
@@ -34,22 +86,7 @@ func extraction(ctx context.Context, t *engine.Scope) error {
 	if err = s.seed("world/ftbchunks/"+teamID+".snbt", []byte(`{chunks: {"e2e:testing": [{x: 0, z: 0, force_loaded: 1b},{x: 1, z: 0},{x: 10,z: 10}], "e2e:absent": [{x: -1,z: -1}]}}`)); err != nil {
 		return err
 	}
-	var claims struct {
-		Available bool   `json:"available"`
-		Format    string `json:"detected_format"`
-		Teams     []struct {
-			ID       string `json:"id"`
-			Name     string `json:"display_name"`
-			Total    int    `json:"total_chunks"`
-			Clusters []struct {
-				ID       string     `json:"id"`
-				Region   *string    `json:"region_dir_relpath"`
-				Chunks   [][2]int   `json:"chunks"`
-				Forced   [][2]int   `json:"force_loaded"`
-				Centroid [2]float64 `json:"centroid_block"`
-			} `json:"clusters"`
-		} `json:"teams"`
-	}
+	var claims claimsResponse
 	if err = s.client.JSON(ctx, "GET", s.base+"/world-restore/claims", nil, &claims, 200); err != nil {
 		return err
 	}
@@ -69,12 +106,8 @@ func extraction(ctx context.Context, t *engine.Scope) error {
 	if forced != 1 || unresolved != 1 {
 		return fmt.Errorf("FTB forced=%d unresolved=%d", forced, unresolved)
 	}
-	copy := claims
-	if err = s.client.JSON(ctx, "GET", s.base+"/claims", nil, &copy, 200); err != nil {
+	if err = claimsAliasMatches(ctx, s.client, s.base, claims); err != nil {
 		return err
-	}
-	if !reflect.DeepEqual(copy, claims) {
-		return fmt.Errorf("claims alias or cluster IDs are unstable")
 	}
 	if err = s.seed("world/playerdata/"+playerID+".dat", playerNBT("e2e:testing")); err != nil {
 		return err
@@ -85,17 +118,7 @@ func extraction(ctx context.Context, t *engine.Scope) error {
 	if err = s.seed("world/playerdata/44444444-4444-4444-8444-444444444444.dat", []byte("not NBT")); err != nil {
 		return err
 	}
-	var locations struct {
-		Players []struct {
-			UUID      string                    `json:"uuid"`
-			Dimension string                    `json:"dimension_id"`
-			Region    *string                   `json:"region_dir_relpath"`
-			Pos       struct{ X, Y, Z float64 } `json:"pos"`
-		} `json:"players"`
-		Skipped []struct {
-			Reason string `json:"reason"`
-		} `json:"skipped"`
-	}
+	var locations playerLocationsResponse
 	if err = s.client.JSON(ctx, "GET", s.base+"/world-restore/player-locations", nil, &locations, 200); err != nil {
 		return err
 	}
@@ -113,12 +136,8 @@ func extraction(ctx context.Context, t *engine.Scope) error {
 			return fmt.Errorf("absent dimension was resolved")
 		}
 	}
-	other := locations
-	if err = s.client.JSON(ctx, "GET", s.base+"/player-locations", nil, &other, 200); err != nil {
+	if err = playerLocationsAliasMatches(ctx, s.client, s.base, locations); err != nil {
 		return err
-	}
-	if !reflect.DeepEqual(other, locations) {
-		return fmt.Errorf("player location alias differs")
 	}
 	if err = s.config(ctx, "world", func(config map[string]any) {
 		config["dimension_labels"] = map[string]string{"dimensions/e2e/testing": "E2E dimension"}

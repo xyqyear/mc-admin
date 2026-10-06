@@ -1,11 +1,9 @@
 package files
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +14,33 @@ import (
 	"mc-admin/e2e/internal/engine"
 	"mc-admin/e2e/internal/fixtures"
 )
+
+type searchEntry struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+type searchResponse struct {
+	Count   int           `json:"total_count"`
+	Results []searchEntry `json:"results"`
+}
+
+func checkSearchResults(result searchResponse, expected []searchEntry) error {
+	if result.Count != len(result.Results) || len(result.Results) != len(expected) {
+		return fmt.Errorf("search count=%d results=%d expected=%d", result.Count, len(result.Results), len(expected))
+	}
+	wanted := make(map[searchEntry]bool, len(expected))
+	for _, entry := range expected {
+		wanted[entry] = true
+	}
+	for _, entry := range result.Results {
+		if !wanted[entry] {
+			return fmt.Errorf("search returned unexpected or duplicate file %+v", entry)
+		}
+		delete(wanted, entry)
+	}
+	return nil
+}
 
 func directories(ctx context.Context, t *engine.Scope) error {
 	c, err := fixtures.Session(ctx, t, "owner")
@@ -37,26 +62,24 @@ func directories(ctx context.Context, t *engine.Scope) error {
 	}
 	for _, query := range []struct {
 		values map[string]any
-		count  int
+		files  []searchEntry
 	}{
-		{map[string]any{"regex": "\\.txt$", "search_subfolders": false}, 1},
-		{map[string]any{"regex": "top", "ignore_case": false}, 0},
-		{map[string]any{"regex": "top", "ignore_case": true}, 1},
-		{map[string]any{"regex": "\\.txt$", "min_size": 50}, 1},
-		{map[string]any{"regex": "\\.txt$", "max_size": 2}, 1},
-		{map[string]any{"regex": "comma,name"}, 1},
-		{map[string]any{"regex": "\\.txt$", "newer_than": "2000-01-01T00:00:00Z", "older_than": "2100-01-01T00:00:00Z"}, 4},
-		{map[string]any{"regex": "\\.txt$", "newer_than": "2100-01-01T00:00:00Z"}, 0},
-		{map[string]any{"regex": "\\.txt$", "older_than": "2000-01-01T00:00:00Z"}, 0},
+		{map[string]any{"regex": "\\.txt$", "search_subfolders": false}, []searchEntry{{"/TOP.txt", "TOP.txt"}}},
+		{map[string]any{"regex": "top", "ignore_case": false}, nil},
+		{map[string]any{"regex": "top", "ignore_case": true}, []searchEntry{{"/TOP.txt", "TOP.txt"}}},
+		{map[string]any{"regex": "\\.txt$", "min_size": 50}, []searchEntry{{"/deeper/large.txt", "large.txt"}}},
+		{map[string]any{"regex": "\\.txt$", "max_size": 2}, []searchEntry{{"/deeper/small.txt", "small.txt"}}},
+		{map[string]any{"regex": "comma,name"}, []searchEntry{{"/deeper/comma,name.txt", "comma,name.txt"}}},
+		{map[string]any{"regex": "\\.txt$", "newer_than": "2000-01-01T00:00:00Z", "older_than": "2100-01-01T00:00:00Z"}, []searchEntry{{"/TOP.txt", "TOP.txt"}, {"/deeper/small.txt", "small.txt"}, {"/deeper/large.txt", "large.txt"}, {"/deeper/comma,name.txt", "comma,name.txt"}}},
+		{map[string]any{"regex": "\\.txt$", "newer_than": "2100-01-01T00:00:00Z"}, nil},
+		{map[string]any{"regex": "\\.txt$", "older_than": "2000-01-01T00:00:00Z"}, nil},
 	} {
-		var result struct {
-			Count int `json:"total_count"`
-		}
+		var result searchResponse
 		if err = c.JSON(ctx, "POST", base+"/search?path=/nested", query.values, &result, 200); err != nil {
 			return err
 		}
-		if result.Count != query.count {
-			return fmt.Errorf("search %+v: count=%d expected=%d", query.values, result.Count, query.count)
+		if err = checkSearchResults(result, query.files); err != nil {
+			return fmt.Errorf("search %+v: %w", query.values, err)
 		}
 	}
 	for _, op := range []struct {
@@ -113,21 +136,15 @@ func directories(ctx context.Context, t *engine.Scope) error {
 }
 
 func upload(ctx context.Context, c *api.Client, route string, files map[string]string, status int) (map[string]map[string]any, error) {
-	var body bytes.Buffer
-	form := multipart.NewWriter(&body)
+	parts := make([]api.FilePart, 0, len(files))
 	for name, content := range files {
-		part, err := form.CreateFormFile("files", name)
-		if err != nil {
-			return nil, err
-		}
-		if _, err = part.Write([]byte(content)); err != nil {
-			return nil, err
-		}
+		parts = append(parts, api.FilePart{Filename: name, Content: []byte(content)})
 	}
-	if err := form.Close(); err != nil {
+	body, contentType, err := api.MultipartFiles(parts)
+	if err != nil {
 		return nil, err
 	}
-	response, err := c.Do(ctx, "POST", route, body.Bytes(), http.Header{"Content-Type": {form.FormDataContentType()}})
+	response, err := c.Do(ctx, "POST", route, body, http.Header{"Content-Type": {contentType}})
 	if err != nil {
 		return nil, err
 	}

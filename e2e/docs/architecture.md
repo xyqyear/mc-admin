@@ -40,6 +40,8 @@ flowchart TD
 
 The dependency direction keeps the engine independent of MC Admin routes and feature names. Suites do not import each other. A shared helper belongs in `fixtures` only when multiple domains need it; a feature-specific operation stays beside its scenarios. HTTP wrappers preserve status codes and wire semantics instead of duplicating the backend's service layer.
 
+`internal/api/multipart.go` encodes ordered `files` parts with their complete filenames and bytes. Suites own upload admission, overwrite policies, HTTP status expectations and data assertions. Configuration and world-alias observations decode every GET into a fresh DTO so retained expected maps and slices remain independent. `fixtures.CheckFile` requires a present string `content`; an empty string is valid, while missing or null content is a protocol failure.
+
 ## Environment composition
 
 An `environment.Provider` has an ID, dependency IDs, `Setup`, and optional `Verify`. An `environment.Recipe` declares its providers and Minecraft slot requirement. The graph is validated before deployment for missing dependencies, duplicates, cycles and invalid budgets. A recipe ID refers to one definition in the catalog; changing its initial-state contract requires changing the definition/version, not silently reusing the same name for different setups.

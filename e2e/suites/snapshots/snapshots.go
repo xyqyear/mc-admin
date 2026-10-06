@@ -3,6 +3,8 @@ package snapshots
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -203,6 +205,13 @@ func restore(ctx context.Context, t *engine.Scope) error {
 		}
 		if err = fixtures.CheckFile(ctx, client, id, "/restore/empty.txt", ""); err != nil {
 			return err
+		}
+		empty, err := os.Stat(filepath.Join(t.Env.Dir, "servers", id, "data", "restore", "empty.txt"))
+		if err != nil {
+			return err
+		}
+		if !empty.Mode().IsRegular() || empty.Size() != 0 {
+			return fmt.Errorf("restored empty file is not a regular zero-byte file")
 		}
 		return client.JSON(ctx, "GET", "/api/servers/"+id+"/files/content?path=/restore/extra.txt", nil, nil, 404)
 	}); err != nil {
