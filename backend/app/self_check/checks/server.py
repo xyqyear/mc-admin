@@ -270,6 +270,5 @@ DEFINITIONS: dict[str, CheckDefinition] = {
 }
 
 
-_find_backup_jars_sync = find_backup_jars_sync
 _check_backup_mod_removed = check_backup_mod_removed
 _check_filesystem_db_sync = check_filesystem_db_sync

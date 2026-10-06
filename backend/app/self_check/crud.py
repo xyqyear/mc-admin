@@ -2,8 +2,10 @@
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import delete, func, literal, select, true, union_all
+from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.self_check.models import SelfCheckFinding, SelfCheckRun
@@ -26,27 +28,12 @@ def _duration_ms(row: SelfCheckRun) -> int:
     return int((row.finished_at - row.started_at).total_seconds() * 1000)
 
 
-def _finding_from_row(row: SelfCheckFinding) -> SelfCheckFindingResult:
+def _finding_from_row(row: SelfCheckFinding | Row[tuple[Any, ...]]) -> SelfCheckFindingResult:
     return SelfCheckFindingResult(
         check_id=row.check_id,
         category=row.category,
         severity=row.severity,  # type: ignore[arg-type]
         status=row.status,  # type: ignore[arg-type]
-        server_id=row.server_id,
-        title=row.title,
-        message=row.message,
-        evidence=json.loads(row.evidence_json or "{}"),
-        remediation=json.loads(row.remediation_json or "[]"),
-        created_at=row.created_at,
-    )
-
-
-def _finding_from_mapping(row) -> SelfCheckFindingResult:
-    return SelfCheckFindingResult(
-        check_id=row.check_id,
-        category=row.category,
-        severity=row.severity,
-        status=row.status,
         server_id=row.server_id,
         title=row.title,
         message=row.message,
@@ -342,7 +329,7 @@ async def get_current_state(
         return None
 
     findings = [
-        _finding_from_mapping(row)
+        _finding_from_row(row)
         for row in rows
         if row.id is not None
     ]

@@ -5,17 +5,13 @@ from . import backup, dependency, dns, files, locks, log_monitor, server, storag
 from .base import (
     CheckDefinition,
     SelfCheckContext,
-    _finding,
-    _skipped,
-    _success,
-    _usage_percent,
     finding,
     skipped,
     success,
     usage_percent,
 )
-from .files import PermissionScanResult, _scan_permission_owner_with_fd
-from .server import BackupJarMatch, _find_backup_jars_sync
+from .files import PermissionScanResult
+from .server import BackupJarMatch
 
 
 def _merge_definitions() -> dict[str, CheckDefinition]:
@@ -54,12 +50,6 @@ __all__ = [
     "CheckDefinition",
     "PermissionScanResult",
     "SelfCheckContext",
-    "_find_backup_jars_sync",
-    "_finding",
-    "_scan_permission_owner_with_fd",
-    "_skipped",
-    "_success",
-    "_usage_percent",
     "finding",
     "skipped",
     "success",

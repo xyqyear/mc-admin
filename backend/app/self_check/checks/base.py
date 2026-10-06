@@ -167,9 +167,3 @@ def usage_percent(used: float, total: float) -> float:
     if total <= 0:
         return 0.0
     return (used / total) * 100
-
-
-_finding = finding
-_success = success
-_skipped = skipped
-_usage_percent = usage_percent

@@ -176,5 +176,4 @@ DEFINITIONS: dict[str, CheckDefinition] = {
 }
 
 
-_scan_permission_owner_with_fd = scan_permission_owner_with_fd
 _check_permission_consistency = check_permission_consistency
