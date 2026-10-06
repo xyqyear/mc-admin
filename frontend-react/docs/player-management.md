@@ -2,6 +2,8 @@
 
 Surface for everything the backend's player-tracking system records: who's been on a server, when, what they said, what they earned. Two views: the global Player Management page (table across all servers) and the server-overview's online-players card.
 
+An overview player card is a keyboard-accessible button that opens the existing detail dialog by UUID without navigating. The dialog is mounted independently of the online list, so an offline player or disappearing health card does not close it. Closing the dialog leaves the user on the server overview; choosing another player initializes a fresh detail tab state.
+
 ## Pages and components
 
 - `features/players/PlayerManagementScreen.tsx` — global page at `/players`. Sortable, filterable table of every recorded player.
