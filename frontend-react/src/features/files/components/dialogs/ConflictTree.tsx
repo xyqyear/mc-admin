@@ -1,3 +1,4 @@
+import { buildPathTree, treeKeys, type PathTreeNode } from '@/features/files/pathTree'
 import { formatFileSize } from '@/shared/utils/formatUtils'
 import React, { useState, useMemo } from 'react'
 import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
@@ -7,89 +8,21 @@ import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
 import FileIcon from '@/features/files/components/FileIcon'
 import type { OverwriteConflict } from '@/features/files/contracts'
-import type { FileItem } from '@/features/files/contracts'
 
-interface TreeNode {
-  key: string
-  name: string
-  isLeaf: boolean
-  conflict?: OverwriteConflict
-  children?: TreeNode[]
-}
+type TreeNode = PathTreeNode<OverwriteConflict>
 
 interface ConflictTreeProps {
   conflicts: OverwriteConflict[]
   checkedKeys: React.Key[]
-  onCheck: (checked: React.Key[] | { checked: React.Key[]; halfChecked: React.Key[] }) => void
+  onCheck: (checked: React.Key[]) => void
   title?: string
 }
 
-const conflictToFileItem = (conflict: OverwriteConflict, name: string): FileItem => ({
-  name,
-  path: conflict.path,
-  type: conflict.type,
-  size: conflict.current_size || 0,
-  modified_at: Date.now() / 1000,
-})
-
 function buildConflictTreeData(conflicts: OverwriteConflict[]): TreeNode[] {
-  const nodeMap: Record<string, TreeNode> = {}
-  const rootNodes: TreeNode[] = []
-
-  conflicts.forEach((conflict) => {
-    const pathParts = conflict.path.split('/')
-    let currentPath = ''
-
-    pathParts.forEach((part: string, partIndex: number) => {
-      const parentPath = currentPath
-      currentPath += (currentPath ? '/' : '') + part
-      const isLastPart = partIndex === pathParts.length - 1
-
-      if (!nodeMap[currentPath]) {
-        const node: TreeNode = {
-          key: currentPath,
-          name: part,
-          isLeaf: isLastPart,
-          conflict: isLastPart ? conflict : undefined,
-          children: isLastPart ? undefined : [],
-        }
-        nodeMap[currentPath] = node
-
-        if (parentPath && nodeMap[parentPath]) {
-          nodeMap[parentPath].children = nodeMap[parentPath].children || []
-          nodeMap[parentPath].children!.push(node)
-        } else if (!parentPath) {
-          rootNodes.push(node)
-        }
-      }
-    })
-  })
-
-  return rootNodes
-}
-
-function getAllKeys(nodes: TreeNode[]): string[] {
-  const keys: string[] = []
-  const traverse = (list: TreeNode[]) => {
-    list.forEach(node => {
-      keys.push(node.key)
-      if (node.children) traverse(node.children)
-    })
-  }
-  traverse(nodes)
-  return keys
-}
-
-function getLeafKeys(nodes: TreeNode[]): string[] {
-  const keys: string[] = []
-  const traverse = (list: TreeNode[]) => {
-    list.forEach(node => {
-      if (node.isLeaf) keys.push(node.key)
-      if (node.children) traverse(node.children)
-    })
-  }
-  traverse(nodes)
-  return keys
+  return buildPathTree(conflicts.map(conflict => {
+    const parts = conflict.path.split('/')
+    return { segments: parts.map((name, index) => ({ name, key: parts.slice(0, index + 1).join('/') })), payload: conflict }
+  }))
 }
 
 const TreeNodeRow: React.FC<{
@@ -98,20 +31,20 @@ const TreeNodeRow: React.FC<{
   expandedKeys: Set<string>
   checkedSet: Set<string>
   onToggle: (key: string) => void
-  onCheckChange: (key: string, checked: boolean) => void
+  onCheckChange: (keys: string[], checked: boolean) => void
 }> = ({ node, level, expandedKeys, checkedSet, onToggle, onCheckChange }) => {
   const isExpanded = expandedKeys.has(node.key)
   const hasChildren = !!node.children?.length
   const isChecked = checkedSet.has(node.key)
 
-  const childLeafKeys = useMemo(() => node.children ? getLeafKeys([node]) : [], [node])
+  const childLeafKeys = useMemo(() => node.children ? treeKeys([node], true) : [], [node])
   const dirChecked = hasChildren
     ? childLeafKeys.length > 0 && childLeafKeys.every(k => checkedSet.has(k))
     : isChecked
   const dirIndeterminate = hasChildren && !dirChecked && childLeafKeys.some(k => checkedSet.has(k))
 
   const handleDirCheck = (checked: boolean) => {
-    childLeafKeys.forEach(k => onCheckChange(k, checked))
+    onCheckChange(childLeafKeys, checked)
   }
 
   return (
@@ -134,20 +67,17 @@ const TreeNodeRow: React.FC<{
             if (hasChildren) {
               handleDirCheck(checked === true)
             } else {
-              onCheckChange(node.key, checked === true)
+              onCheckChange([node.key], checked === true)
             }
           }}
         />
         <span className="shrink-0">
-          <FileIcon file={conflictToFileItem(
-            node.conflict || { path: node.key, type: 'directory', current_size: 0, new_size: 0 },
-            node.name
-          )} />
+          <FileIcon file={{ name: node.name, type: node.payload?.type ?? 'directory' }} />
         </span>
         <span className="text-sm">{node.name}</span>
-        {node.conflict?.current_size != null && (
+        {node.payload?.current_size != null && (
           <span className="text-xs text-muted-foreground ml-1">
-            ({formatFileSize(node.conflict.current_size, { decimals: 1, zeroValue: "0 B" })} → {formatFileSize(node.conflict.new_size || 0, { decimals: 1, zeroValue: "0 B" })})
+            ({formatFileSize(node.payload.current_size, { decimals: 1, zeroValue: "0 B" })} → {formatFileSize(node.payload.new_size || 0, { decimals: 1, zeroValue: "0 B" })})
           </span>
         )}
       </div>
@@ -185,15 +115,17 @@ const ConflictTree: React.FC<ConflictTreeProps> = ({
     })
   }
 
-  const handleCheckChange = (key: string, checked: boolean) => {
+  const handleCheckChange = (keys: string[], checked: boolean) => {
     const newChecked = new Set(checkedSet)
-    if (checked) newChecked.add(key)
-    else newChecked.delete(key)
+    for (const key of keys) {
+      if (checked) newChecked.add(key)
+      else newChecked.delete(key)
+    }
     onCheck(Array.from(newChecked))
   }
 
   const handleExpandAll = () => {
-    setExpandedKeys(new Set(getAllKeys(treeData)))
+    setExpandedKeys(new Set(treeKeys(treeData)))
   }
 
   const handleCollapseAll = () => {

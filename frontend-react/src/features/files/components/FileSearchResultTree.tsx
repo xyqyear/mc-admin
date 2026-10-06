@@ -1,3 +1,4 @@
+import { buildPathTree, treeKeys, type PathTreeNode } from '@/features/files/pathTree'
 import { formatFileSize } from '@/shared/utils/formatUtils'
 import React, { useState, useMemo, useEffect } from 'react'
 import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
@@ -5,18 +6,10 @@ import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import FileIcon from '@/features/files/components/FileIcon'
 import HighlightedFileName from '@/features/files/components/HighlightedFileName'
-import type { FileItem } from '@/features/files/contracts'
 import type { SearchFileItem } from '@/features/files/contracts'
 import { matchRegex } from '@/features/files/search'
 
-interface TreeNode {
-  key: string
-  name: string
-  isLeaf: boolean
-  size?: number
-  matchResult?: ReturnType<typeof matchRegex>
-  children?: TreeNode[]
-}
+type TreeNode = PathTreeNode<SearchFileItem>
 
 interface FileSearchResultTreeProps {
   searchResults: SearchFileItem[]
@@ -24,91 +17,29 @@ interface FileSearchResultTreeProps {
   onSelect: (selectedKeys: React.Key[]) => void
 }
 
-const searchResultToFileItem = (result: SearchFileItem): FileItem => ({
-  name: result.name,
-  path: result.path,
-  type: result.type,
-  size: result.size,
-  modified_at: new Date(result.modified_at).getTime() / 1000
-})
-
-function buildTreeData(results: SearchFileItem[], currentRegex: string): TreeNode[] {
-  const nodeMap: Record<string, TreeNode> = {}
-  const rootNodes: TreeNode[] = []
-
-  results.forEach((result) => {
-    const pathParts = result.path.split('/').filter(part => part)
-    let currentPath = ''
-
-    pathParts.forEach((part: string, partIndex: number) => {
-      const parentPath = currentPath
-      currentPath += (currentPath ? '/' : '') + part
-      const isLastPart = partIndex === pathParts.length - 1
-      const nodeKey = '/' + currentPath
-
-      if (!nodeMap[nodeKey]) {
-        const matchResult = currentRegex ? matchRegex(part, currentRegex) : undefined
-
-        const node: TreeNode = {
-          key: nodeKey,
-          name: part,
-          isLeaf: isLastPart,
-          size: isLastPart && result.type === 'file' ? result.size : undefined,
-          matchResult,
-          children: isLastPart ? undefined : [],
-        }
-        nodeMap[nodeKey] = node
-
-        const parentKey = parentPath ? '/' + parentPath : ''
-        if (parentPath && nodeMap[parentKey]) {
-          nodeMap[parentKey].children = nodeMap[parentKey].children || []
-          nodeMap[parentKey].children!.push(node)
-        } else if (!parentPath) {
-          rootNodes.push(node)
-        }
-      }
-    })
-  })
-
-  return rootNodes
-}
-
-function getAllKeys(nodes: TreeNode[]): string[] {
-  const keys: string[] = []
-  const traverse = (list: TreeNode[]) => {
-    list.forEach(node => {
-      keys.push(node.key)
-      if (node.children) traverse(node.children)
-    })
-  }
-  traverse(nodes)
-  return keys
+function buildTreeData(results: SearchFileItem[]): TreeNode[] {
+  return buildPathTree(results.map(result => {
+    const parts = result.path.split('/').filter(Boolean)
+    return { segments: parts.map((name, index) => ({ name, key: '/' + parts.slice(0, index + 1).join('/') })), payload: result }
+  }))
 }
 
 const TreeNodeRow: React.FC<{
   node: TreeNode
   level: number
   expandedKeys: Set<string>
-  searchResults: SearchFileItem[]
+  resultsByPath: ReadonlyMap<string, SearchFileItem>
+  currentRegex: string
   onToggle: (key: string) => void
   onSelect: (key: string) => void
-}> = ({ node, level, expandedKeys, searchResults, onToggle, onSelect }) => {
+}> = ({ node, level, expandedKeys, resultsByPath, currentRegex, onToggle, onSelect }) => {
   const isExpanded = expandedKeys.has(node.key)
   const hasChildren = !!node.children?.length
 
-  const nodeItem: SearchFileItem = useMemo(() => {
-    if (node.isLeaf) {
-      const found = searchResults.find(r => r.path === node.key)
-      if (found) return found
-    }
-    return {
-      name: node.name,
-      path: node.key,
-      type: hasChildren ? 'directory' as const : 'file' as const,
-      size: 0,
-      modified_at: new Date().toISOString(),
-    }
-  }, [node, hasChildren, searchResults])
+  const nodeItem = node.isLeaf ? resultsByPath.get(node.key) : undefined
+  const iconFile = nodeItem ?? { name: node.name, type: hasChildren ? 'directory' as const : 'file' as const }
+  const matchResult = currentRegex ? matchRegex(node.name, currentRegex) : undefined
+  const size = node.isLeaf && node.payload?.type === 'file' ? node.payload.size : undefined
 
   return (
     <>
@@ -128,12 +59,12 @@ const TreeNodeRow: React.FC<{
           <span className="w-3.5" />
         )}
         <span className="shrink-0">
-          <FileIcon file={searchResultToFileItem(nodeItem)} />
+          <FileIcon file={iconFile} />
         </span>
-        <HighlightedFileName name={node.name} matchResult={node.matchResult} />
-        {node.isLeaf && node.size != null && (
+        <HighlightedFileName name={node.name} matchResult={matchResult} />
+        {node.isLeaf && size != null && (
           <span className="text-xs text-muted-foreground ml-1">
-            ({formatFileSize(node.size, { decimals: 1, zeroValue: "0 B", terabytes: true })})
+            ({formatFileSize(size, { decimals: 1, zeroValue: "0 B", terabytes: true })})
           </span>
         )}
       </div>
@@ -143,7 +74,8 @@ const TreeNodeRow: React.FC<{
           node={child}
           level={level + 1}
           expandedKeys={expandedKeys}
-          searchResults={searchResults}
+          resultsByPath={resultsByPath}
+          currentRegex={currentRegex}
           onToggle={onToggle}
           onSelect={onSelect}
         />
@@ -158,15 +90,21 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
   onSelect
 }) => {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
-  const treeData = useMemo(() => buildTreeData(searchResults, currentRegex), [searchResults, currentRegex])
+  const treeData = useMemo(() => buildTreeData(searchResults), [searchResults])
+
+  const resultsByPath = useMemo(() => {
+    const results = new Map<string, SearchFileItem>()
+    for (const result of searchResults) if (!results.has(result.path)) results.set(result.path, result)
+    return results
+  }, [searchResults])
 
   useEffect(() => {
     if (searchResults.length > 0) {
-      setExpandedKeys(new Set(getAllKeys(treeData)))
+      setExpandedKeys(new Set(treeKeys(treeData)))
     } else {
       setExpandedKeys(new Set())
     }
-  }, [searchResults, treeData])
+  }, [searchResults, treeData, currentRegex])
 
   const handleToggle = (key: string) => {
     setExpandedKeys(prev => {
@@ -182,7 +120,7 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
   }
 
   const handleExpandAll = () => {
-    setExpandedKeys(new Set(getAllKeys(treeData)))
+    setExpandedKeys(new Set(treeKeys(treeData)))
   }
 
   const handleCollapseAll = () => {
@@ -211,7 +149,8 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
             node={node}
             level={0}
             expandedKeys={expandedKeys}
-            searchResults={searchResults}
+            resultsByPath={resultsByPath}
+            currentRegex={currentRegex}
             onToggle={handleToggle}
             onSelect={handleSelect}
           />

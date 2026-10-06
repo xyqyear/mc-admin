@@ -19,7 +19,7 @@ import {
 import type { FileItem } from '@/features/files/contracts'
 
 export interface FileIconProps {
-  file: FileItem
+  file: Pick<FileItem, 'name' | 'type'>
 }
 
 const FileIcon: React.FC<FileIconProps> = ({ file }) => {

@@ -1,3 +1,4 @@
+import { buildPathTree, treeKeys, type PathTreeNode } from '@/features/files/pathTree'
 import { formatFileSize } from '@/shared/utils/formatUtils'
 import React, { useState, useMemo } from 'react'
 import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
@@ -5,76 +6,19 @@ import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
 import FileIcon from '@/features/files/components/FileIcon'
-import type { FileItem } from '@/features/files/contracts'
 
-interface TreeNode {
-  key: string
-  name: string
-  isLeaf: boolean
-  size?: number
-  children?: TreeNode[]
-}
+type TreeNode = PathTreeNode<File>
 
 interface FileUploadTreeProps {
   files: File[]
   title?: string
 }
 
-const fileToFileItem = (name: string, path: string, isFile: boolean, size = 0, lastModified = Date.now()): FileItem => ({
-  name,
-  path,
-  type: isFile ? 'file' : 'directory',
-  size,
-  modified_at: lastModified / 1000,
-})
-
 function buildTreeData(files: File[]): TreeNode[] {
-  const nodeMap: Record<string, TreeNode> = {}
-  const rootNodes: TreeNode[] = []
-
-  files.forEach((file) => {
-    const relativePath = (file as any).webkitRelativePath || file.name
-    const pathParts = relativePath.split('/')
-    let currentPath = ''
-
-    pathParts.forEach((part: string, partIndex: number) => {
-      const parentPath = currentPath
-      currentPath += (currentPath ? '/' : '') + part
-      const isLastPart = partIndex === pathParts.length - 1
-
-      if (!nodeMap[currentPath]) {
-        const node: TreeNode = {
-          key: currentPath,
-          name: part,
-          isLeaf: isLastPart,
-          size: isLastPart ? file.size : undefined,
-          children: isLastPart ? undefined : [],
-        }
-        nodeMap[currentPath] = node
-
-        if (parentPath && nodeMap[parentPath]) {
-          nodeMap[parentPath].children = nodeMap[parentPath].children || []
-          nodeMap[parentPath].children!.push(node)
-        } else if (!parentPath) {
-          rootNodes.push(node)
-        }
-      }
-    })
-  })
-
-  return rootNodes
-}
-
-function getAllKeys(nodes: TreeNode[]): string[] {
-  const keys: string[] = []
-  const traverse = (list: TreeNode[]) => {
-    list.forEach(node => {
-      keys.push(node.key)
-      if (node.children) traverse(node.children)
-    })
-  }
-  traverse(nodes)
-  return keys
+  return buildPathTree(files.map(file => {
+    const parts = (file.webkitRelativePath || file.name).split('/')
+    return { segments: parts.map((name, index) => ({ name, key: parts.slice(0, index + 1).join('/') })), payload: file }
+  }))
 }
 
 const TreeNodeRow: React.FC<{
@@ -101,12 +45,12 @@ const TreeNodeRow: React.FC<{
           <span className="w-3.5" />
         )}
         <span className="shrink-0">
-          <FileIcon file={fileToFileItem(node.name, node.key, node.isLeaf, node.size)} />
+          <FileIcon file={{ name: node.name, type: node.isLeaf ? 'file' : 'directory' }} />
         </span>
         <span className="text-sm">{node.name}</span>
-        {node.isLeaf && node.size != null && (
+        {node.isLeaf && node.payload?.size != null && (
           <span className="text-xs text-muted-foreground ml-1">
-            ({formatFileSize(node.size, { decimals: 1, zeroValue: "0 B" })})
+            ({formatFileSize(node.payload?.size, { decimals: 1, zeroValue: "0 B" })})
           </span>
         )}
       </div>
@@ -140,7 +84,7 @@ const FileUploadTree: React.FC<FileUploadTreeProps> = ({
   }
 
   const handleExpandAll = () => {
-    setExpandedKeys(new Set(getAllKeys(treeData)))
+    setExpandedKeys(new Set(treeKeys(treeData)))
   }
 
   const handleCollapseAll = () => {

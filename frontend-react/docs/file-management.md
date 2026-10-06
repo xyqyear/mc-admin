@@ -21,6 +21,18 @@ Per-server file browser, editor, search, upload, and ownership-repair UI. Reache
 
 URL is the source of truth: `?path=<dir>&q=<query>&regex=<bool>`. Reload preserves location and search state.
 
+Upload, conflict and deep-search trees share the feature's `pathTree.ts` pure
+builder and key traversal. Callers supply their path segments: uploads and
+conflicts retain relative paths, while search rows retain leading-slash keys.
+Input order and the first node's payload and leaf identity are preserved. Rows
+keep their separate interactions: upload rows expand, conflict arrows expand
+without changing overwrite selection, and search rows navigate while expanding
+directories. Search results and changed highlight patterns expand the result
+tree automatically. Deep-search navigation combines the selected path with the
+current directory; file selections use literal filenames, and virtual directory
+selections preserve the search expression. File icons require only name and
+type, so tree rows do not invent timestamps or other file metadata.
+
 Game-port self-check remediation links to `/server/<encoded-server-id>/files?path=%2F&q=server.properties&regex=false`. `/` is the server data root. The search input and results follow URL changes, including browser back/forward; literal search keeps the dot from acting as a regex wildcard. Users open the file through the normal editor, which retains its Compose-override reminder. The route uses the existing session guard and server/file error handling.
 
 ## Ownership repair
@@ -46,6 +58,11 @@ Folder drag-drop generates many files at once with potential conflicts. `MultiFi
 5. **Blob upload** — files posted; backend writes per the stored decisions.
 
 The flow fixes the file list when conflict checking starts and treats checking as busy. Its single batch-size constant decides both `reusable` and sequential batches of at most 1000 files; the raw API layer sends one batch. Closing, changing the target, or unmounting aborts the current request and ignores late callbacks. Cancellation preserves already-written files and invalidates the file listing; it does not roll back the batch.
+
+Folder uploads retain `webkitRelativePath` in manifest entries, per-file policy,
+multipart filenames and result identities. A directory checkbox changes all its
+descendant file decisions in one complete-set update and retains choices outside
+that directory. Expansion does not change overwrite policy.
 
 The intermediate `FileUploadTree` mirrors the resolved decisions so the user can see exactly what's about to happen before the bytes go up. File trees and upload progress use the shared byte formatter with `0 B` and one decimal place; the search tree supports TB, while table/download defaults retain their separate zero label and precision.
 

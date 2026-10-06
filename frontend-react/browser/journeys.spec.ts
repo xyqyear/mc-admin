@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { BrowserContext, Page, WebSocketRoute } from '@playwright/test'
 import { test, expect, login, editorValue, navigate, type OwnedApi, type OwnedEnvironment } from './fixtures'
@@ -97,6 +97,94 @@ test.describe('owned administration journeys', () => {
       await page.unrouteAll({ behavior: 'wait' })
       await api.deleteFile(filename)
     }
+  })
+
+  journey('directory overwrite choices preserve every unchecked descendant and upload same-name paths independently', async ({ page, api, owned }) => {
+    const source = await mkdtemp(path.join(owned.server_path, 'browser-upload-source-'))
+    const root = path.basename(source)
+    const files = [
+      { relative: 'group/same.txt', before: 'keep first unchecked bytes\n', uploaded: 'first directory upload bytes\n', overwrite: false },
+      { relative: 'group/deep/same.txt', before: 'keep nested unchecked bytes\n', uploaded: 'deep directory upload bytes\n', overwrite: false },
+      { relative: 'outside/same.txt', before: 'replace outside original bytes\n', uploaded: 'outside directory upload bytes\n', overwrite: true },
+    ]
+    let destinationCreated = false
+    await withCleanup(async () => {
+      await api.json(api.server('/files/create'), 'POST', { path: '/', name: root, type: 'directory' })
+      destinationCreated = true
+      for (const file of files) {
+        const directory = path.dirname(file.relative)
+        await mkdir(path.join(source, directory), { recursive: true })
+        await writeFile(path.join(source, file.relative), file.uploaded)
+        await mkdir(path.join(owned.server_path, 'data', root, directory), { recursive: true })
+        await writeFile(path.join(owned.server_path, 'data', root, file.relative), file.before)
+      }
+      await page.goto(`/server/${owned.server_id}/files`)
+      await expect(page.getByRole('button', { name: '上传文件', exact: true })).toBeVisible()
+      await page.evaluate(() => {
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.webkitdirectory = true
+        input.hidden = true
+        input.dataset.ownedUploadInput = 'true'
+        document.body.append(input)
+      })
+      const input = page.locator('input[data-owned-upload-input]')
+      await input.setInputFiles(source)
+      const selectedPaths = await input.evaluate(element => {
+        if (!(element instanceof HTMLInputElement) || !element.files) throw new Error('Native directory selection is missing')
+        return Array.from(element.files, file => file.webkitRelativePath).sort()
+      })
+      expect(selectedPaths).toEqual(files.map(file => `${root}/${file.relative}`).sort())
+      await input.evaluate(element => {
+        if (!(element instanceof HTMLInputElement) || !element.files) throw new Error('Native directory selection is missing')
+        const transfer = new DataTransfer()
+        for (const file of element.files) transfer.items.add(file)
+        // Synthetic drops have no OS entries; the real FileList uses the browser's files fallback.
+        Object.defineProperty(transfer, 'items', { value: undefined })
+        document.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+        element.remove()
+      })
+      const dialog = page.getByRole('dialog', { name: '上传文件和文件夹' })
+      await expect(dialog).toBeVisible()
+      await dialog.getByRole('button', { name: '检查冲突并上传', exact: true }).click()
+      await expect(dialog.getByText('有 3 个文件将会覆盖现有文件，请选择处理方式', { exact: true })).toBeVisible()
+      await dialog.getByRole('radio', { name: '为每个文件单独选择' }).click()
+      await dialog.getByRole('button', { name: '展开所有', exact: true }).click()
+      const group = dialog.getByText('group', { exact: true }).locator('..').getByRole('checkbox')
+      const outside = dialog.getByText('outside', { exact: true }).locator('..').getByRole('checkbox')
+      await expect(group).toBeChecked()
+      await expect(outside).toBeChecked()
+      await group.click()
+      await expect(group).not.toBeChecked()
+      await expect(dialog.getByText('deep', { exact: true }).locator('..').getByRole('checkbox')).not.toBeChecked()
+      await expect(outside).toBeChecked()
+      const policyRequest = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/files/upload/policy'))
+      const uploadResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/files/upload/multiple'))
+      await dialog.getByRole('button', { name: '开始上传', exact: true }).click()
+      const request = await policyRequest
+      const policy = request.postDataJSON() as { mode: string; decisions: Array<{ path: string; overwrite: boolean }> }
+      expect(policy.mode).toBe('per_file')
+      expect(policy.decisions.sort((a, b) => a.path.localeCompare(b.path))).toEqual(files.map(file => ({ path: `${root}/${file.relative}`, overwrite: file.overwrite })).sort((a, b) => a.path.localeCompare(b.path)))
+      expect(new URL(request.url()).searchParams.get('reusable')).toBe('false')
+      const uploaded = await uploadResponse
+      expect(uploaded.status()).toBe(200)
+      const result = await uploaded.json() as { results: Record<string, { status: string; reason?: string }> }
+      expect(Object.keys(result.results).sort()).toEqual(selectedPaths)
+      for (const file of files) {
+        const relative = `${root}/${file.relative}`
+        expect(result.results[relative].status).toBe(file.overwrite ? 'success' : 'skipped')
+        if (!file.overwrite) expect(result.results[relative].reason).toBe('exists')
+        const expected = file.overwrite ? file.uploaded : file.before
+        expect((await api.file(relative)).content).toBe(expected)
+        expect(await readFile(path.join(owned.server_path, 'data', relative), 'utf8')).toBe(expected)
+      }
+      await expect(dialog.getByText('上传完成！', { exact: true })).toBeVisible()
+      await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+    },
+    { label: 'directory upload destination', run: async () => { if (destinationCreated) await api.deleteFile(root) } },
+    { label: 'native directory upload source', run: () => rm(source, { recursive: true }) },
+    { label: 'native file input', run: () => page.locator('input[data-owned-upload-input]').evaluateAll(elements => elements.forEach(element => element.remove())) },
+    )
   })
 
   journey('file snapshots preview, resume after reload and roll back while ignored paths stay disabled', async ({ page, api, owned }) => {
