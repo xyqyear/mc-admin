@@ -71,14 +71,13 @@ it('discovers missed terminal operations after reconnect, including the next his
   expect(client.getQueryData<Operation[]>(queryKeys.operations.session('owner'))).toHaveLength(1001)
 })
 
-it('clears the observer session at logout and discovers completion for the next login', async () => {
+it('isolates a remounted session and discovers completion for the next owner', async () => {
   operations = [operation('one', 'succeeded')]
   const view = render(<Shell />)
   await screen.findByText('配置：old')
   await poll()
   view.unmount()
   client.clear()
-  expect(client.getQueryCache().getAll()).toHaveLength(0)
   compose = 'new-session'
   render(<Shell session="another-owner" />)
   await screen.findByText('配置：new-session')

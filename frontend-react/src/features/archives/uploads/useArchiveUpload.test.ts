@@ -20,10 +20,11 @@ function deferred<T>() {
 }
 function archive(name: string, content = 'abc') {
   const file = new File([content], name)
+  const bytes = new TextEncoder().encode(content)
   const slice = file.slice.bind(file)
   file.slice = (start, end, type) => {
     const blob = slice(start, end, type)
-    return Object.assign(blob, { arrayBuffer: async () => new ArrayBuffer(blob.size) })
+    return Object.assign(blob, { arrayBuffer: async () => bytes.slice(start, end).buffer })
   }
   return file
 }
