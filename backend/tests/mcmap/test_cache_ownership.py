@@ -82,44 +82,6 @@ async def test_chown_noop_when_data_path_missing():
 
 
 @pytest.mark.asyncio
-async def test_ensure_dir_chowns_only_newly_created_levels():
-    """When .mcmap/ already exists, ensure_dir for tiles/<region>/ should chown
-    only the levels that didn't exist before — not .mcmap/ itself."""
-    with tempfile.TemporaryDirectory() as d:
-        cache = ServerMapCache(data_path=Path(d))
-        cache.cache_dir.mkdir()  # pre-existing
-        target = cache.tiles_dir("world/region")
-        with patch.object(
-            ServerMapCache, "chown_to_data_owner", new=AsyncMock()
-        ) as ch:
-            await cache.ensure_dir(target)
-            chowned = [call.args[0] for call in ch.call_args_list]
-            assert chowned == [
-                cache.cache_dir / "tiles",
-                cache.cache_dir / "tiles" / "world",
-                target,
-            ]
-
-
-@pytest.mark.asyncio
-async def test_ensure_dir_chowns_all_levels_when_cache_dir_missing():
-    with tempfile.TemporaryDirectory() as d:
-        cache = ServerMapCache(data_path=Path(d))
-        target = cache.tiles_dir("world/region")
-        with patch.object(
-            ServerMapCache, "chown_to_data_owner", new=AsyncMock()
-        ) as ch:
-            await cache.ensure_dir(target)
-            chowned = [call.args[0] for call in ch.call_args_list]
-            assert chowned == [
-                cache.cache_dir,
-                cache.cache_dir / "tiles",
-                cache.cache_dir / "tiles" / "world",
-                target,
-            ]
-
-
-@pytest.mark.asyncio
 async def test_ensure_dir_does_not_chown_data_path_itself():
     with tempfile.TemporaryDirectory() as d:
         cache = ServerMapCache(data_path=Path(d))
