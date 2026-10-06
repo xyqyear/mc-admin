@@ -110,7 +110,7 @@
 
 ## 静态与构建
 
-- 后端：`uv run ruff check .` 通过；`uv run pyright` 为 0 errors、0 warnings。
+- 后端及发布脚本：`uv run ruff check . ../scripts` 通过；`uv run pyright` 和 `uv run pyright ../scripts` 均为 0 errors、0 warnings。
 - 前端 Node 24：`pnpm lint`（含导入边界）、`pnpm typecheck`、`pnpm build` 全部通过。生产构建仍报告既有大 vendor chunk 提示，构建成功。
 - Go：明确受影响包的 vet、指定 race 节点和当前 runner 构建通过；browser 新旅程 ESLint/严格类型检查通过。
 - OpenSpec：12 份主规格及此 change 的严格校验通过；新要求合并保留原条文，零间隔起点允许既有等价 `*/n` 规范形式。
@@ -151,8 +151,18 @@ OCI 同一 100669440-byte 层 fixture 在两个独立进程的 manifest/config/a
 
 本地证据目录：`/tmp/mc-admin-humanizer/final-deployed-76e0ab56-20261006`；完整说明 `/tmp/mc-admin-humanizer/final-deployed-verification.md`。这是已验证代码提交的本地定向证据，报告入库后仍需对最终提交执行完整远端 qualification。
 
-待完成：推送最终提交，以 publish=false 触发完整 `Qualify and Publish Application`，统一审计同一 SHA 的 candidate/Go、static/frontend、全部 backend 分片/覆盖、全部普通及 Huawei API E2E/覆盖/清理、全部 browser 分片/覆盖与最终 qualification。普通 push 检查与旧 SHA 绿灯不能代替。
+首轮完整远端资格验证：[37432718608](https://github.com/xyqyear/mc-admin/actions/runs/37432718608)，源码 `9978fea0af257d7cd8c2b4d53e93a317852caced`，最终为 failure。候选/Go、前端全量、全部三个 browser 分片和覆盖审计通过；后端三个节点、一个 API 场景和发布脚本类型诊断失败，相关覆盖及 qualification 严格拒绝。失败日志和 artifact 保留，没有通过旧提交、跳过检查或局部重跑宣称通过。
+
+修正记录：
+
+- 仓库维护 HTTP 423 使用无外部消息参数的具体异常，保留原作者固定诊断；Cron 只读取类常量，未知字符串/结构化敏感 detail 继续固定泛化。原维护节点、三个 retention/Kuma 分支与两个新敏感 detail 节点均有通过证据。
+- 契约 capture 与原基线逐叶比较只发现同一个 required 集合的 error/result 顺序变化，更新该两项排列；生产 DTO、必需字段、默认值、载荷、路由、权限均不变，整份 capture 精确相等断言保留。
+- 上传取消测试通过实际 write/close/chown 后 gate，保留完整文件字节、下一文件未创建、真实 423；额外验证 claim/session 释放及同步 request 原有 INTERRUPTED/writer 清理。局部取消排空期限保护测试免于挂住，不向真实 task 发送第二次取消。
+- 快照 server_id 筛选覆盖整个服务器目录，应精确匹配已创建 server+global ID；原 harness 错配 paths+server。用显式命名 ID 修正，全部/子路径/删除后空集合与重复 ID 拒绝保持。确切案例 normal/no-reuse 各通过，分别 coverage=1/1/1、owned cleanup 完整；这两次明确为冻结 76e 后端与修改 runner 的局部观察，不伪称新源码不可变候选证明。
+- 发布脚本只将两处 BinaryIO 返回注解调整为 tarfile 实际 IO[bytes]，执行 AST 保持；CI 同范围脚本 Pyright/Ruff 和七个 OCI 归档节点通过。
+
+以上修复按不同作者与独立复审者交叉检查，不降低原业务断言、诊断或 CI 门禁。待完成：以 publish=false 对包含上述修正的最新 SHA 重新运行全部完整资格门禁，并统一核对所有覆盖/清理审计与 qualification。
 
 最终证据以本报告的后续交付记录和 GitHub qualification artifacts 为准。当前尚不宣称完整交付通过。
 
-代码与文档总差异：360 个文件，增加 9,139 行，删除 6,183 行（相对审计基线，包含实现、测试、规格和报告）。
+代码与文档总差异：362 个文件，增加 9,228 行，删除 6,195 行（相对审计基线，包含实现、测试、规格和报告）。
