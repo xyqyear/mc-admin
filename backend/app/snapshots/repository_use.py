@@ -5,6 +5,13 @@ from contextlib import contextmanager
 from fastapi import HTTPException
 
 
+class RepositoryMaintenanceConflict(HTTPException):
+    public_message = "快照仓库正在维护，请稍后重试"
+
+    def __init__(self) -> None:
+        super().__init__(status_code=423, detail=self.public_message)
+
+
 class RepositoryUse:
     def __init__(self) -> None:
         self._readers = 0
@@ -19,7 +26,7 @@ class RepositoryUse:
     def retain(self, snapshot_ids: Sequence[str] = ()) -> Generator[None]:
         ids = set(snapshot_ids)
         if self._maintenance:
-            raise HTTPException(status_code=423, detail="快照仓库正在维护，请稍后重试")
+            raise RepositoryMaintenanceConflict()
         if self._readers >= 256 or len(self._snapshots.keys() | ids) > 256:
             raise HTTPException(
                 status_code=423, detail="活动快照引用过多，请等待已有操作结束"

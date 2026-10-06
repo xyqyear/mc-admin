@@ -16,6 +16,7 @@ from ...minecraft.paths import ServerPathError
 from ...snapshots import get_snapshot_service
 from ...snapshots.application import SnapshotMaintenanceConflict, resolve_backup_paths
 from ...snapshots.commands import get_snapshot_commands
+from ...snapshots.repository_use import RepositoryMaintenanceConflict
 from ...snapshots.scopes import GlobalScope, PathsScope, ServerScope
 from ...world import (
     GLOBAL_LOCK_KEY,
@@ -282,7 +283,11 @@ async def backup_cronjob(context: ExecutionContext):
         except HTTPException as error:
             if error.status_code != 423:
                 raise
-            await skip_busy("服务器正在维护")
+            await skip_busy(
+                RepositoryMaintenanceConflict.public_message
+                if isinstance(error, RepositoryMaintenanceConflict)
+                else "服务器正在维护"
+            )
             return
 
         context.log(f"快照创建成功: {snapshot.short_id} ({snapshot.id})")

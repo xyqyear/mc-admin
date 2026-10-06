@@ -81,6 +81,47 @@ def intercept_kuma(monkeypatch, outcome: str, requests: list[httpx2.Request]) ->
 
 @pytest.mark.binary("restic")
 @pytest.mark.parametrize(
+    "detail", [PRIVATE_ERROR, {"message": PRIVATE_ERROR, "token": "private-token-secret"}],
+    ids=["string", "structured"],
+)
+async def test_unowned_backup_423_keeps_safe_skipped_history(owned_backup, monkeypatch, caplog, detail):
+    runtime, manager, service, journal, data = owned_backup
+    requests: list[httpx2.Request] = []
+    intercept_kuma(monkeypatch, "ok", requests)
+    commands = get_snapshot_commands()
+    assert commands is not None
+
+    async def busy_backup(*_args, **_kwargs):
+        raise HTTPException(423, detail=detail)
+
+    monkeypatch.setattr(commands, "backup", busy_backup)
+    await manager._execute_cronjob_wrapper(
+        "safety-backup", "backup",
+        backup.BackupJobParams(enable_forget=False, uptimekuma_url=KUMA_URL),
+        backup.backup_cronjob,
+    )
+    history = await manager.get_execution_history("safety-backup")
+    assert len(history) == 1 and history[0].status is ExecutionStatus.SKIPPED
+    assert any(message.endswith("跳过备份: 服务器正在维护") for message in history[0].messages)
+    async with runtime.database.session_factory() as session:
+        job = await crud.get_cronjob(session, "safety-backup")
+        assert job is not None and job.execution_count == 1
+    records = await journal.list()
+    assert len(records) == 1 and records[0].state is OperationState.SKIPPED
+    assert records[0].writers_stopped and not records[0].processes
+    assert await service.list_snapshots() == []
+    assert data.read_bytes() == b"retained cron snapshot data\x00\xff"
+    assert len(requests) == 1
+    assert requests[0].url.params["status"] == "up"
+    assert requests[0].url.params["msg"] == "skipped: 跳过备份: 服务器正在维护"
+    public_output = "\n".join(history[0].messages) + caplog.text + requests[0].url.params["msg"]
+    assert "private-error-secret" not in public_output
+    assert "private-token-secret" not in public_output
+    assert KUMA_URL not in public_output
+
+
+@pytest.mark.binary("restic")
+@pytest.mark.parametrize(
     "forget_outcome,status,operation_state,kuma_status",
     [
         ("busy", ExecutionStatus.SKIPPED, OperationState.SKIPPED, "up"),
