@@ -15,7 +15,7 @@ function deferred<T>() {
   return { promise, resolve }
 }
 function batchResult(files: File[]) {
-  return { message: 'complete', results: Object.fromEntries(files.map(file => [file.name, { status: 'success' }])) }
+  return { message: 'complete', results: Object.fromEntries(files.map(file => [file.webkitRelativePath || file.name, { status: 'success' }])) }
 }
 
 beforeEach(() => {

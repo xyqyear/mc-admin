@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -9,6 +9,7 @@ import { useFileEditor } from '@/features/files/useFileEditor'
 import { useMultiFileUpload, FILES_PER_BATCH } from '@/features/files/useMultiFileUpload'
 import { fileApi } from '@/features/files/api'
 import type { FileItem } from '@/features/files/contracts'
+import MultiFileUploadDialog from '@/features/files/components/dialogs/MultiFileUploadDialog'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -98,4 +99,41 @@ it('keeps per-file overwrite policy and refreshes earlier writes when a later up
   expect(result.current.uploadState.error).toContain('已写入的文件会保留')
   expect(client.getQueryState(queryKeys.files.list('alpha', '/data'))?.isInvalidated).toBe(true)
   unmount()
+})
+
+function folderFile(path: string, content: string) {
+  const selected = new File([content], path.split('/').at(-1)!)
+  Object.defineProperty(selected, 'webkitRelativePath', { value: path })
+  return selected
+}
+
+it.each([false, true])('applies a directory overwrite decision to every descendant while preserving outside files (reselect=%s)', async (reselect) => {
+  const files = [folderFile('dir-a/config.toml', 'alpha'), folderFile('dir-a/deep/config.toml', 'nested'), folderFile('dir-b/config.toml', 'beta')]
+  const writes: unknown[] = []
+  server.use(
+    http.post('*/api/servers/alpha/files/upload/check', () => HttpResponse.json({ session_id: 'tree', conflicts: files.map(file => ({ path: file.webkitRelativePath, type: 'file' })) })),
+    http.post('*/api/servers/alpha/files/upload/policy', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ message: 'ok' }) }),
+    http.post('*/api/servers/alpha/files/upload/multiple', () => HttpResponse.json({ message: 'ok', results: {} })),
+  )
+  render(<TestProviders client={client}><MultiFileUploadDialog open onCancel={() => {}} onComplete={() => {}} serverId="alpha" basePath="/data" initialFiles={files} /></TestProviders>)
+  fireEvent.click(screen.getByRole('button', { name: '检查冲突并上传' }))
+  fireEvent.click(await screen.findByRole('radio', { name: '为每个文件单独选择' }))
+  const directory = within(screen.getByText('dir-a').parentElement!).getByRole('checkbox')
+  expect(directory.getAttribute('aria-checked')).toBe('true')
+  fireEvent.click(directory)
+  expect(directory.getAttribute('aria-checked')).toBe('false')
+  fireEvent.click(screen.getByRole('button', { name: '展开所有' }))
+  const configRows = screen.getAllByText('config.toml').map(name => within(name.parentElement!).getByRole('checkbox'))
+  expect(configRows.map(row => row.getAttribute('aria-checked'))).toEqual(['false', 'false', 'true'])
+  if (reselect) {
+    fireEvent.click(configRows[0])
+    expect(directory.getAttribute('aria-checked')).toBe('mixed')
+    fireEvent.click(directory)
+    expect(configRows.map(row => row.getAttribute('aria-checked'))).toEqual(['true', 'true', 'true'])
+  }
+  fireEvent.click(screen.getByRole('button', { name: '收起所有' }))
+  fireEvent.click(screen.getByRole('button', { name: '开始上传' }))
+  await waitFor(() => expect(writes).toEqual([{ mode: 'per_file', decisions: [
+    { path: 'dir-a/config.toml', overwrite: reselect }, { path: 'dir-a/deep/config.toml', overwrite: reselect }, { path: 'dir-b/config.toml', overwrite: true },
+  ] }]))
 })
