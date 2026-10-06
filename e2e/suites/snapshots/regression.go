@@ -127,7 +127,8 @@ func repository(ctx context.Context, t *engine.Scope) error {
 		}
 		ids = append(ids, response.Snapshot.ID)
 	}
-	for _, invalidID := range []string{"--keep-last=0", "latest", ids[0][:8]} {
+	pathSnapshotID, serverSnapshotID, globalSnapshotID := ids[0], ids[1], ids[2]
+	for _, invalidID := range []string{"--keep-last=0", "latest", pathSnapshotID[:8]} {
 		if err = client.JSON(ctx, "DELETE", "/api/snapshots/"+invalidID, nil, nil, 422); err != nil {
 			return err
 		}
@@ -137,7 +138,7 @@ func repository(ctx context.Context, t *engine.Scope) error {
 		ids    []string
 	}{
 		{"", ids},
-		{"?server_id=" + id, []string{ids[0], ids[1]}},
+		{"?server_id=" + id, []string{serverSnapshotID, globalSnapshotID}},
 		{"?server_id=" + id + "&path=" + url.QueryEscape("/alpha"), ids},
 	} {
 		var listed struct {
@@ -156,7 +157,7 @@ func repository(ctx context.Context, t *engine.Scope) error {
 			return fmt.Errorf("snapshot coverage listing %q: %w", query.suffix, err)
 		}
 	}
-	if err = client.JSON(ctx, "POST", "/api/snapshots/previews", map[string]any{"source_snapshot_id": ids[2], "scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"world/protected.txt"}}}, nil, 400); err != nil {
+	if err = client.JSON(ctx, "POST", "/api/snapshots/previews", map[string]any{"source_snapshot_id": globalSnapshotID, "scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"world/protected.txt"}}}, nil, 400); err != nil {
 		return err
 	}
 	for _, snapshot := range ids {
