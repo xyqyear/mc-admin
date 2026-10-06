@@ -24,128 +24,119 @@ interface CronFieldInputProps {
   disabled?: boolean
 }
 
+type CronFieldMode = 'any' | 'specific' | 'range' | 'interval' | 'list' | 'raw'
+type NumericFieldChange = 'specific' | 'rangeStart' | 'rangeEnd' | 'intervalStart' | 'intervalStep'
+type CronFieldChange =
+  | { type: NumericFieldChange; value: number }
+  | { type: 'list'; value: number[] }
+  | { type: 'raw'; value: string }
+
+interface CronFieldState {
+  mode: CronFieldMode
+  specific: number
+  range: { start: number; end: number }
+  interval: { start: number; step: number }
+  list: number[]
+  raw: string
+}
+
+function generateValue(state: CronFieldState, min: number): string {
+  switch (state.mode) {
+    case 'any': return '*'
+    case 'specific': return String(state.specific)
+    case 'range': return `${state.range.start}-${state.range.end}`
+    case 'interval': return state.interval.start === min ? `*/${state.interval.step}` : `${state.interval.start}/${state.interval.step}`
+    case 'list': return state.list.join(',')
+    case 'raw': return state.raw
+  }
+}
+
 const CronFieldInput: React.FC<CronFieldInputProps> = ({
   value,
   onChange,
   config,
   disabled = false,
 }) => {
-  const [mode, setMode] = useState<'any' | 'specific' | 'range' | 'interval' | 'list' | 'raw'>('any')
-  const [specificValue, setSpecificValue] = useState<number>(config.min)
-  const [rangeStart, setRangeStart] = useState<number>(config.min)
-  const [rangeEnd, setRangeEnd] = useState<number>(config.max)
-  const [intervalStep, setIntervalStep] = useState<number>(1)
-  const [intervalStart, setIntervalStart] = useState<number>(config.min)
-  const [listValues, setListValues] = useState<number[]>([])
-  const [rawValue, setRawValue] = useState<string>('')
+  const [state, setState] = useState<CronFieldState>({
+    mode: 'any',
+    specific: config.min,
+    range: { start: config.min, end: config.max },
+    interval: { start: config.min, step: 1 },
+    list: [],
+    raw: '',
+  })
+  const {
+    mode, specific: specificValue, range: { start: rangeStart, end: rangeEnd },
+    interval: { start: intervalStart, step: intervalStep }, list: listValues, raw: rawValue,
+  } = state
 
   useEffect(() => {
-    if (value === '*') {
-      setMode('any')
-    } else if (value.includes('/')) {
-      setMode('interval')
-      const [start, step] = value.split('/')
-      setIntervalStart(start === '*' ? config.min : parseInt(start))
-      setIntervalStep(parseInt(step))
-    } else if (value.includes('-')) {
-      setMode('range')
-      const [start, end] = value.split('-')
-      setRangeStart(parseInt(start))
-      setRangeEnd(parseInt(end))
-    } else if (value.includes(',')) {
-      setMode('list')
-      setListValues(value.split(',').map(v => parseInt(v.trim())))
-    } else if (!isNaN(parseInt(value))) {
-      setMode('specific')
-      setSpecificValue(parseInt(value))
-    } else {
-      setMode('raw')
-      setRawValue(value)
-    }
+    setState(previous => {
+      if (value === '*') return { ...previous, mode: 'any' }
+      if (value.includes('/')) {
+        const [start, step] = value.split('/')
+        return { ...previous, mode: 'interval', interval: { start: start === '*' ? config.min : parseInt(start), step: parseInt(step) } }
+      }
+      if (value.includes('-')) {
+        const [start, end] = value.split('-')
+        return { ...previous, mode: 'range', range: { start: parseInt(start), end: parseInt(end) } }
+      }
+      if (value.includes(',')) return { ...previous, mode: 'list', list: value.split(',').map(v => parseInt(v.trim())) }
+      if (!isNaN(parseInt(value))) return { ...previous, mode: 'specific', specific: parseInt(value) }
+      return { ...previous, mode: 'raw', raw: value }
+    })
   }, [value, config.min, config.max])
 
-  const generateValue = (newMode: string, params?: any) => {
-    switch (newMode) {
-      case 'any':
-        return '*'
-      case 'specific':
-        return String(params?.value || specificValue)
-      case 'range':
-        return `${params?.start || rangeStart}-${params?.end || rangeEnd}`
-      case 'interval': {
-        const start = params?.start || intervalStart
-        const step = params?.step || intervalStep
-        return start === config.min ? `*/${step}` : `${start}/${step}`
-      }
-      case 'list':
-        return (params?.values || listValues).join(',')
-      case 'raw':
-        return params?.raw || rawValue
-      default:
-        return '*'
-    }
+  const acceptState = (next: CronFieldState) => {
+    setState(next)
+    onChange(generateValue(next, config.min))
   }
 
-  const handleModeChange = (newMode: string | null) => {
-    if (!newMode) return
-    setMode(newMode as any)
-    onChange(generateValue(newMode))
+  const handleModeChange = (newMode: CronFieldMode | null) => {
+    if (newMode) acceptState({ ...state, mode: newMode })
   }
 
-  const handleValueChange = (type: string, newValue: any) => {
-    let newGeneratedValue = ''
-
-    switch (type) {
+  const handleValueChange = (change: CronFieldChange) => {
+    switch (change.type) {
       case 'specific':
-        setSpecificValue(newValue)
-        newGeneratedValue = generateValue('specific', { value: newValue })
+        acceptState({ ...state, mode: 'specific', specific: change.value })
         break
       case 'rangeStart':
-        setRangeStart(newValue)
-        newGeneratedValue = generateValue('range', { start: newValue, end: rangeEnd })
+        acceptState({ ...state, mode: 'range', range: { ...state.range, start: change.value } })
         break
       case 'rangeEnd':
-        setRangeEnd(newValue)
-        newGeneratedValue = generateValue('range', { start: rangeStart, end: newValue })
+        acceptState({ ...state, mode: 'range', range: { ...state.range, end: change.value } })
         break
       case 'intervalStart':
-        setIntervalStart(newValue)
-        newGeneratedValue = generateValue('interval', { start: newValue, step: intervalStep })
+        acceptState({ ...state, mode: 'interval', interval: { ...state.interval, start: change.value } })
         break
       case 'intervalStep':
-        setIntervalStep(newValue)
-        newGeneratedValue = generateValue('interval', { start: intervalStart, step: newValue })
+        acceptState({ ...state, mode: 'interval', interval: { ...state.interval, step: change.value } })
         break
       case 'list':
-        setListValues(newValue)
-        newGeneratedValue = generateValue('list', { values: newValue })
+        acceptState({ ...state, mode: 'list', list: change.value })
         break
       case 'raw':
-        setRawValue(newValue)
-        newGeneratedValue = generateValue('raw', { raw: newValue })
+        acceptState({ ...state, mode: 'raw', raw: change.value })
         break
     }
-
-    onChange(newGeneratedValue)
   }
 
-  const handleNumberInput = (type: string, inputValue: string, min: number, max: number) => {
+  const handleNumberInput = (type: NumericFieldChange, inputValue: string, min: number, max: number) => {
     const num = parseInt(inputValue)
-    if (!isNaN(num) && num >= min && num <= max) {
-      handleValueChange(type, num)
-    }
+    if (!isNaN(num) && num >= min && num <= max) handleValueChange({ type, value: num })
   }
 
   const toggleListValue = (val: number) => {
     const next = listValues.includes(val)
       ? listValues.filter(v => v !== val)
       : [...listValues, val].sort((a, b) => a - b)
-    handleValueChange('list', next)
+    handleValueChange({ type: 'list', value: next })
   }
 
   const allValues = Array.from({ length: config.max - config.min + 1 }, (_, i) => config.min + i)
 
-  const modeLabels: Record<string, string> = {
+  const modeLabels: Record<CronFieldMode, string> = {
     any: '任意值 (*)',
     specific: '指定值',
     range: '范围',
@@ -166,7 +157,7 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
           value={mode}
           onValueChange={handleModeChange}
           disabled={disabled}
-          itemToStringLabel={(v) => modeLabels[v as string] || String(v)}
+          itemToStringLabel={(v) => modeLabels[v] || String(v)}
         >
           <SelectTrigger className="w-36">
             <SelectValue />
@@ -187,7 +178,7 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
           {config.options ? (
             <Select
               value={String(specificValue)}
-              onValueChange={(val) => val && handleValueChange('specific', parseInt(val))}
+              onValueChange={(val) => val && handleValueChange({ type: 'specific', value: parseInt(val) })}
               disabled={disabled}
               itemToStringLabel={(v) => optionLabelMap?.[v as string] || String(v)}
             >
@@ -246,7 +237,7 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
           <span className="text-sm">从</span>
           <Select
             value={String(intervalStart)}
-            onValueChange={(val) => val && handleValueChange('intervalStart', parseInt(val))}
+            onValueChange={(val) => val && handleValueChange({ type: 'intervalStart', value: parseInt(val) })}
             disabled={disabled}
             itemToStringLabel={(v) => v === String(config.min) ? '任意' : String(v)}
           >
@@ -297,7 +288,7 @@ const CronFieldInput: React.FC<CronFieldInputProps> = ({
         <div className="ml-6">
           <Input
             value={rawValue}
-            onChange={(e) => handleValueChange('raw', e.target.value)}
+            onChange={(e) => handleValueChange({ type: 'raw', value: e.target.value })}
             disabled={disabled}
             placeholder="输入自定义表达式"
             className="w-50"

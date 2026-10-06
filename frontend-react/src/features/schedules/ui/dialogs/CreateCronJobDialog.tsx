@@ -155,7 +155,9 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+        <form onSubmit={event => {
+          if (event.target === event.currentTarget) void form.handleSubmit(handleSubmit)(event)
+        }} className="space-y-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">选择任务类型</CardTitle>
@@ -256,8 +258,6 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
                   schema={selectedJobSchema.parameter_schema}
                   formData={jobParams}
                   onChange={setJobParams}
-                  liveValidate="onChange"
-                  showErrorList={false}
                 />
               </CardContent>
             </Card>

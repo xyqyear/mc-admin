@@ -19,6 +19,14 @@ interface CronExpressionBuilderProps {
   disabled?: boolean
 }
 
+type CronFields = { minute: string; hour: string; dayOfMonth: string; month: string; dayOfWeek: string }
+
+function parseCronFields(value: string): CronFields | undefined {
+  const parts = value.trim().split(/\s+/)
+  if (parts.length !== 5) return
+  return { minute: parts[0] || '*', hour: parts[1] || '*', dayOfMonth: parts[2] || '*', month: parts[3] || '*', dayOfWeek: parts[4] || '*' }
+}
+
 const cronFieldConfigs = {
   second: {
     label: '秒 (0-59)',
@@ -90,7 +98,7 @@ const CronExpressionBuilder: React.FC<CronExpressionBuilderProps> = ({
   disabled = false,
 }) => {
   const [mode, setMode] = useState<'visual' | 'raw'>('visual')
-  const [cronFields, setCronFields] = useState({
+  const [cronFields, setCronFields] = useState<CronFields>({
     minute: '*',
     hour: '*',
     dayOfMonth: '*',
@@ -102,16 +110,8 @@ const CronExpressionBuilder: React.FC<CronExpressionBuilderProps> = ({
 
   useEffect(() => {
     if (cronValue) {
-      const parts = cronValue.trim().split(/\s+/)
-      if (parts.length === 5) {
-        setCronFields({
-          minute: parts[0] || '*',
-          hour: parts[1] || '*',
-          dayOfMonth: parts[2] || '*',
-          month: parts[3] || '*',
-          dayOfWeek: parts[4] || '*',
-        })
-      }
+      const fields = parseCronFields(cronValue)
+      if (fields) setCronFields(fields)
       setRawCron(cronValue)
     }
   }, [cronValue])
@@ -124,8 +124,8 @@ const CronExpressionBuilder: React.FC<CronExpressionBuilderProps> = ({
     return `${fields.minute} ${fields.hour} ${fields.dayOfMonth} ${fields.month} ${fields.dayOfWeek}`
   }
 
-  const handleModeChange = (value: string | null) => {
-    if (value) setMode(value as any)
+  const handleModeChange = (value: 'visual' | 'raw' | null) => {
+    if (value) setMode(value)
   }
 
   const handleFieldChange = (field: keyof typeof cronFields, value: string) => {
@@ -154,16 +154,8 @@ const CronExpressionBuilder: React.FC<CronExpressionBuilderProps> = ({
     onCronChange(presetCron)
     setRawCron(presetCron)
     if (mode === 'visual') {
-      const parts = presetCron.split(/\s+/)
-      if (parts.length === 5) {
-        setCronFields({
-          minute: parts[0],
-          hour: parts[1],
-          dayOfMonth: parts[2],
-          month: parts[3],
-          dayOfWeek: parts[4],
-        })
-      }
+      const fields = parseCronFields(presetCron)
+      if (fields) setCronFields(fields)
     }
   }
 

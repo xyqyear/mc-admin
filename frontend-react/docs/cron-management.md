@@ -21,6 +21,22 @@ Toggling between modes parses/serializes — you can paste a raw expression, swi
 
 Preset buttons only change the expression; submitting the enclosing form requires its explicit submit action.
 
+Specific values, range endpoints and interval starts accept a legal `0`; an
+explicitly cleared custom field stays empty. Mode changes retain each mode's
+draft when no replacement value is supplied. Creation and update requests use
+the accepted parent expression and optional second field.
+
+`CronFieldInput` keeps a typed draft for each of its specific, range, interval,
+list and custom modes. External values replace the active mode's draft while
+inactive mode values remain available when switching back. Recognition and
+clamping remain local to the field; the expression builder owns the five cron
+fields and optional seconds value.
+
+External field and expression values synchronize the rendered controls without
+emitting an authored change. Incomplete or out-of-range numeric edits keep the
+last accepted draft; a later valid edit can replace it. Switching between raw
+and visual expression modes preserves the five fields and optional seconds.
+
 The weekday field follows conventional crontab numbering: `0` and `7` are Sunday,
 `1` is Monday, and `6` is Saturday. Numeric lists, ranges, and steps use that
 ordering. The backend preserves the submitted expression and normalizes only the
@@ -39,6 +55,13 @@ Each registered job type on the backend exports a Pydantic params schema (`Backu
 4. Submit → POST `/cron/`
 
 This means *adding a new backend job type only requires backend changes* — the frontend renders the params form automatically.
+
+`SchemaForm` exposes only schema, data and change handling. It uses the shared
+RJSF theme, AJV validation on change and field-local errors, and suppresses the
+renderer’s default submit button. Switching job type remounts the parameter
+form and clears the previous job's authored values. Defaults and input types
+come from the selected schema. Parameter-form submissions validate within that
+form; only submission of the dialog's outer form creates or updates a job.
 
 ## Detail modal
 
