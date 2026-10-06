@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
+	"sort"
 
 	"mc-admin/e2e/internal/api"
 	"mc-admin/e2e/internal/engine"
@@ -42,6 +44,19 @@ func claimsAliasMatches(ctx context.Context, client *api.Client, base string, ex
 	var actual claimsResponse
 	if err := client.JSON(ctx, "GET", base+"/claims", nil, &actual, 200); err != nil {
 		return err
+	}
+	for _, response := range []*claimsResponse{&actual, &expected} {
+		response.Teams = slices.Clone(response.Teams)
+		for i := range response.Teams {
+			clusters := slices.Clone(response.Teams[i].Clusters)
+			sort.Slice(clusters, func(left, right int) bool { return clusters[left].ID < clusters[right].ID })
+			for j, cluster := range clusters {
+				if cluster.ID == "" || j > 0 && cluster.ID == clusters[j-1].ID {
+					return fmt.Errorf("claims returned an empty or duplicate cluster ID %q", cluster.ID)
+				}
+			}
+			response.Teams[i].Clusters = clusters
+		}
 	}
 	if !reflect.DeepEqual(actual, expected) {
 		return fmt.Errorf("claims alias or cluster IDs are unstable")
