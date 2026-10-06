@@ -19,11 +19,20 @@ candidate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(candidate)
 
 
-def make_candidate(directory: Path):
-    config = json.dumps({"architecture": "amd64", "os": "linux", "rootfs": {"type": "layers", "diff_ids": []}, "config": {}}).encode()
+def make_candidate(directory: Path, layer: bytes | None = None, layer_fault: str | None = None):
+    layer_digest = candidate.digest(layer) if layer is not None else None
+    descriptor = {"mediaType": "application/vnd.oci.image.layer.v1.tar", "digest": layer_digest, "size": len(layer)} if layer is not None else None
+    if descriptor is not None:
+        if layer_fault == "digest":
+            descriptor["digest"] = "sha256:" + "0" * 64
+        elif layer_fault == "size":
+            descriptor["size"] += 1
+        elif layer_fault == "unsupported":
+            descriptor["digest"] = "sha512:" + "0" * 128
+    config = json.dumps({"architecture": "amd64", "os": "linux", "rootfs": {"type": "layers", "diff_ids": [layer_digest] if layer is not None else []}, "config": {}}).encode()
     config_digest = candidate.digest(config)
     manifest = json.dumps({"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
-                           "config": {"mediaType": "application/vnd.oci.image.config.v1+json", "digest": config_digest, "size": len(config)}, "layers": []}).encode()
+                           "config": {"mediaType": "application/vnd.oci.image.config.v1+json", "digest": config_digest, "size": len(config)}, "layers": [descriptor] if descriptor is not None else []}).encode()
     manifest_digest = candidate.digest(manifest)
     index = json.dumps({"schemaVersion": 2, "manifests": [{"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": manifest_digest, "size": len(manifest)}]}).encode()
     with tarfile.open(directory / "application.oci.tar", "w") as archive:
@@ -32,7 +41,51 @@ def make_candidate(directory: Path):
             entry = tarfile.TarInfo(name)
             entry.size = len(data)
             archive.addfile(entry, io.BytesIO(data))
+        if layer is not None and layer_fault != "missing":
+            assert descriptor is not None
+            entry = tarfile.TarInfo("blobs/sha256/" + descriptor["digest"].removeprefix("sha256:"))
+            if layer_fault == "nonregular":
+                entry.type = tarfile.DIRTYPE
+                archive.addfile(entry)
+            else:
+                entry.size = len(layer)
+                archive.addfile(entry, io.BytesIO(layer))
     return candidate.capture(directory, {"revision": "a" * 40, "dirty": False, "fingerprint": "sha256:" + "b" * 64})
+
+
+def test_oci_archive_validates_actual_layer_payload(tmp_path):
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        entry = tarfile.TarInfo("app/Chinese directory/config.txt")
+        payload = b"independent layer bytes\x00\xff"
+        entry.size = len(payload)
+        archive.addfile(entry, io.BytesIO(payload))
+    metadata = make_candidate(tmp_path, buffer.getvalue())
+    assert candidate.verify(tmp_path) == metadata
+    assert metadata["archive_sha256"] == candidate.file_digest(tmp_path / "application.oci.tar")
+
+
+@pytest.mark.parametrize("fault,exception,message", [
+    ("digest", ValueError, "^OCI blob digest or size mismatch$"),
+    ("size", ValueError, "^OCI blob digest or size mismatch$"),
+    ("missing", KeyError, "blobs/sha256/"),
+    ("nonregular", ValueError, "^OCI member is not a regular file: blobs/sha256/"),
+    ("unsupported", ValueError, "^Unsupported OCI digest$"),
+])
+def test_oci_archive_rejects_invalid_layer(tmp_path, fault, exception, message):
+    with pytest.raises(exception, match=message):
+        make_candidate(tmp_path, b"actual layer payload\x00\xff", fault)
+
+
+def test_oci_archive_rejects_truncated_layer(tmp_path):
+    make_candidate(tmp_path, b"layer payload spanning blocks" * 100)
+    path = tmp_path / "application.oci.tar"
+    with tarfile.open(path) as archive:
+        layer = archive.getmembers()[-1]
+    with path.open("r+b") as stream:
+        stream.truncate(layer.offset_data + layer.size - 1)
+    with pytest.raises(tarfile.ReadError, match="unexpected end"):
+        candidate.inspect_archive(path)
 
 
 @pytest.mark.parametrize("gate", sorted(EXPECTED_GATES))

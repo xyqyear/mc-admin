@@ -10,7 +10,7 @@ import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 REQUIRED_GATES = frozenset({"candidate", "static", "backend", "api", "browser"})
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
@@ -57,20 +57,29 @@ def inspect_archive(path: Path) -> dict[str, str]:
     with tarfile.open(path, "r:*") as archive:
         members = {member.name.removeprefix("./"): member for member in archive.getmembers()}
 
-        def read(name: str) -> bytes:
+        def member_stream(name: str) -> BinaryIO:
             member = members[name]
             if not member.isfile():
                 raise ValueError(f"OCI member is not a regular file: {name}")
             stream = archive.extractfile(member)
             if stream is None:
                 raise ValueError(f"Missing OCI member: {name}")
-            return stream.read()
+            return stream
 
-        def blob(descriptor: dict[str, Any]) -> bytes:
+        def blob_stream(descriptor: dict[str, Any]) -> BinaryIO:
             value = descriptor["digest"]
             if not DIGEST.fullmatch(value):
                 raise ValueError("Unsupported OCI digest")
-            data = read("blobs/sha256/" + value.removeprefix("sha256:"))
+            return member_stream("blobs/sha256/" + value.removeprefix("sha256:"))
+
+        def read(name: str) -> bytes:
+            with member_stream(name) as stream:
+                return stream.read()
+
+        def blob(descriptor: dict[str, Any]) -> bytes:
+            value = descriptor["digest"]
+            with blob_stream(descriptor) as stream:
+                data = stream.read()
             if digest(data) != value or len(data) != descriptor["size"]:
                 raise ValueError("OCI blob digest or size mismatch")
             return data
@@ -86,7 +95,14 @@ def inspect_archive(path: Path) -> dict[str, str]:
         if config.get("os") != "linux" or config.get("architecture") != "amd64":
             raise ValueError("Only the qualified linux/amd64 deployment is supported")
         for layer in manifest["layers"]:
-            blob(layer)
+            hasher = hashlib.sha256()
+            size = 0
+            with blob_stream(layer) as stream:
+                while chunk := stream.read(1024 * 1024):
+                    hasher.update(chunk)
+                    size += len(chunk)
+            if "sha256:" + hasher.hexdigest() != layer["digest"] or size != layer["size"]:
+                raise ValueError("OCI blob digest or size mismatch")
         return {"oci_manifest_digest": descriptor["digest"], "config_digest": manifest["config"]["digest"], "archive_sha256": file_digest(path)}
 
 
