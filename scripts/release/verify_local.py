@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from copy import deepcopy
 from pathlib import Path
 
 from .candidate import (
@@ -100,7 +101,7 @@ def main() -> None:
             rejected = []
             for gate in sorted(REQUIRED_GATES):
                 for status in ("failure", "cancelled", "skipped", None):
-                    data = json.loads(json.dumps(supplied)) if supplied else qualify(metadata, needs)
+                    data = deepcopy(supplied) if supplied else qualify(metadata, needs)
                     if status is None:
                         del data["gates"][gate]
                     else:
