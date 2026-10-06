@@ -75,6 +75,41 @@ async def test_delete_freezes_queue_without_holding_its_execution_resources():
             with pytest.raises(HTTPException), admission.write(["first"]):
                 pytest.fail("A writer entered during deletion")
     admission.require_drained("first")
+    async with coordinator.acquire([claim], policy=ConflictPolicy.REJECT) as lease:
+        assert lease is not None
+
+
+async def test_body_failure_releases_claims_to_a_real_waiting_writer():
+    admission = ServerWriteAdmission()
+    coordinator = OperationCoordinator(admission)
+    claim = ResourceClaim(ResourceKind.FILES, "first", "world")
+    attempting = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def waiting_writer():
+        attempting.set()
+        async with coordinator.acquire([claim], policy=ConflictPolicy.WAIT) as lease:
+            assert lease is not None
+            entered.set()
+
+    worker = None
+    try:
+        with pytest.raises(RuntimeError, match="writer body failed"):
+            async with coordinator.acquire([claim]):
+                worker = asyncio.create_task(waiting_writer())
+                await asyncio.wait_for(attempting.wait(), 2)
+                assert not entered.is_set()
+                raise RuntimeError("writer body failed")
+        await asyncio.wait_for(entered.wait(), 2)
+        assert worker is not None
+        await worker
+        admission.require_drained("first")
+        async with coordinator.acquire([claim], policy=ConflictPolicy.REJECT) as lease:
+            assert lease is not None
+    finally:
+        if worker is not None and not worker.done():
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
 
 
 async def test_file_scopes_conflict_only_for_overlapping_paths():

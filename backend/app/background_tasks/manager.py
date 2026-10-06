@@ -11,6 +11,7 @@ from ..errors import log_safe_error, public_error_code, public_error_message
 from ..logger import get_logger
 from ..operation_admission import get_server_write_admission
 from ..operations.finalization import finalize
+from ..operations.journal_types import OperationState
 from ..runtime_resources import current_runtime
 from .models import BackgroundTask
 from .types import TaskProgress, TaskResult, TaskStatus, TaskType
@@ -20,15 +21,23 @@ if TYPE_CHECKING:
     from ..operations.journal import OperationJournal
     from ..operations.journal_types import (
         OperationRecord,
-        OperationState,
         ResourceReference,
     )
     from ..servers.references import ServerRef
 
 
-class SubmitResult(BaseModel):
-    """Result returned when submitting a task."""
+def _task_status(state: OperationState) -> TaskStatus:
+    return {
+        OperationState.QUEUED: TaskStatus.PENDING,
+        OperationState.RUNNING: TaskStatus.RUNNING,
+        OperationState.CANCELLING: TaskStatus.RUNNING,
+        OperationState.FINALIZING: TaskStatus.RUNNING,
+        OperationState.SUCCEEDED: TaskStatus.COMPLETED,
+        OperationState.CANCELLED: TaskStatus.CANCELLED,
+    }.get(state, TaskStatus.FAILED)
 
+
+class SubmitResult(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     task_id: str
@@ -37,8 +46,6 @@ class SubmitResult(BaseModel):
 
 
 class BackgroundTaskManager:
-    """Manager for background tasks. Singleton instance."""
-
     def __init__(self, journal: "OperationJournal | None" = None):
         self._tasks: dict[str, BackgroundTask] = {}
         self._asyncio_tasks: dict[str, asyncio.Task] = {}
@@ -119,7 +126,6 @@ class BackgroundTaskManager:
         from ..operations.execution import accept_operation
         from ..operations.journal_types import (
             OperationSpec,
-            OperationState,
             ResourceReference,
         )
         from ..operations.resources import journal_resources
@@ -250,14 +256,7 @@ class BackgroundTaskManager:
             task_type = TaskType(record.kind)
         except ValueError:
             return None
-        state = {
-            OperationState.QUEUED: TaskStatus.PENDING,
-            OperationState.RUNNING: TaskStatus.RUNNING,
-            OperationState.CANCELLING: TaskStatus.RUNNING,
-            OperationState.FINALIZING: TaskStatus.RUNNING,
-            OperationState.SUCCEEDED: TaskStatus.COMPLETED,
-            OperationState.CANCELLED: TaskStatus.CANCELLED,
-        }.get(record.state, TaskStatus.FAILED)
+        state = _task_status(record.state)
         message = "应用重启前的操作已中断，请查看操作历史" if record.state is OperationState.INTERRUPTED else "操作记录已恢复"
         if state in (TaskStatus.PENDING, TaskStatus.RUNNING):
             message = "任务已受理，等待执行完成"
@@ -293,37 +292,7 @@ class BackgroundTaskManager:
         *,
         on_cancelled_before_start: Callable[[], Awaitable[None]] | None = None,
     ) -> SubmitResult:
-        """
-        Submit a background task.
 
-        Args:
-            task_type: Type of the task
-            name: Display name for the task
-            task_generator: Instantiated async generator that yields TaskProgress
-            server_id: Associated server ID, or None for global tasks
-            cancellable: Whether the task can be cancelled
-
-        Returns:
-            SubmitResult containing task_id and an awaitable Future
-
-        Example:
-            async def compress_task(path: str):
-                for i in range(100):
-                    yield TaskProgress(progress=i, message=f"Processing {i}%")
-                yield TaskProgress(progress=100, message="Done", result={"size": 1024})
-
-            result = manager.submit(
-                TaskType.ARCHIVE_CREATE,
-                "backup.7z",
-                compress_task("/data"),
-                server_id="survival"
-            )
-            # Immediate return
-            return {"task_id": result.task_id}
-
-            # Or wait for completion
-            task_result = await result.awaitable
-        """
         logger = get_logger()
         if not self._accepting:
             raise RuntimeError("后台任务管理器正在关闭")
@@ -394,7 +363,6 @@ class BackgroundTaskManager:
                     if self.journal is not None:
                         from ..operations.journal_types import (
                             TERMINAL_STATES,
-                            OperationState,
                         )
 
                         try:
@@ -406,10 +374,7 @@ class BackgroundTaskManager:
                             log_safe_error(exc, "Task result verification failed")
                         if recorded is not None and recorded.state in TERMINAL_STATES:
                             task.error_code = recorded.failure_code
-                            terminal = {
-                                OperationState.SUCCEEDED: TaskStatus.COMPLETED,
-                                OperationState.CANCELLED: TaskStatus.CANCELLED,
-                            }.get(recorded.state, TaskStatus.FAILED)
+                            terminal = _task_status(recorded.state)
                             if terminal is TaskStatus.COMPLETED:
                                 error = None
                             elif terminal is TaskStatus.CANCELLED:
@@ -473,11 +438,9 @@ class BackgroundTaskManager:
             await finalize(asyncio.gather(*workers, return_exceptions=True))
 
     def get_task(self, task_id: str) -> BackgroundTask | None:
-        """Get a task by ID."""
         return self._tasks.get(task_id)
 
     def get_all_tasks(self) -> list[BackgroundTask]:
-        """Get all tasks."""
         return list(self._tasks.values())
 
     def get_active_tasks(self) -> list[BackgroundTask]:
@@ -520,11 +483,7 @@ class BackgroundTaskManager:
             for tid, t in self._tasks.items()
             if t.status not in (TaskStatus.PENDING, TaskStatus.RUNNING)
         ]
-        for tid in to_remove:
-            del self._tasks[tid]
-            self._asyncio_tasks.pop(tid, None)
-            self._futures.pop(tid, None)
-        return len(to_remove)
+        return sum(self.remove_task(task_id) for task_id in to_remove)
 
 
 def get_task_manager() -> BackgroundTaskManager:

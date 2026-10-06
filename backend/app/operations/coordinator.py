@@ -81,10 +81,15 @@ class OperationCoordinator:
         if any(self.is_occupied(claim) for claim in claims):
             raise HTTPException(status_code=423, detail="服务器仍有操作未结束，请稍后重试删除")
         lease = ResourceLease(claims, permit)
+        async with self._registered(lease):
+            yield lease
+
+    @asynccontextmanager
+    async def _registered(self, lease: ResourceLease) -> AsyncGenerator[None]:
         self._leases.add(lease)
         try:
             await revalidate_targets()
-            yield lease
+            yield
         finally:
             self._leases.remove(lease)
             changed = self._changed
@@ -143,15 +148,8 @@ class OperationCoordinator:
                 if archives:
                     self.admission.check_archive(archives)
             lease = ResourceLease(ordered, object())
-            self._leases.add(lease)
-            try:
-                await revalidate_targets()
+            async with self._registered(lease):
                 yield lease
-            finally:
-                self._leases.remove(lease)
-                changed = self._changed
-                self._changed = asyncio.Event()
-                changed.set()
 
 
 def get_operation_coordinator() -> OperationCoordinator:

@@ -15,8 +15,8 @@ from fastapi import HTTPException
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ..db.owned_calls import complete_database_call
 from ..errors import PublicOperationError
-from .finalization import finalize
 from .journal_types import (
     TERMINAL_STATES,
     JournalLimits,
@@ -32,24 +32,11 @@ from .models import OperationJournalEntry
 _TOKEN = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
 
 
-async def _complete_database_call[T](awaitable: Awaitable[T]) -> T:
-    try:
-        result = await finalize(awaitable)
-    except Exception as error:
-        try:
-            await checkpoint_if_cancelled()
-        except asyncio.CancelledError as cancelled:
-            raise cancelled from error
-        raise
-    await checkpoint_if_cancelled()
-    return result
-
-
 def _complete_read[**P, T](method: Callable[P, Awaitable[T]]) -> Callable[P, Coroutine[Any, Any, T]]:
     @wraps(method)
     async def completed(*args: P.args, **kwargs: P.kwargs) -> T:
         await checkpoint_if_cancelled()
-        return await _complete_database_call(method(*args, **kwargs))
+        return await complete_database_call(method(*args, **kwargs))
     return completed
 
 
@@ -60,7 +47,7 @@ def _complete_write[**P, T](
     async def completed(self: "OperationJournal", /, *args: P.args, **kwargs: P.kwargs) -> T:
         async with self._lock:
             await checkpoint_if_cancelled()
-            return await _complete_database_call(method(self, *args, **kwargs))
+            return await complete_database_call(method(self, *args, **kwargs))
     return completed
 
 
@@ -171,7 +158,7 @@ class OperationJournal:
     ) -> OperationRecord:
         async with self._lock:
             await checkpoint_if_cancelled()
-            return await _complete_database_call(self._accept(spec, on_accepted=on_accepted))
+            return await complete_database_call(self._accept(spec, on_accepted=on_accepted))
 
     async def _accept(
         self, spec: OperationSpec, *, on_accepted: Callable[[OperationRecord], None] | None,
@@ -245,7 +232,6 @@ class OperationJournal:
             row.updated_at = self.clock()
             return _record(row)
 
-    stage = phase
 
     @_complete_write
     async def bind_created_server(self, operation_id: str, server_id: str, generation: int) -> None:
