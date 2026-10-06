@@ -1,15 +1,5 @@
 .vscode
 **/.claude
-/.claude/*
-!/.claude/
-!/.claude/commands/
-/.claude/commands/*
-!/.claude/commands/opsx/
-!/.claude/commands/opsx/*.md
-!/.claude/skills/
-/.claude/skills/*
-!/.claude/skills/openspec-*/
-!/.claude/skills/openspec-*/*.md
 data
 __pycache__/
 /.e2e-runs/

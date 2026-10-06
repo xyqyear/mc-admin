@@ -1,0 +1,4 @@
+interface:
+  display_name: "Generate Version Message"
+  short_description: "Create MC Admin release update entries"
+  default_prompt: "Use $gen-version-message to draft the next MC Admin version update entry."
