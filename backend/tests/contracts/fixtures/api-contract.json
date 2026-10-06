@@ -1984,8 +1984,8 @@
             "created_at",
             "started_at",
             "ended_at",
-            "result",
-            "error"
+            "error",
+            "result"
           ],
           "title": "BackgroundTaskResponse",
           "type": "object"
