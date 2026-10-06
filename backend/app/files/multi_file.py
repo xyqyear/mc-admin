@@ -8,7 +8,7 @@ import aiofiles
 from aiofiles import os as aioos
 from fastapi import HTTPException, UploadFile
 
-from ..logger import get_logger
+from ..errors import PublicOperationError, log_safe_error
 from ..operations.finalization import finalize
 from .paths import resolve_file_path
 from .types import (
@@ -100,7 +100,6 @@ async def upload_multiple_files(
     base_path: Path, session_id: str, upload_path: str, files: list[UploadFile]
 ) -> MultiFileUploadResult:
     """Upload multiple files using the prepared session"""
-    logger = get_logger()
     session = require_upload_session(session_id)
 
     target_base = await resolve_file_path(base_path, upload_path)
@@ -177,14 +176,18 @@ async def upload_multiple_files(
 
                 results[result_key] = UploadFileResult(status="success")
 
-            except Exception as file_error:
-                logger.exception("Upload failed for %s", file_relative_path)
+            except Exception as file_error:  # noqa: BLE001 - a failed member must not stop the remaining upload
+                log_safe_error(file_error, "File upload failed")
                 results[result_key] = UploadFileResult(
-                    status="failed", reason=str(file_error)
+                    status="failed",
+                    reason=str(file_error) if isinstance(file_error, PublicOperationError)
+                    else "文件上传失败，请稍后重试",
                 )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {e!s}") from e
+        log_safe_error(e, "Multi-file upload failed")
+        detail = str(e) if isinstance(e, PublicOperationError) else "文件上传失败，请稍后重试"
+        raise HTTPException(status_code=500, detail=detail) from e
 
     # Count successful uploads
     success_count = sum(1 for result in results.values() if result.status == "success")

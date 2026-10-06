@@ -31,6 +31,12 @@ Uploads validate the whole batch before consuming its session, then reserve its
 actual destinations. Rejected conflicts leave the session available for retry.
 Cancellation waits for the current file write to finish and stops later files;
 completed files remain. Finite filesystem cleanup finishes before lease release.
+Unknown write failures produce a safe per-file reason and allow later members to
+continue; bytes already written remain. Parent-directory or execution-time path
+failures stop the batch with a safe string 500 response. Whole-batch preflight
+keeps its 400/404 responses, and admission conflicts retain structured 423 errors.
+Only explicitly authored safe operation messages are exposed; adapter exception
+values and destination names are excluded from error logs.
 Large batches use a bounded journal summary while execution leases retain the
 individual paths. Interrupted writes do not imply automatic rollback.
 
