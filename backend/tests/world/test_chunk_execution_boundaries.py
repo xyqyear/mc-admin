@@ -70,11 +70,12 @@ async def test_chunk_cli_cancellation_stops_the_owned_process_before_return(
     tmp_path: Path, monkeypatch, operation,
 ):
     ready = tmp_path / "process-ready"
+    event = {"type": "chunk_replaced", "x": 0, "z": 0, "source_kind": "inline"} if operation == "replace" else {"type": "chunk_removed", "x": 0, "z": 0}
     adapter = tmp_path / "owned-chunk-adapter"
     adapter.write_text(
         f"#!{sys.executable}\nimport pathlib, os, time\n"
         f"pathlib.Path({str(ready)!r}).write_text(str(os.getpid()))\n"
-        "print('{\"type\":\"progress\",\"phase\":\"owned-wait\"}', flush=True)\n"
+        f"print({json.dumps(json.dumps(event))}, flush=True)\n"
         "while True: time.sleep(0.01)\n"
     )
     adapter.chmod(0o700)
@@ -94,6 +95,7 @@ async def test_chunk_cli_cancellation_stops_the_owned_process_before_return(
             while not ready.exists():
                 await asyncio.sleep(0.01)
         pid = int(ready.read_text())
+        assert not task.done()
         os.kill(pid, 0)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
