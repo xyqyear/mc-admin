@@ -1,19 +1,12 @@
 import { queryOptions } from '@tanstack/react-query';
 import { shouldRetryQuery } from '@/shared/http/api';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueries, useQueryClient, } from '@tanstack/react-query';
 import { playerApi } from '@/features/players/api';
-import type { PlayerCleanupKind, PlayerMapProfilesStreamEvent, PlayerMapProfileResponse } from '@/features/players/contracts';
+import type { PlayerCleanupKind, PlayerMapProfileResponse } from '@/features/players/contracts';
 import { queryKeys } from '@/shared/http/api';
 import { readEventStream } from '@/shared/http/eventStream';
-function normalizeUuid(uuid: string | null | undefined): string | null {
-  if (!uuid)
-    return null;
-  const normalized = uuid.replaceAll('-', '').toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(normalized))
-    return null;
-  return normalized;
-}
+import { normalizeUuid } from '@/features/players/identity';
 function normalizeUuidList(uuids: readonly (string | null | undefined)[]): string[] {
   return Array.from(new Set(uuids
     .map((uuid) => normalizeUuid(uuid))
@@ -21,6 +14,19 @@ function normalizeUuidList(uuids: readonly (string | null | undefined)[]): strin
 }
 function combineMapProfiles(results: readonly { data: PlayerMapProfileResponse | undefined }[]) {
   return results.map((result) => result.data);
+}
+function readMapProfile(value: unknown): PlayerMapProfileResponse {
+  if (!value || typeof value !== 'object') throw new Error('玩家资料格式无效，请重试');
+  const profile = value as Record<string, unknown>;
+  if (typeof profile.uuid !== 'string' || !normalizeUuid(profile.uuid)
+    || !(profile.player_db_id === null || Number.isInteger(profile.player_db_id))
+    || !(profile.current_name === null || typeof profile.current_name === 'string')
+    || !(profile.avatar_base64 === null || typeof profile.avatar_base64 === 'string')
+    || typeof profile.resolved !== 'boolean'
+    || !(profile.last_skin_update === null || typeof profile.last_skin_update === 'string')) {
+    throw new Error('玩家资料格式无效，请重试');
+  }
+  return value as PlayerMapProfileResponse;
 }
 export const useAllPlayers = (params?: {
   online_only?: boolean;
@@ -51,6 +57,8 @@ export const usePlayerMapProfiles = (uuids: readonly (string | null | undefined)
   })), [normalizedUuids, profiles]);
   const [pendingUuids, setPendingUuids] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt(value => value + 1), []);
   useEffect(() => {
     const cachedProfiles = new Map<string, PlayerMapProfileResponse>();
     for (const uuid of normalizedUuids) {
@@ -65,17 +73,20 @@ export const usePlayerMapProfiles = (uuids: readonly (string | null | undefined)
     if (!enabled || normalizedUuids.length === 0)
       return;
     const ctrl = new AbortController();
-    void readEventStream<PlayerMapProfilesStreamEvent>({
+    let terminal = false;
+    void readEventStream<unknown>({
       url: '/players/profiles/stream',
       method: 'POST',
       body: { uuids: normalizedUuids },
       signal: ctrl.signal,
-      onEvent: (event) => {
+      onEvent: (value) => {
+        if (terminal || ctrl.signal.aborted) return;
+        if (!value || typeof value !== 'object') throw new Error('玩家资料格式无效，请重试');
+        const event = value as Record<string, unknown>;
         if (event.event_type === 'profile') {
-          const uuid = normalizeUuid(event.profile.uuid);
-          if (!uuid)
-            return;
-          const profile = { ...event.profile, uuid };
+          const received = readMapProfile(event.profile);
+          const uuid = normalizeUuid(received.uuid)!;
+          const profile = { ...received, uuid };
           queryClient.setQueryData(queryKeys.players.mapProfileByUUID(uuid), profile);
           setPendingUuids((prev) => {
             if (!prev.has(uuid))
@@ -87,18 +98,24 @@ export const usePlayerMapProfiles = (uuids: readonly (string | null | undefined)
           return;
         }
         if (event.event_type === 'complete') {
+          if (!Number.isInteger(event.total) || !Number.isInteger(event.resolved)) throw new Error('玩家资料格式无效，请重试');
+          terminal = true;
           setPendingUuids(new Set());
           return;
         }
         if (event.event_type === 'error') {
+          if (typeof event.message !== 'string') throw new Error('玩家资料格式无效，请重试');
+          terminal = true;
           setError(event.message);
           setPendingUuids(new Set());
         }
       },
       onClose: () => {
+        if (!terminal) setError('玩家资料连接已中断，请重试');
         setPendingUuids(new Set());
       },
       onError: (message) => {
+        if (terminal || ctrl.signal.aborted) return;
         setError(message);
         setPendingUuids(new Set());
       },
@@ -106,7 +123,7 @@ export const usePlayerMapProfiles = (uuids: readonly (string | null | undefined)
     return () => {
       ctrl.abort();
     };
-  }, [enabled, normalizedUuids, queryClient]);
+  }, [attempt, enabled, normalizedUuids, queryClient]);
   return {
     uuids: normalizedUuids,
     profilesByUuid,
@@ -115,6 +132,7 @@ export const usePlayerMapProfiles = (uuids: readonly (string | null | undefined)
     isLoading: enabled && pendingUuids.size > 0 && profilesByUuid.size === 0,
     isFetching: enabled && pendingUuids.size > 0,
     isError: !!error,
+    retry,
   };
 };
 export const useServerOnlinePlayers = (serverId: string) => {

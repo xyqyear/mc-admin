@@ -63,11 +63,14 @@ export async function readEventStream<TEvent>(
           .map((l) => l.slice(5).trim())
         if (dataLines.length === 0) continue
         const payload = dataLines.join('\n')
+        let event: TEvent
         try {
-          opts.onEvent(JSON.parse(payload) as TEvent)
-        } catch {
-          // Ignore malformed events and keep the stream open.
+          event = JSON.parse(payload) as TEvent
+        } catch (error) {
+          if (error instanceof SyntaxError) continue
+          throw error
         }
+        opts.onEvent(event)
       }
     }
     if (!opts.signal?.aborted) opts.onClose?.()
