@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.players import get_player_service
 from app.players.skin_fetcher import SkinFetcher
+from app.runtime_resources import current_runtime
 from tests.players.helpers import cleanup_test_db, create_test_db
 
 
@@ -34,4 +35,7 @@ async def player_system(test_database, mock_skin_fetcher, mock_mojang_api) -> As
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ):
-        yield {"db": test_database}
+        try:
+            yield {"db": test_database}
+        finally:
+            await current_runtime().close()

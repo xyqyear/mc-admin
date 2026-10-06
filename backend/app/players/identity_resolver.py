@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from ..logger import get_logger
 from ..minecraft import get_docker_mc_manager
 from . import mojang_api
+from .identity import normalize_uuid
 
 
 class UserCacheEntry(BaseModel):
@@ -39,17 +40,6 @@ class UserCacheData:
     by_uuid: dict[str, PlayerIdentity]
     invalid_names: set[str]
     invalid_uuids: set[str]
-
-
-def normalize_uuid(value: str) -> str | None:
-    """Return dashless lowercase UUID text, or None for invalid UUID syntax."""
-    uuid_text = value.replace("-", "").lower()
-    if len(uuid_text) != 32 or any(c not in "0123456789abcdef" for c in uuid_text):
-        return None
-    try:
-        return UUID(uuid_text).hex
-    except ValueError:
-        return None
 
 
 def is_online_uuid(value: str) -> bool:

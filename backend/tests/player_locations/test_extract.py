@@ -14,8 +14,8 @@ from app.mcmap import runner
 from app.player_locations import (
     PlayerLocationExtractError,
     extract_player_locations_for_server,
-    normalize_uuid,
 )
+from app.players.identity import normalize_uuid
 from app.routers.servers import world_restore
 from tests.support.mcmap import build_minimal_world
 from tests.support.runtime import patch_runtime_resource
@@ -82,6 +82,24 @@ def test_normalize_uuid_accepts_dashed_and_dashless():
         == "0b4c41928eb34f0b90228e2cb2ee6fc0"
     )
     assert normalize_uuid("not-a-uuid") is None
+
+
+@pytest.mark.parametrize(("value", "expected"), [
+    ("-0b4C-41928eB34f0b-9022-8E2cb2Ee6fC0-", "0b4c41928eb34f0b90228e2cb2ee6fc0"),
+    ("", None),
+    ("0b4c41928eb34f0b90228e2cb2ee6fc", None),
+    ("0b4c41928eb34f0b90228e2cb2ee6fc00", None),
+    ("0b4c41928eb34f0b90228e2cb2ee6fcg", None),
+    (" 0b4c41928eb34f0b90228e2cb2ee6fc0", None),
+])
+def test_normalize_uuid_preserves_identity_input_boundaries(value, expected):
+    assert normalize_uuid(value) == expected
+
+
+@pytest.mark.parametrize("value", [None, 123, object()])
+def test_normalize_uuid_non_string_keeps_original_attribute_error(value):
+    with pytest.raises(AttributeError, match="replace"):
+        normalize_uuid(value)
 
 
 async def test_extract_resolves_dimensions_and_keeps_skipped(world_data_path):

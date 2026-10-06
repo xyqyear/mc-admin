@@ -40,7 +40,7 @@ from ...players.crud.query.player_query import (
     get_all_players_summary,
     get_player_detail_by_uuid,
 )
-from ...player_locations import normalize_uuid
+from ...players.identity import normalize_uuid
 from ...players.identity_resolver import is_online_uuid
 from ...players.skin_fetcher import get_skin_fetcher
 from ...utils.sse import sse_response

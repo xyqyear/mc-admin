@@ -1,7 +1,6 @@
 from .extract import (
     PlayerLocationExtractError,
     extract_player_locations_for_server,
-    normalize_uuid,
 )
 from .models import (
     PlayerIdKind,
@@ -25,5 +24,4 @@ __all__ = [
     "PlayerSkipReason",
     "PlayerStorageKind",
     "extract_player_locations_for_server",
-    "normalize_uuid",
 ]

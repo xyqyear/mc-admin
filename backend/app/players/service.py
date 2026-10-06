@@ -3,7 +3,7 @@
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -440,4 +440,4 @@ class PlayerService:
 
 
 def get_player_service() -> PlayerService:
-    return cast(PlayerService, current_runtime().player_service)
+    return current_runtime().player_service

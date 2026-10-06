@@ -105,62 +105,68 @@ async def test_concurrent_events_same_player(player_system):
     """Test concurrent calls for same player are handled correctly."""
     db = player_system["db"]
 
-    _server_db_id = await create_server(db, "server1")
-
-    # Upsert player UUID
+    server_db_id = await create_server(db, "server1")
+    uuid = make_online_uuid("Steve")
     async with db() as session:
-        await upsert_player(session, make_online_uuid("Steve"), "Steve")
+        await upsert_player(session, uuid, "Steve")
 
-    # Concurrent joins (simulating race condition — each gets its own DB session)
     join_time = datetime.now(UTC)
-
     await asyncio.gather(
         get_player_service().process_player_join("server1", "Steve", timestamp=join_time),
-        get_player_service().process_player_join(
-            "server1", "Steve", timestamp=join_time + timedelta(seconds=1)
-        ),
+        get_player_service().process_player_join("server1", "Steve", timestamp=join_time + timedelta(seconds=1)),
     )
+    async with db() as session:
+        player = (await session.scalars(select(Player).where(Player.uuid == uuid))).one()
+        rows = (await session.scalars(select(PlayerSession).where(PlayerSession.player_db_id == player.player_db_id))).all()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.server_db_id == server_db_id
+        assert row.left_at is None
+        assert row.duration_seconds is None
+        assert row.joined_at in (join_time, join_time + timedelta(seconds=1))
+        row_id = row.session_id
+        duration = int((join_time + timedelta(seconds=2) - row.joined_at).total_seconds())
 
-    # System should handle this gracefully — no errors
-    player = await get_player(db, "Steve")
-    assert player is not None
-
-    # Sequential leave after all joins complete — must close ALL open sessions
-    await get_player_service().process_player_left(
-        "server1", "Steve", timestamp=join_time + timedelta(seconds=2)
-    )
-
-    # No orphan open sessions should remain
-    open_count = await count_open_sessions(db, player.player_db_id)
-    assert open_count == 0
+    await asyncio.gather(*[
+        get_player_service().process_player_left("server1", "Steve", timestamp=join_time + timedelta(seconds=2))
+        for _ in range(2)
+    ])
+    async with db() as session:
+        rows = (await session.scalars(select(PlayerSession).where(PlayerSession.player_db_id == player.player_db_id))).all()
+        assert len(rows) == 1
+        assert rows[0].session_id == row_id
+        assert rows[0].left_at == join_time + timedelta(seconds=2)
+        assert rows[0].duration_seconds == duration
 
 
 @pytest.mark.asyncio
 async def test_rapid_server_stop_events(player_system):
-    """Test rapid server stop calls are handled correctly."""
     db = player_system["db"]
-
     server_db_id = await create_server(db, "server1")
-
-    # Create players
-    for i in range(5):
+    join_time = datetime.now(UTC)
+    for index in range(5):
+        name = f"Player{index}"
         async with db() as session:
-            await upsert_player(session, make_online_uuid(f"Player{i}"), f"Player{i}")
-        await get_player_service().process_player_join("server1", f"Player{i}")
-
-    # Multiple rapid close_server_sessions calls
-    await asyncio.gather(*[get_player_service().close_server_sessions("server1") for _ in range(10)])
-
-    # All players should be offline (all sessions should be ended)
+            await upsert_player(session, make_online_uuid(name), name)
+        await get_player_service().process_player_join("server1", name, timestamp=join_time)
     async with db() as session:
-        result = await session.execute(
-            select(PlayerSession).where(
-                PlayerSession.server_db_id == server_db_id,
-                PlayerSession.left_at.is_(None),
-            )
-        )
-        open_sessions = list(result.scalars().all())
-        assert len(open_sessions) == 0
+        rows = (await session.scalars(select(PlayerSession).where(PlayerSession.server_db_id == server_db_id))).all()
+        players = (await session.scalars(select(Player))).all()
+        assert len(rows) == 5
+        assert {player.uuid for player in players} == {make_online_uuid(f"Player{index}") for index in range(5)}
+        assert {row.player_db_id for row in rows} == {player.player_db_id for player in players}
+        assert all(row.left_at is None and row.duration_seconds is None for row in rows)
+        row_ids = {row.session_id for row in rows}
+    stop_time = join_time + timedelta(seconds=15)
+    await asyncio.gather(*[
+        get_player_service().close_server_sessions("server1", timestamp=stop_time)
+        for _ in range(10)
+    ])
+    async with db() as session:
+        rows = (await session.scalars(select(PlayerSession).where(PlayerSession.server_db_id == server_db_id))).all()
+        assert len(rows) == 5
+        assert {row.session_id for row in rows} == row_ids
+        assert all(row.left_at == stop_time and row.duration_seconds == 15 for row in rows)
 
 
 @pytest.mark.asyncio

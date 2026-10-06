@@ -3,6 +3,17 @@
 `app.players.identity_resolver` resolves Minecraft names and UUIDs while keeping
 offline-mode identities out of the player database.
 
+## UUID syntax and online identity
+
+`app.players.identity.normalize_uuid()` is a pure helper shared by the identity
+resolver and player-location extraction. It removes hyphens, lowercases the
+remaining text and accepts exactly 32 hexadecimal characters. It has no runtime,
+database, filesystem or network dependency and does not check the UUID version.
+
+The resolver's `is_online_uuid()` and `normalize_online_uuid()` apply the separate
+version-4 requirement. A syntactically valid offline UUID can therefore identify
+a saved player-location file without becoming a tracked online identity.
+
 ## Sources
 
 The resolver reads `usercache.json` from the server data directory:
@@ -54,9 +65,9 @@ The service injects the usercache/Mojang name resolver as its external identity
 adapter and captures its own runtime configuration for ignored-name checks.
 Calling an explicit service from another bound runtime still uses the service
 owner's usercache, configuration, database, clients and event publisher. CRUD
-functions perform no network identity lookup. The storage layer retains the v4
-and ignored-prefix gates for both tracking and profile cache writes. Consolidation does not change source priority or turn an invalid
-usercache identity into a Mojang fallback.
+functions perform no network identity lookup. The storage layer applies the v4
+and ignored-prefix gates to both tracking and profile cache writes. Usercache has
+priority over Mojang; an invalid usercache identity prevents network fallback.
 
 Skin fetching follows committed join publication and uses the owning runtime's
 client and task lifecycle. Fetch failure does not undo a joined session or its

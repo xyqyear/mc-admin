@@ -12,6 +12,7 @@ from ..mcmap.events import (
     MCMapSkippedPlayerFile,
 )
 from ..mcmap.runner import extract_players
+from ..players.identity import normalize_uuid
 from ..world.layout import (
     WorldRootPath,
     discover_world_root_paths,
@@ -28,15 +29,6 @@ from .models import (
 
 class PlayerLocationExtractError(Exception):
     pass
-
-
-def normalize_uuid(value: str) -> str | None:
-    uuid = value.replace("-", "").lower()
-    if len(uuid) != 32:
-        return None
-    if any(c not in "0123456789abcdef" for c in uuid):
-        return None
-    return uuid
 
 
 async def _run_extract(world_dir: Path, data_path: Path) -> MCMapPlayersPayload:
