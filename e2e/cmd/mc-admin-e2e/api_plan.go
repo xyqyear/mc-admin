@@ -126,7 +126,7 @@ func ciPlan(args []string) int {
 	flags := flag.NewFlagSet("ci-plan", flag.ContinueOnError)
 	var plan engine.RunPlan
 	var history, output, githubOutput, compatibility string
-	flags.StringVar(&plan.Profile, "profile", "regression", "current inventory profile; qualification requires Huawei")
+	flags.StringVar(&plan.Profile, "profile", "regression", "current inventory profile; regression and qualification exclude only DNSPod")
 	flags.StringVar(&plan.Revision, "revision", "", "candidate source SHA")
 	flags.StringVar(&plan.Image, "backend-image", "", "candidate config digest")
 	flags.StringVar(&history, "history", "", "frozen restored timing envelope")

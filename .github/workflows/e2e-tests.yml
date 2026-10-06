@@ -43,13 +43,11 @@ name: API E2E Tests
   workflow_dispatch:
     inputs:
       selection:
-        description: Qualification includes Huawei DNS; DNSPod needs E2E_EXTERNAL_CONFIG
+        description: API test selection; DNSPod needs E2E_EXTERNAL_CONFIG
         type: choice
         options:
         - regression
         - qualification
-        - smoke
-        - mojang
         - dnspod
         default: regression
       no_reuse:

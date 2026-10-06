@@ -64,7 +64,7 @@ func mainCode(args []string) int {
 	flags.StringVar(&settings.Image, "backend-image", "", "application image built from the revision under test (required for run)")
 	flags.StringVar(&settings.MinecraftImage, "minecraft-image", fixtures.DefaultMinecraftImage, "Minecraft image including java tag and digest")
 	flags.StringVar(&settings.MinecraftVersion, "minecraft-version", fixtures.DefaultMinecraftVersion, "exact Minecraft version")
-	flags.StringVar(&settings.ExternalConfig, "external-config", "", "private JSON configuration for explicitly selected external qualification cases")
+	flags.StringVar(&settings.ExternalConfig, "external-config", "", "private JSON configuration required by selected DNS provider cases")
 	flags.StringVar(&settings.PortDirectory, "port-directory", filepath.Join(os.TempDir(), "mc-admin-e2e-ports"), "host-shared port lease directory; all concurrent runners must agree")
 	flags.IntVar(&settings.MinecraftSlots, "mc-slots", 1, "maximum live Minecraft environments")
 	flags.IntVar(&workers, "workers", 2, "maximum concurrent environments")

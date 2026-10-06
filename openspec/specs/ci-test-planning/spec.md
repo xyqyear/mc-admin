@@ -39,30 +39,30 @@ Every execution SHALL use one immutable plan and historical snapshot for its fam
 - **WHEN** shard evidence does not match the family's shared plan identity
 - **THEN** the aggregate audit rejects it
 
-### Requirement: Integrated DNS qualification
-API E2E SHALL own real Huawei scenarios, their costs, execution plans and aggregate qualification. Complete qualification SHALL independently require every current ordinary regression and Huawei scenario and verified owned cloud cleanup. Provider dependency metadata SHALL select required private configuration and recovery steps. Every API shard SHALL use `dns-e2e` as an unrestricted configuration store with no environment protection or branch authorization gate, and provider steps SHALL receive credentials only when required. Ordinary regression SHALL NOT receive cloud credentials or select cloud scenarios.
+### Requirement: Integrated provider execution
+API E2E SHALL own external-provider scenarios, their costs, execution plans and aggregate audits. Ordinary pull request regression, regular automatic CI and complete qualification SHALL independently require every current API case except DNSPod and verified owned cloud cleanup. Provider dependency metadata SHALL select required private configuration and recovery steps. Every API shard SHALL use `dns-e2e` as an unrestricted configuration store with no environment protection or branch authorization gate, and provider steps SHALL receive credentials only when required.
 
-#### Scenario: Complete qualification omits a required Huawei case
-- **WHEN** the complete qualification context requires a current Huawei scenario but its assigned execution is absent, skipped or failed
+#### Scenario: Automated API validation omits a required case
+- **WHEN** regression or qualification requires a current non-DNSPod scenario but its assigned execution is absent, skipped or failed
 - **THEN** the API aggregate gate fails
 
 #### Scenario: A pull request executes ordinary regression
 - **WHEN** a pull request runs the ordinary API regression profile
-- **THEN** its plan excludes cloud scenarios and its test steps are not passed Huawei credentials
+- **THEN** its plan includes every current non-DNSPod case and provider steps receive the configuration and credentials required by their assigned cases
 
 #### Scenario: Docker cleanup succeeds but cloud records remain
-- **WHEN** owned local containers are removed while a selected Huawei scope lacks verified cloud cleanup
+- **WHEN** owned local containers are removed while a selected cloud scope lacks verified cloud cleanup
 - **THEN** API qualification fails and retains the non-secret recovery evidence
 
 ### Requirement: Unified global API scheduling
-The API planner SHALL globally allocate every selected atomic group for a profile into one immutable plan and one job matrix. It SHALL retain Fresh/reusable group boundaries, permit ordinary and Huawei groups in the same shard, and use at most 16 shards and eight concurrent jobs with two workers and one Minecraft slot per runner. Provider requirements SHALL supply dependency metadata and credential/recovery bindings without imposing separate shard allocation or provider-specific concurrency limits. DNSPod and Mojang SHALL remain explicitly selected profiles.
+The API planner SHALL globally allocate every selected atomic group for a profile into one immutable plan and one job matrix. It SHALL retain Fresh/reusable group boundaries, permit groups with different provider dependencies in the same shard, and use at most 16 shards and eight concurrent jobs with two workers and one Minecraft slot per runner. Provider requirements SHALL supply dependency metadata and credential/recovery bindings without imposing separate shard allocation or provider-specific concurrency limits. CI SHALL offer only `regression`, `qualification` and `dnspod` profiles; only DNSPod SHALL require explicit selection. Local case/tag filters SHALL remain available.
 
-#### Scenario: Ordinary and Huawei work share capacity
-- **WHEN** a qualification plan selects ordinary and Huawei groups
+#### Scenario: Groups with different dependencies share capacity
+- **WHEN** an API plan selects groups with different provider dependencies
 - **THEN** the planner may place them together using the same cost and resource model while retaining each atomic group and exact-once coverage
 
-#### Scenario: A shard has a Huawei dependency
-- **WHEN** an assigned shard contains ordinary groups and a Huawei group
+#### Scenario: A shard has a cloud dependency
+- **WHEN** an assigned shard contains a group requiring cloud configuration
 - **THEN** its provider steps receive the required configuration and it executes all assigned groups under the same worker and Minecraft limits, with verified owned cloud recovery
 
 #### Scenario: Placement changes but timing semantics stay compatible

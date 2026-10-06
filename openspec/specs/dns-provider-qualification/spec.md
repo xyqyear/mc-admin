@@ -48,7 +48,7 @@ Cloud scenarios SHALL derive relative record names from the common environment I
 - **THEN** recovery uses the manifest's original domain and scope with the currently supplied provider credentials and verifies removal of managed records while preserving unrelated records
 
 ### Requirement: Candidate qualification
-Provider steps SHALL receive the configuration required by their selected scenarios. The `dns-e2e` configuration store SHALL have no environment protection or branch authorization gate. Ordinary regression SHALL remain runnable without credentials. Release qualification SHALL require successful Huawei checks against the same candidate revision and image and SHALL reject missing, skipped or failed cloud evidence.
+Provider steps SHALL receive the configuration required by their selected scenarios. The `dns-e2e` configuration store SHALL have no environment protection or branch authorization gate. Ordinary pull request regression, regular automatic CI and release qualification SHALL require every current API case except DNSPod against the same candidate revision and image and SHALL reject missing, skipped or failed cloud evidence. DNSPod SHALL run only when explicitly selected; local scenarios without cloud dependencies SHALL remain runnable without cloud credentials.
 
 #### Scenario: Missing cloud credentials
 - **WHEN** a Huawei job is selected without its configuration
@@ -56,4 +56,4 @@ Provider steps SHALL receive the configuration required by their selected scenar
 
 #### Scenario: Ordinary pull request regression
 - **WHEN** a pull request runs the ordinary regression profile
-- **THEN** its test steps are not passed cloud credentials and do not execute cloud mutations
+- **THEN** required cloud scenarios execute with their configured credentials, verify owned resource cleanup and fail if either execution or cleanup is incomplete

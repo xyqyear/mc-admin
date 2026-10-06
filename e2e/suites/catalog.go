@@ -1,6 +1,8 @@
 package suites
 
 import (
+	"slices"
+
 	"mc-admin/e2e/internal/engine"
 	"mc-admin/e2e/internal/fixtures"
 	"mc-admin/e2e/suites/archive"
@@ -27,12 +29,7 @@ func Catalog(recipes fixtures.Recipes) []engine.Case {
 		cases = append(cases, suite(recipes)...)
 	}
 	for i := range cases {
-		external, regression := false, false
-		for _, tag := range cases[i].Tags {
-			external = external || tag == "external"
-			regression = regression || tag == "regression"
-		}
-		if !external && !regression {
+		if cases[i].Capability != "dnspod" && !slices.Contains(cases[i].Tags, "regression") {
 			cases[i].Tags = append(cases[i].Tags, "regression")
 		}
 	}

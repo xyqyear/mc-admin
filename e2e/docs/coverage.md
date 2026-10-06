@@ -1,10 +1,10 @@
 # 后端功能完整覆盖清单与 E2E 测试范围
 
-本清单将后端的各个功能域映射到统一 `suites/catalog.go` 中具有稳定 ID 的测试用例。当前共 **91 个场景：87 个常规回归用例（其中包含 13 个冒烟用例），以及 4 个外部服务用例**。
+本清单将后端的各个功能域映射到统一 `suites/catalog.go` 中具有稳定 ID 的测试用例。当前 catalog 共 **91 个场景**，默认回归执行除 DNSPod 外的 **90 个场景**。其中 13 个带有冒烟标签，4 个依赖真实外部服务；这些标签可以重叠。实际必需集合由当前 catalog 推导，不由文档计数或历史结果决定。
 
 下表描述测试代码已经实现的断言。实际使用的镜像、运行范围、失败情况和验证结果，以当前提交的完整资格运行及其 CI artifacts 为准；用例已经实现，不等于对应部署已经验证通过。完整资格要求见[发布说明](../../docs/release.md)。
 
-普通筛选的 `--tag regression` 选择冒烟及全部常规回归用例；`--tag smoke` 选择有代表性的核心工作流。外部用例不属于普通回归集。CI 的 `qualification` profile 独立要求全部当前常规回归和华为用例，发布、main push、定时及显式手动资格验证使用该 profile；Mojang、DNSPod 保留显式选择。普通 PR 回归不选择华为分片，也不接收云凭据。可以使用 `list` 或 `plan` 查看目录和配方；本地执行仍必须按仓库规则指定相关用例 ID。
+普通 PR、常规自动 CI 和完整 `qualification` 均执行当前 catalog 中除 DNSPod 外的全部用例。CI 仅提供 `regression`、`qualification` 和 `dnspod` profile；只有 DNSPod 保留显式选择。`--tag regression` 与默认 CI 集合一致，`--tag smoke` 选择核心工作流，本地仍可按标签和明确的相关用例 ID 定向执行。可以使用 `list` 或 `plan` 查看目录和配方。
 
 真实浏览器流程和[完整持久数据部署演练](deployment-rehearsal.md)使用同一个 owned provider 包装器，单独记录结果，不计入上述 Go API 用例数。部署演练通过真实 v6.0.0-beta.1 镜像生成历史数据，覆盖升级后的 ID/配置/内容保留、旧代码拒绝新 schema、完整检查点灾备、旧恢复记录回滚及再次回滚、歧义归属拒绝写入，以及世界快照恢复和安全快照回滚。
 
@@ -122,9 +122,9 @@
 | 华为 DNS，真实云验证 | `dns.huawei-reconciliation` | 对真实华为 DNS 和独占 mc-router 验证记录增改删、CNAME 替换、独立 SDK 读取和权威 DNS 应答；非托管 TXT 保护记录必须保留；持久清单和独立回收程序验证云端清理。 |
 | Minecraft 实际转发 | `dns.router-minecraft-traffic` | 普通回归不需要云凭据；使用真实 Minecraft 和 mc-router，通过唯一 MOTD 验证目的服务器、未知主机名拒绝、DNS 降级时路由修复。 |
 | 华为 DNS 到 Minecraft | `dns.huawei-minecraft-connectivity` | 通过独立 SDK 和权威 DNS 核对华为云记录，从 SRV/A 应答取得端口与地址，经真实 mc-router 验证 Minecraft MOTD；包含首次递归解析、启动修复、创建/删除/同步自动触发、监听端口变化和停止服务器后保留记录。 |
-| Mojang 真实访问，需要显式选择 | `players.live-profile-and-skin` | 通过后端获取公开玩家资料和皮肤，要求成功解析身份、头像及更新时间；刷新皮肤，并在重启后保留下载缓存。 |
+| Mojang 真实访问 | `players.live-profile-and-skin` | 通过后端获取公开玩家资料和皮肤，要求成功解析身份、头像及更新时间；刷新皮肤，并在重启后保留下载缓存。 |
 
-华为云资格验证使用 GitHub Environment 中配置的现有公共 zone，纳入统一 API 不可变计划、全局 matrix 和发布门禁。当前 `qualification` 要求全部 89 个常规/华为用例；普通与华为 atomic group 可以同片。所有 API 分片使用无分支限制或保护规则的 `dns-e2e` 配置存储，provider 依赖选择所需私有配置和回收步骤，仅相应步骤接收凭据。普通 PR 选择 87 个常规用例且不接收云凭据；仓库只保留示例域名和配置指南。DNSPod 仍需显式提供其凭据。禁用 DNS、受控 HTTPS 协议服务或本地真实 mc-router 客户端测试通过，并不表示 DNSPod、华为 DNS 的记录修改已经验证通过。
+真实云 DNS 用例使用 GitHub Environment 中配置的现有公共 zone，纳入统一 API 不可变计划和全局 matrix。所有 API 分片使用无分支限制或保护规则的 `dns-e2e` 配置存储，provider 依赖选择所需私有配置和回收步骤，仅相应步骤接收凭据；不同依赖的 atomic group 可以同片。仓库只保留示例域名和配置指南。DNSPod 显式选择仍需提供 `E2E_EXTERNAL_CONFIG`。禁用 DNS、受控 HTTPS 协议服务或本地真实 mc-router 客户端测试通过，并不表示真实供应商的记录修改已经验证通过。
 
 选择供应商前，应阅读[DNS 配置、资源归属与清理约定](../suites/dns/README.md)。缺少所选供应商配置时，用例明确失败并给出可执行的错误提示，不会被标记为跳过或通过。Mojang 真实访问用例要求外部请求实际成功，仅收到“资料未解析”的响应不能通过。外部用例的实际运行结果以当前提交的相应 CI 运行及清理审计为准。
 
@@ -144,7 +144,7 @@ DNS 记录同步用例使用通过 API 创建、处于停止状态的 ACTIVE 服
 
 完整 CI 使用 `ci-plan` 从当前目录生成不可变全局计划，再由 `ci-audit` 按独立指定的 profile 重建必需用例并审计实际结果。规划只让历史耗时影响估算和位置，不允许历史裁剪当前目录；每片验证同一 source/image/runner、历史来源、成本指纹、seed、复用策略、资源配置和 provider 依赖。每个 profile 的全部 atomic group 共同分配，普通与华为组可以同片；一个 matrix 最多 16 片、八个 CI job 并发，每个运行器两个 worker、一个 Minecraft slot。provider 依赖用于凭据与回收绑定。300 秒软目标包含环境初始化、用例及清理，不含 checkout、依赖、OCI 加载和单独记录的 preflight/image pull 准备；不可拆组、固定开销和分片上限的超预算情况保留在计划中，不缩短业务超时。
 
-资格审计要求每个当前用例恰好执行并通过一次、全部计划分片存在、跟踪证据完整、应用候选一致，以及所有独占本地/云资源已验证回收。华为云清理清单还必须匹配用例的供应商、run 与 environment，并确认已登记且已完成清理；普通 Docker 清理不能替代云端清理。即使普通分片全通过，遗漏、跳过或清理失败的华为分片仍不能满足 `qualification`。通用 `coverage` 报告不能替代该资格审计。
+资格审计要求当前 profile 的每个必需用例恰好执行并通过一次、全部计划分片存在、跟踪证据完整、应用候选一致，以及所有独占本地/云资源已验证回收。云清理清单必须匹配用例的供应商、run 与 environment，并确认已登记且已完成清理；普通 Docker 清理不能替代云端清理。任何必需用例遗漏、跳过、失败或资源清理失败，均使审计失败。通用 `coverage` 报告不能替代该资格审计。
 
 只有分片成功且最终覆盖与清理审计通过，CI 才发布 `timing-history-api/history.json`。后续从同分支、再从 main 恢复兼容的成功审计历史，一次冻结其 run/attempt/SHA/branch/artifact 来源；无历史、新增用例或无效历史使用正数回退。历史包含 setup/case/cleanup 阶段成本、复用组成员与保守生命周期下界、最终清理和无条件 recovery 固定开销；全局 matrix 分配保持 `api-lifecycle-v2` 测量语义与兼容指纹，已有匹配成本可复用。删除承担 setup/teardown 的成员不能消除复用组成本；`--no-reuse` 按单用例拆组并使用独立历史 profile。历史保留 90 天。
 

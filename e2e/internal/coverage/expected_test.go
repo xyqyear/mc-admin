@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -77,6 +78,96 @@ func expectedFixture(t *testing.T, cloudIsolation engine.Isolation) (engine.RunP
 	}
 	return expected, catalog, dirs
 }
+
+func TestExpectedAuditRequiresEveryNonDNSPodCaseToPassAndCleanUp(t *testing.T) {
+	for _, profile := range []string{"regression", "qualification"} {
+		t.Run(profile, func(t *testing.T) {
+			expected, catalog, dirs := expectedFixture(t, engine.Fresh)
+			mojang, future := catalog[0], catalog[0]
+			mojang.ID, mojang.Tags = "case.mojang", []string{"external", "mojang"}
+			future.ID, future.Capability, future.Tags = "case.future", "new-provider", []string{"external"}
+			catalog = append(catalog, mojang, future)
+			expected.Profile = profile
+			var err error
+			expected, err = engine.BuildRunPlan(catalog, expected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(expected.Shards) != 1 {
+				t.Fatal("audit fixture requires one bounded shard")
+			}
+			var report engine.Report
+			var manifest platform.Manifest
+			if err = readJSON(filepath.Join(dirs[0], "results.json"), &report); err != nil {
+				t.Fatal(err)
+			}
+			if err = readJSON(filepath.Join(dirs[0], "manifest.json"), &manifest); err != nil {
+				t.Fatal(err)
+			}
+			report.Plan, err = expected.Execution(catalog, 1, profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, entry := range []struct{ id, environment string }{{mojang.ID, "123456abcdef"}, {future.ID, "abcdef123456"}} {
+				report.Results = append(report.Results, engine.Result{ID: entry.id, Suite: "test", Environment: entry.environment, Status: "passed", Timings: engine.Timings{AssertionSeconds: 7}})
+				manifest.Environments = append(manifest.Environments, &platform.EnvironmentRecord{ID: entry.environment, Cleaned: true})
+			}
+			write := func(t *testing.T, name string, value any) {
+				t.Helper()
+				data, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = os.WriteFile(filepath.Join(dirs[0], name), data, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(t, "results.json", report)
+			write(t, "manifest.json", manifest)
+			costs, err := AuditExpected(dirs, expected, catalog, profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(costs.Cases) != 5 || costs.Cases[mojang.ID] != 7 || costs.Cases[future.ID] != 7 {
+				t.Fatal("external cases were omitted from successful inventory")
+			}
+			for _, id := range []string{"case.cloud", mojang.ID, future.ID} {
+				for _, mutation := range []string{"missing", "failed", "unclean"} {
+					t.Run(id+"/"+mutation, func(t *testing.T) {
+						changed := report
+						changed.Results = slices.Clone(report.Results)
+						for i, result := range changed.Results {
+							if result.ID != id {
+								continue
+							}
+							if mutation == "missing" {
+								changed.Results = slices.Delete(changed.Results, i, i+1)
+							} else if mutation == "failed" {
+								changed.Results[i].Status = "failed"
+							}
+							changedManifest := manifest
+							changedManifest.Environments = make([]*platform.EnvironmentRecord, len(manifest.Environments))
+							for j, owned := range manifest.Environments {
+								copy := *owned
+								if mutation == "unclean" && copy.ID == result.Environment {
+									copy.Cleaned = false
+								}
+								changedManifest.Environments[j] = &copy
+							}
+							write(t, "manifest.json", changedManifest)
+							break
+						}
+						write(t, "results.json", changed)
+						if _, err := AuditExpected(dirs, expected, catalog, profile); err == nil {
+							t.Fatalf("%s case %s satisfied complete audited coverage", mutation, id)
+						}
+					})
+				}
+			}
+		})
+	}
+}
+
 func TestExpectedAuditRequiresCloudCleanupAndLifecycleEvidence(t *testing.T) {
 	expected, catalog, dirs := expectedFixture(t, engine.Fresh)
 	costs, err := AuditExpected(dirs, expected, catalog, "qualification")

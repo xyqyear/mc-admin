@@ -64,46 +64,65 @@ func TestAPIHistoryRejectsInvalidPayloadWithoutHidingCurrentCases(t *testing.T) 
 		})
 	}
 }
-func TestAPIQualificationPlanRequiresCurrentHuaweiCases(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "plan.json")
-	if code := ciPlan([]string{"--profile", "qualification", "--revision", strings.Repeat("a", 40), "--backend-image", "sha256:image", "--output", path}); code != 0 {
-		t.Fatalf("planning returned %d", code)
+func TestAPIProfilesRequireAllCurrentCasesExceptDNSPod(t *testing.T) {
+	for _, profile := range []string{"regression", "qualification"} {
+		t.Run(profile, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "plan.json")
+			if code := ciPlan([]string{"--profile", profile, "--revision", strings.Repeat("a", 40), "--backend-image", "sha256:image", "--output", path}); code != 0 {
+				t.Fatalf("planning returned %d", code)
+			}
+			plan, err := loadRunPlan(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wanted := map[string]bool{}
+			for _, test := range currentCatalog() {
+				if test.Capability != "dnspod" {
+					wanted[test.ID] = true
+				}
+			}
+			for _, entry := range plan.Catalog {
+				if !wanted[entry.ID] {
+					t.Fatalf("unexpected or duplicate current case %s", entry.ID)
+				}
+				delete(wanted, entry.ID)
+			}
+			if len(wanted) != 0 {
+				t.Fatalf("current cases missing from profile: %v", wanted)
+			}
+			if err = plan.Validate(currentCatalog(), profile); err != nil {
+				t.Fatal(err)
+			}
+			other := "regression"
+			if profile == other {
+				other = "qualification"
+			}
+			if plan.Validate(currentCatalog(), other) == nil {
+				t.Fatal("plan accepted a different required profile")
+			}
+			shard := plan.Shards[0].Index
+			privateConfig := filepath.Join(t.TempDir(), "external.json")
+			if err = os.WriteFile(privateConfig, []byte("{}"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if code := mainCode([]string{"plan", "--execution-plan", path, "--profile", profile, "--revision", "wrong", "--backend-image", "sha256:image", "--shard", fmt.Sprintf("%d/%d", shard, len(plan.Shards)), "--external-config", privateConfig}); code != 2 {
+				t.Fatal("wrong source was not rejected before Docker access")
+			}
+		})
 	}
-	plan, err := loadRunPlan(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var cloud []string
-	for _, entry := range plan.Catalog {
-		if entry.Capability == "huawei" {
-			cloud = append(cloud, entry.ID)
-		}
-		if entry.Capability == "dnspod" || slices.Contains(entry.Tags, "mojang") {
-			t.Fatal("implicit optional external provider in qualification")
-		}
-	}
-	if !slices.Contains(cloud, "dns.huawei-minecraft-connectivity") || !slices.Contains(cloud, "dns.huawei-reconciliation") {
-		t.Fatal("required real Huawei business cases absent")
-	}
-	if err = plan.Validate(currentCatalog(), "qualification"); err != nil {
-		t.Fatal(err)
-	}
-	if plan.Validate(currentCatalog(), "regression") == nil {
-		t.Fatal("cloud qualification plan accepted in ordinary regression context")
-	}
-	shard := plan.Shards[0].Index
-	privateConfig := filepath.Join(t.TempDir(), "external.json")
-	if err = os.WriteFile(privateConfig, []byte("{}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if code := mainCode([]string{"plan", "--execution-plan", path, "--profile", "qualification", "--revision", "wrong", "--backend-image", "sha256:image", "--shard", fmt.Sprintf("%d/%d", shard, len(plan.Shards)), "--external-config", privateConfig}); code != 2 {
-		t.Fatal("wrong source was not rejected before Docker access")
-	}
-	ordinary, _ := engine.ProfileCases(currentCatalog(), "regression")
-	for _, test := range ordinary {
-		if test.Capability != "" {
-			t.Fatal("ordinary PR contains cloud capability")
-		}
+}
+
+func TestAPIPlanRejectsUnsupportedCIProfiles(t *testing.T) {
+	for _, profile := range []string{"smoke", "mojang", "unknown"} {
+		t.Run(profile, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "plan.json")
+			if code := ciPlan([]string{"--profile", profile, "--revision", strings.Repeat("a", 40), "--backend-image", "sha256:image", "--output", path}); code != 2 {
+				t.Fatalf("unsupported CI profile returned %d", code)
+			}
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("unsupported profile wrote an executable plan: %v", err)
+			}
+		})
 	}
 }
 
@@ -194,19 +213,31 @@ func TestAPIMatrixPreservesProviderDependenciesWithoutPartitioning(t *testing.T)
 }
 
 func TestAPIMixedShardRequiresPrivateConfigurationBeforeRuntime(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "plan.json")
-	revision := strings.Repeat("a", 40)
-	if code := ciPlan([]string{"--profile", "qualification", "--revision", revision, "--backend-image", "sha256:image", "--max-shards", "1", "--output", path}); code != 0 {
-		t.Fatalf("planning returned %d", code)
-	}
-	plan, err := loadRunPlan(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Shards) != 1 || !slices.Equal(plan.Shards[0].Providers, []string{"huawei"}) {
-		t.Fatal("mixed one-shard qualification lost its provider dependency")
-	}
-	if code := mainCode([]string{"plan", "--execution-plan", path, "--profile", "qualification", "--revision", revision, "--backend-image", "sha256:image", "--shard", "1/1"}); code != 2 {
-		t.Fatal("mixed external dependency was not rejected before Docker access")
+	for _, profile := range []string{"regression", "qualification"} {
+		t.Run(profile, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "plan.json")
+			revision := strings.Repeat("a", 40)
+			if code := ciPlan([]string{"--profile", profile, "--revision", revision, "--backend-image", "sha256:image", "--max-shards", "1", "--output", path}); code != 0 {
+				t.Fatalf("planning returned %d", code)
+			}
+			plan, err := loadRunPlan(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var providers []string
+			for _, entry := range plan.Catalog {
+				if entry.Capability != "" {
+					providers = append(providers, entry.Capability)
+				}
+			}
+			slices.Sort(providers)
+			providers = slices.Compact(providers)
+			if len(plan.Shards) != 1 || !slices.Equal(plan.Shards[0].Providers, providers) {
+				t.Fatal("mixed one-shard plan lost its declared provider dependencies")
+			}
+			if len(providers) > 0 && mainCode([]string{"plan", "--execution-plan", path, "--profile", profile, "--revision", revision, "--backend-image", "sha256:image", "--shard", "1/1"}) != 2 {
+				t.Fatal("mixed external dependency was not rejected before Docker access")
+			}
+		})
 	}
 }

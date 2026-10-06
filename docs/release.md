@@ -1,10 +1,10 @@
 # Candidate qualification and publication
 
-The application is built once as a single-platform `linux/amd64` OCI archive. Static checks, backend tests, API regression shards, browser journeys and Huawei DNS/Minecraft connectivity must succeed for the same source revision before the archive can be promoted. A registry push is a copy of the tested manifest, never another application build.
+The application is built once as a single-platform `linux/amd64` OCI archive. Static checks, backend tests, API regression shards and browser journeys must succeed for the same source revision before the archive can be promoted. A registry push is a copy of the tested manifest, never another application build.
 
 ## Workflow graph
 
-`.github/workflows/docker-image.yml` calls the reusable candidate, static, backend, API and browser workflows. API qualification includes every current Huawei DNS scenario and verified cloud recovery in its aggregate gate. Every checkout receives the caller's exact `github.sha`. The candidate job rejects a dirty checkout and compares its source fingerprint before and after building the application and race-tested Go executable.
+`.github/workflows/docker-image.yml` calls the reusable candidate, static, backend, API and browser workflows. API qualification requires every current catalog case except DNSPod, matching PR regression and ordinary automatic CI. DNSPod runs only through explicit selection. Every checkout receives the caller's exact `github.sha`. The candidate job rejects a dirty checkout and compares its source fingerprint before and after building the application and race-tested Go executable.
 
 The immutable `application-candidate` artifact contains:
 
@@ -12,11 +12,11 @@ The immutable `application-candidate` artifact contains:
 - `candidate.json`: source revision, dirty flag, source fingerprint, archive checksum, OCI manifest digest, image config digest and Go executable checksum.
 - `mc-admin-e2e`: the executable built and tested from that revision.
 
-API and browser shards validate the archive's blobs and checksums, load that archive into Docker, and address the application by its verified config digest. Each shard compares its actual manifest and result with the candidate identity and requires owned cleanup. Aggregate audits require the complete current inventory and exact-once successful execution under the shared immutable plan. Browser reports cannot contain failed, flaky or skipped journeys. API qualification independently requires all current Huawei cases and their verified owned cloud scopes; local Docker cleanup cannot establish cloud cleanup. Observed HTTP route counts are diagnostic, not an assertion-coverage threshold.
+API and browser shards validate the archive's blobs and checksums, load that archive into Docker, and address the application by its verified config digest. Each shard compares its actual manifest and result with the candidate identity and requires owned cleanup. Aggregate audits require the complete selected current inventory and exact-once successful execution under the shared immutable plan. Browser reports cannot contain failed, flaky or skipped journeys. API audits require verified cleanup of every recorded owned cloud scope; local Docker cleanup cannot establish cloud cleanup. Observed HTTP route counts are diagnostic, not an assertion-coverage threshold.
 
 Candidate inspection decodes the manifest and config JSON in memory. Layer validation reads one MiB at a time, hashes all payload bytes and compares their actual count with the descriptor size. Missing or nonregular blob members, unsupported digests, truncated archives and mismatched payloads fail validation before loading or publication. The complete archive checksum is verified separately.
 
-The qualification job runs even when a dependency fails. It accepts only the exact required set (`candidate`, `static`, `backend`, `api`, `browser`) with every result equal to `success`. The API caller explicitly requests complete qualification, including real Huawei execution. Missing, failed, cancelled and skipped required execution cannot produce a receipt. Backend, API and browser aggregate audits require their complete matrices to succeed before publishing scheduling history.
+The qualification job runs even when a dependency fails. It accepts only the exact required set (`candidate`, `static`, `backend`, `api`, `browser`) with every result equal to `success`. The API caller explicitly requests the complete `qualification` profile. Missing, failed, cancelled and skipped required execution cannot produce a receipt. Backend, API and browser aggregate audits require their complete matrices to succeed before publishing scheduling history.
 
 Only the promotion job has `packages: write`. It requires successful qualification and a semantic version tag. Tag pushes qualify and promote; manual dispatch defaults to qualification only, and its `publish` option is effective only for a semantic version tag ref. Promotion revalidates the candidate and receipt, copies with `skopeo copy --preserve-digests`, and reads back every destination's raw manifest to compare its digest. A registry that requires a manifest rewrite causes failure. Images and build cache are not pushed to GHCR during candidate construction.
 
@@ -73,7 +73,7 @@ uv run --project backend python -m scripts.release.verify_local \
 
 This synthetic image checks the transfer and gate mechanism. It is not an application regression run or a production publication. Real GHCR credentials, a version tag and approved source selection remain separate from local validation. The workflow is statically validated with pinned actionlint; local execution does not claim that a remote GitHub Actions run has occurred.
 
-After the actual candidate's static, backend, API, browser and Huawei DNS evidence is complete, the same loopback exercise can consume that candidate and its real qualification receipt:
+After the actual candidate's static, backend, API and browser evidence is complete, the same loopback exercise can consume that candidate and its real qualification receipt:
 
 ```bash
 uv run --project backend python -m scripts.release.verify_local \

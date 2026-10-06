@@ -43,30 +43,23 @@ type RunPlan struct {
 }
 
 func ProfileCases(catalog []Case, profile string) ([]Case, error) {
-	if !slices.Contains([]string{"regression", "qualification", "smoke", "mojang", "dnspod"}, profile) {
+	if !slices.Contains([]string{"regression", "qualification", "dnspod"}, profile) {
 		return nil, fmt.Errorf("unknown execution profile %q", profile)
 	}
 	var selected []Case
-	cloud := 0
 	for _, test := range catalog {
 		include := false
 		switch profile {
 		case "regression", "qualification":
-			include = slices.Contains(test.Tags, "regression") && test.Capability == ""
-			if profile == "qualification" && test.Capability == "huawei" {
-				include = true
-				cloud++
-			}
+			include = test.Capability != "dnspod"
 		case "dnspod":
 			include = test.Capability == "dnspod"
-		default:
-			include = slices.Contains(test.Tags, profile) && test.Capability == ""
 		}
 		if include {
 			selected = append(selected, test)
 		}
 	}
-	if len(selected) == 0 || (profile == "qualification" && cloud == 0) {
+	if len(selected) == 0 {
 		return nil, fmt.Errorf("profile %s lacks its required current cases", profile)
 	}
 	return selected, nil

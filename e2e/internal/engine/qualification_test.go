@@ -14,6 +14,82 @@ func timedInput() RunPlan {
 	return RunPlan{Profile: "regression", Revision: "current", Image: "sha256:image", RunnerSHA256: "runner", Workers: 2, MinecraftSlots: 1, BudgetSeconds: 300, MaxShards: 16, Costs: CostProfile{Version: 1, DefaultSeconds: 30}}
 }
 
+func TestRegressionAndQualificationSelectAllCasesExceptDNSPod(t *testing.T) {
+	recipe := testRecipe()
+	var catalog []Case
+	for _, entry := range []struct {
+		id         string
+		capability string
+		tags       []string
+	}{
+		{"case.normal", "", []string{"smoke"}},
+		{"case.huawei", "huawei", []string{"external", "dns"}},
+		{"case.mojang", "", []string{"external", "mojang"}},
+		{"case.future", "new-provider", []string{"external"}},
+		{"case.untagged", "", nil},
+		{"case.dnspod", "dnspod", []string{"external", "regression"}},
+	} {
+		test := testCase(entry.id, recipe, Fresh)
+		test.Capability, test.Tags = entry.capability, entry.tags
+		catalog = append(catalog, test)
+	}
+	for _, profile := range []string{"regression", "qualification"} {
+		t.Run(profile, func(t *testing.T) {
+			selected, err := ProfileCases(catalog, profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var ids []string
+			for _, test := range selected {
+				ids = append(ids, test.ID)
+			}
+			if !slices.Equal(ids, []string{"case.normal", "case.huawei", "case.mojang", "case.future", "case.untagged"}) {
+				t.Fatalf("profile omitted or added a current case: %v", ids)
+			}
+			selected, err = ProfileCases(catalog[:1], profile)
+			if err != nil || len(selected) != 1 || selected[0].ID != "case.normal" {
+				t.Fatalf("profile requires a named provider: %v, %v", selected, err)
+			}
+			for _, empty := range [][]Case{nil, catalog[5:]} {
+				if _, err := ProfileCases(empty, profile); err == nil {
+					t.Fatal("profile accepted an empty eligible inventory")
+				}
+			}
+		})
+	}
+	selected, err := ProfileCases(catalog, "dnspod")
+	if err != nil || len(selected) != 1 || selected[0].ID != "case.dnspod" {
+		t.Fatalf("explicit DNSPod profile selected unintended cases: %v, %v", selected, err)
+	}
+	for _, profile := range []string{"smoke", "mojang", "unknown"} {
+		if _, err := ProfileCases(catalog, profile); err == nil {
+			t.Fatalf("unsupported CI profile %s accepted", profile)
+		}
+	}
+}
+
+func TestLocalTagSelectionPreservesExplicitCaseFilters(t *testing.T) {
+	recipe := testRecipe()
+	ordinary, external, other := testCase("case.smoke", recipe, Fresh), testCase("case.profile", recipe, Fresh), testCase("case.other", recipe, Fresh)
+	ordinary.Tags = []string{"smoke", "regression"}
+	external.Tags = []string{"external", "mojang", "regression"}
+	other.Tags, other.Suite = []string{"external", "mojang", "regression"}, "other"
+	for _, selection := range []struct {
+		tag, match, wanted string
+	}{
+		{"smoke", "^case\\.smoke$", ordinary.ID},
+		{"mojang", "^case\\.(profile|other)$", external.ID},
+	} {
+		plan, err := BuildPlan([]Case{ordinary, external, other}, Selection{Tag: selection.tag, Suite: "test", Match: selection.match, ShardIndex: 1, ShardCount: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(plan.Order, []string{selection.wanted}) {
+			t.Fatalf("local %s filter selected unintended cases: %v", selection.tag, plan.Order)
+		}
+	}
+}
+
 func TestAutomaticPlanPreservesOversizedGroupsAndResourceLowerBound(t *testing.T) {
 	ordinary := timedCase("case.oversized", Fresh)
 	game := testRecipe()
@@ -102,10 +178,12 @@ func TestImmutableQualificationRejectsReducedOrChangedCatalog(t *testing.T) {
 	a.Tags = []string{"regression"}
 	b, c := testCase("case.cloud-a", recipe, Fresh), testCase("case.cloud-b", recipe, Fresh)
 	b.Capability = "huawei"
-	c.Capability = "huawei"
+	c.Capability = "new-provider"
 	b.Tags = []string{"external"}
 	c.Tags = []string{"external"}
-	cases := []Case{a, b, c}
+	d := testCase("case.mojang", recipe, Fresh)
+	d.Tags = []string{"external", "mojang"}
+	cases := []Case{a, b, c, d}
 	input := timedInput()
 	input.Profile = "qualification"
 	input.MaxShards = 1
@@ -116,23 +194,29 @@ func TestImmutableQualificationRejectsReducedOrChangedCatalog(t *testing.T) {
 	if err = plan.Validate(cases, "qualification"); err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Shards) != 1 || !slices.Equal(plan.Shards[0].Providers, []string{"huawei"}) {
+	if len(plan.Shards) != 1 || !slices.Equal(plan.Shards[0].Providers, []string{"huawei", "new-provider"}) {
 		t.Fatal("mixed dependencies forced separate shards or lost their provider union")
 	}
-	reduced, err := BuildRunPlan([]Case{a, b}, input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reduced.Validate(cases, "qualification") == nil {
-		t.Fatal("internally consistent reduced expected catalog qualified")
+	for omitted := range cases {
+		reducedCatalog := slices.Delete(slices.Clone(cases), omitted, omitted+1)
+		reduced, err := BuildRunPlan(reducedCatalog, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reduced.Validate(cases, "qualification") == nil {
+			t.Fatalf("internally consistent catalog omitting %s qualified", cases[omitted].ID)
+		}
 	}
 	input.Profile = "regression"
 	ordinary, err := BuildRunPlan(cases, input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ordinary.Catalog) != 1 || ordinary.Validate(cases, "qualification") == nil {
-		t.Fatal("ordinary PR plan satisfied trusted qualification")
+	if !slices.EqualFunc(ordinary.Catalog, plan.Catalog, func(left, right Entry) bool { return left.ID == right.ID && left.Capability == right.Capability }) {
+		t.Fatal("regression and qualification selected different current inventories")
+	}
+	if ordinary.Validate(cases, "qualification") == nil {
+		t.Fatal("plan accepted a different required profile")
 	}
 	plan.Catalog[0].EstimatedSeconds++
 	if plan.Validate(cases, "qualification") == nil {

@@ -34,7 +34,7 @@ The regression catalog SHALL include functional scenarios for every shipped back
 - **THEN** the observation gate fails and identifies the missing operation without treating rejection-only observations as successful feature behavior
 
 ### Requirement: Explicit external qualification
-External-provider scenarios SHALL declare their required credentials and disposable resource scope, use the real external provider, and fail visibly when selected without required configuration. Local regression selection SHALL be independently runnable without cloud credentials.
+External-provider scenarios SHALL declare their required credentials and disposable resource scope, use the real external provider, and fail visibly when selected without required configuration. Local runs SHALL select explicit related case IDs and provide the dependencies required by those cases; scenarios without cloud dependencies SHALL remain independently runnable without cloud credentials.
 
 #### Scenario: Missing DNS qualification input
 - **WHEN** a DNS provider scenario is selected without its required test-domain credentials
@@ -43,6 +43,17 @@ External-provider scenarios SHALL declare their required credentials and disposa
 #### Scenario: Reclaim test DNS records
 - **WHEN** a provider scenario completes or fails after creating records
 - **THEN** it attempts to remove managed records and its test TXT fixture using the domain and scope recorded for its common environment ID, preserves unrelated records and reports any cleanup failure
+
+### Requirement: Complete automated API selection
+Ordinary pull request regression, regular automatic CI and complete qualification SHALL execute every case in the current API catalog except DNSPod. The CI profile menu SHALL contain only `regression`, `qualification` and `dnspod`; DNSPod SHALL require explicit selection. Local case and tag filters SHALL remain available for related validation.
+
+#### Scenario: A current case joins automated regression
+- **WHEN** a non-DNSPod case is registered in the current catalog
+- **THEN** both regression and qualification require it without a separate opt-in or historical timing entry
+
+#### Scenario: DNSPod is not explicitly selected
+- **WHEN** a pull request, automatic CI or complete qualification runs the default API inventory
+- **THEN** DNSPod is excluded and all other current cases remain required
 
 ### Requirement: Independent reproducible scenarios
 Regression scenarios SHALL retain owned mutable state, bounded execution, failure evidence and cleanup, and SHALL remain runnable individually and without environment reuse.
