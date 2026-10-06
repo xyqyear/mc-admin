@@ -3,7 +3,6 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -232,7 +231,7 @@ def preview_queue(app, tmp_path, *, generation=1):
     (staged / "r.0.0.mca").write_bytes(b"staged-mca")
     cache = PreviewMapCache(app.cache.palette_json, app.cache.data_path, staged, session_dir / "tiles")
     target = PreviewRenderTarget("maps", generation, session_id, session_dir)
-    queue = ServerRenderQueue(session_id, "world/region", cast(ServerMapCache, cache), preview_target=target)
+    queue = ServerRenderQueue(session_id, "world/region", cache, preview_target=target)
     return queue, target
 
 

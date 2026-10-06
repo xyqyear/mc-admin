@@ -1,8 +1,25 @@
 """Pydantic models for the mcmap module."""
 
-from typing import Literal
+from pathlib import Path
+from typing import Literal, Protocol
 
 from pydantic import BaseModel
+
+
+class RenderCache(Protocol):
+    @property
+    def data_path(self) -> Path: ...
+
+    @property
+    def palette_json(self) -> Path: ...
+
+    def mca_path(self, region_path: str, x: int, z: int, /) -> Path: ...
+
+    def tiles_dir(self, region_path: str, /) -> Path: ...
+
+    def png_path(self, region_path: str, x: int, z: int, /) -> Path: ...
+
+    async def ensure_dir(self, target: Path) -> None: ...
 
 
 class MapStatus(BaseModel):

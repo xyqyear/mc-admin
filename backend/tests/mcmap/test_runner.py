@@ -23,7 +23,7 @@ from app.mcmap.events import (
     MCMapRegionPrunedEvent,
     MCMapRenderRegionEvent,
 )
-from tests.support.mcmap import write_fake_mcmap
+from tests.support.mcmap import owned_chown_args, read_fake_mcmap_args, write_fake_mcmap
 
 
 @pytest.fixture
@@ -35,23 +35,35 @@ def fake_owned_dir():
 async def test_render_parses_ndjson_events(fake_owned_dir):
     fake = write_fake_mcmap(
         "#!/bin/sh\n"
+        'printf "%s\\0" "$@" > "$0.args"\n'
         'echo \'{"type":"region","x":0,"z":0,"status":"rendered","output":"/x.png"}\'\n'
         'echo \'{"type":"region","x":1,"z":0,"status":"missing"}\'\n'
         'echo \'{"type":"result","mode":"split","regions_saved":1,"output":"./tiles","elapsed_ms":12}\'\n'
     )
-    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
-        events = []
-        async with runner.render(
-            palette=Path("/tmp/p.json"),
-            output_dir=Path("/tmp/o"),
-            mcas=[Path("/tmp/r.0.0.mca")],
-            threads=2,
-            owned_by=fake_owned_dir,
-        ) as proc:
-            async for ev in proc.events(MCMAP_RENDER_EVENT_ADAPTER):
-                events.append(ev)
-        assert proc.returncode == 0
-    fake.unlink()
+    try:
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
+            events = []
+            async with runner.render(
+                palette=fake_owned_dir / "调色 文件.json",
+                output_dir=fake_owned_dir / "地图 输出",
+                mcas=[fake_owned_dir / "世界 区域" / "r.0.0.mca", fake_owned_dir / "世界 区域" / "r.1.0.mca"],
+                threads=2,
+                owned_by=fake_owned_dir,
+            ) as proc:
+                async for ev in proc.events(MCMAP_RENDER_EVENT_ADAPTER):
+                    events.append(ev)
+            assert proc.returncode == 0
+        args = read_fake_mcmap_args(fake)
+    finally:
+        fake.unlink(missing_ok=True)
+        Path(f"{fake}.args").unlink(missing_ok=True)
+    assert args == [
+        "--json", "render", "-p", str(fake_owned_dir / "调色 文件.json"),
+        "-o", str(fake_owned_dir / "地图 输出"), "--split", "--preserve-mtime", "-j", "2",
+        "-r", str(fake_owned_dir / "世界 区域" / "r.0.0.mca"),
+        "-r", str(fake_owned_dir / "世界 区域" / "r.1.0.mca"),
+        *owned_chown_args(fake_owned_dir),
+    ]
 
     types = [e.type for e in events]
     assert types == ["region", "region", "result"]
@@ -121,105 +133,109 @@ async def test_runner_terminates_on_context_exit_even_if_caller_breaks(
 async def test_download_client_args_passed_through(fake_owned_dir):
     fake = write_fake_mcmap(
         "#!/bin/sh\n"
-        'echo "$@" > "$0.args"\n'
+        'printf "%s\\0" "$@" > "$0.args"\n'
         'echo \'{"type":"result","version":"1.21.4","target":"/tmp/client.jar","bytes":123,"sha1":"abc","move_method":"rename"}\'\n'
     )
-    target = fake_owned_dir / "client.jar"
-    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
-        async with runner.download_client(
-            "1.21.4", target, owned_by=fake_owned_dir
-        ) as proc:
-            events = [e async for e in proc.events(MCMAP_DOWNLOAD_CLIENT_EVENT_ADAPTER)]
-        assert proc.returncode == 0
-    args_text = Path(str(fake) + ".args").read_text()
-    fake.unlink()
-    Path(str(fake) + ".args").unlink()
-    # First two args after the script's own name are --json download-client
-    assert "--json" in args_text
-    assert "download-client" in args_text
-    assert "1.21.4" in args_text
-    assert str(target) in args_text
+    target = fake_owned_dir / "客户端 版本.jar"
+    try:
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
+            async with runner.download_client(
+                "1.21.4", target, owned_by=fake_owned_dir
+            ) as proc:
+                events = [e async for e in proc.events(MCMAP_DOWNLOAD_CLIENT_EVENT_ADAPTER)]
+            assert proc.returncode == 0
+        args = read_fake_mcmap_args(fake)
+    finally:
+        fake.unlink(missing_ok=True)
+        Path(f"{fake}.args").unlink(missing_ok=True)
+    assert args == ["--json", "download-client", "1.21.4", str(target), *owned_chown_args(fake_owned_dir)]
     assert events[-1].type == "result"
 
 
 async def test_gen_palette_passes_level_dat_when_set(fake_owned_dir):
     fake = write_fake_mcmap(
         "#!/bin/sh\n"
-        'echo "$@" > "$0.args"\n'
+        'printf "%s\\0" "$@" > "$0.args"\n'
         'echo \'{"type":"result","output":"/tmp/palette.json","entries":10,"counters":{}}\'\n'
     )
-    out = fake_owned_dir / "palette.json"
-    level_dat = fake_owned_dir / "world" / "level.dat"
-    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
-        async with runner.gen_palette(
-            packs=[fake_owned_dir / "client.jar"],
-            output=out,
-            level_dat=level_dat,
-            owned_by=fake_owned_dir,
-        ) as proc:
-            _ = [e async for e in proc.events(MCMAP_GEN_PALETTE_EVENT_ADAPTER)]
-        assert proc.returncode == 0
-    args_text = Path(str(fake) + ".args").read_text()
-    fake.unlink()
-    Path(str(fake) + ".args").unlink()
-    assert "gen-palette" in args_text
-    assert "modern" not in args_text.split()
-    assert "--level-dat" in args_text
-    assert str(level_dat) in args_text
+    out = fake_owned_dir / "调色 文件.json"
+    level_dat = fake_owned_dir / "世界 存档" / "level.dat"
+    try:
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
+            async with runner.gen_palette(
+                packs=[fake_owned_dir / "客户端 一.jar", fake_owned_dir / "资源 包.zip"],
+                output=out,
+                level_dat=level_dat,
+                owned_by=fake_owned_dir,
+            ) as proc:
+                _ = [e async for e in proc.events(MCMAP_GEN_PALETTE_EVENT_ADAPTER)]
+            assert proc.returncode == 0
+        args = read_fake_mcmap_args(fake)
+    finally:
+        fake.unlink(missing_ok=True)
+        Path(f"{fake}.args").unlink(missing_ok=True)
+    assert args == [
+        "--json", "gen-palette", "-o", str(out), "--level-dat", str(level_dat),
+        "-p", str(fake_owned_dir / "客户端 一.jar"), "-p", str(fake_owned_dir / "资源 包.zip"),
+        *owned_chown_args(fake_owned_dir),
+    ]
 
 
 async def test_gen_palette_omits_level_dat_when_none(fake_owned_dir):
     fake = write_fake_mcmap(
         "#!/bin/sh\n"
-        'echo "$@" > "$0.args"\n'
+        'printf "%s\\0" "$@" > "$0.args"\n'
         'echo \'{"type":"result","output":"/tmp/palette.json","entries":10,"counters":{}}\'\n'
     )
-    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
-        async with runner.gen_palette(
-            packs=[fake_owned_dir / "client.jar"],
-            output=fake_owned_dir / "palette.json",
-            level_dat=None,
-            owned_by=fake_owned_dir,
-        ) as proc:
-            _ = [e async for e in proc.events(MCMAP_GEN_PALETTE_EVENT_ADAPTER)]
-        assert proc.returncode == 0
-    args_text = Path(str(fake) + ".args").read_text()
-    fake.unlink()
-    Path(str(fake) + ".args").unlink()
-    assert "gen-palette" in args_text
-    assert "--level-dat" not in args_text
+    try:
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
+            async with runner.gen_palette(
+                packs=[fake_owned_dir / "client.jar"],
+                output=fake_owned_dir / "palette.json",
+                level_dat=None,
+                owned_by=fake_owned_dir,
+            ) as proc:
+                _ = [e async for e in proc.events(MCMAP_GEN_PALETTE_EVENT_ADAPTER)]
+            assert proc.returncode == 0
+        args = read_fake_mcmap_args(fake)
+    finally:
+        fake.unlink(missing_ok=True)
+        Path(f"{fake}.args").unlink(missing_ok=True)
+    assert args == [
+        "--json", "gen-palette", "-o", str(fake_owned_dir / "palette.json"),
+        "-p", str(fake_owned_dir / "client.jar"), *owned_chown_args(fake_owned_dir),
+    ]
 
 
 async def test_prune_inhabited_passes_mode_threshold_and_claims(fake_owned_dir):
     fake = write_fake_mcmap(
         "#!/bin/sh\n"
-        'echo "$@" > "$0.args"\n'
+        'printf "%s\\0" "$@" > "$0.args"\n'
         'echo \'{"type":"result","mode":"chunks","dry_run":true,"region_dirs":1,"regions_scanned":0,"chunks_scanned":0,"chunks_selected":0,"regions_selected":0}\'\n'
     )
-    claims = fake_owned_dir / "claims.json"
+    claims = fake_owned_dir / "领地 信息.json"
     claims.write_text("{}")
-    with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
-        async with runner.prune_inhabited(
-            path=fake_owned_dir / "world" / "region",
-            threshold_ticks=1200,
-            mode="chunks",
-            dry_run=True,
-            owned_by=fake_owned_dir,
-            exclude_ftb_claims=claims,
-        ) as proc:
-            events = [e async for e in proc.events(MCMAP_PRUNE_EVENT_ADAPTER)]
-        assert proc.returncode == 0
-    args_text = Path(str(fake) + ".args").read_text()
-    fake.unlink()
-    Path(str(fake) + ".args").unlink()
-    assert "prune-inhabited" in args_text
-    assert "--threshold" in args_text
-    assert "1200" in args_text
-    assert "--mode" in args_text
-    assert "chunks" in args_text
-    assert "--dry-run" in args_text
-    assert "--exclude-ftb-claims" in args_text
-    assert str(claims) in args_text
+    try:
+        with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
+            async with runner.prune_inhabited(
+                path=fake_owned_dir / "世界 存档" / "region",
+                threshold_ticks=1200,
+                mode="chunks",
+                dry_run=True,
+                owned_by=fake_owned_dir,
+                exclude_ftb_claims=claims,
+            ) as proc:
+                events = [e async for e in proc.events(MCMAP_PRUNE_EVENT_ADAPTER)]
+            assert proc.returncode == 0
+        args = read_fake_mcmap_args(fake)
+    finally:
+        fake.unlink(missing_ok=True)
+        Path(f"{fake}.args").unlink(missing_ok=True)
+    assert args == [
+        "--json", "prune-inhabited", str(fake_owned_dir / "世界 存档" / "region"),
+        "--threshold", "1200", "--mode", "chunks", "--dry-run",
+        "--exclude-ftb-claims", str(claims), *owned_chown_args(fake_owned_dir),
+    ]
     assert isinstance(events[-1], MCMapPruneResultEvent)
 
 

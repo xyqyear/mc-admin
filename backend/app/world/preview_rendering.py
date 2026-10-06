@@ -35,13 +35,7 @@ from .selection import (
 
 @dataclass
 class PreviewMapCache:
-    """``ServerMapCache``-shaped resolver for preview rendering.
-
-    Implements the surface ``ServerRenderQueue`` reaches into, rooted at a
-    session's staged MCAs and a session-local tiles dir. ``data_path``
-    points at the live world's data dir so mcmap's ``--chown`` targets the
-    data-dir owner; ``palette_json`` reuses the live world's palette.
-    """
+    """Preview paths with the live world's palette and ownership source."""
 
     palette_json: Path
     data_path: Path
@@ -194,14 +188,14 @@ class WorldPreviewRenderer:
                         # empty MCA so mcmap has a target to splice into.
                         async with aiofiles.open(preview_mca, "wb") as f:
                             await f.write(b"\x00" * 8192)
-                    await self._executor._merge_replace(
+                    await self._executor.replace_selected_chunks(
                         source_mca=staged_mca,
                         target_mca=preview_mca,
                         chunks=allowed,
                         owned_by=data_path,
                     )
                 elif await aioos.path.exists(preview_mca):
-                    await self._executor._merge_remove(
+                    await self._executor.remove_selected_chunks(
                         target_mca=preview_mca,
                         chunks=allowed,
                         owned_by=data_path,
@@ -276,7 +270,7 @@ class WorldPreviewRenderer:
         queue = ServerRenderQueue(
             server_name=session.server_id,
             region_path=selection.region_dir_relpath,
-            cache=preview_cache,  # type: ignore[arg-type]
+            cache=preview_cache,
             preview_target=PreviewRenderTarget(
                 server_id=session.server_id,
                 generation=session.server_generation,

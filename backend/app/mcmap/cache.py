@@ -17,9 +17,8 @@ FreshnessState = Literal["fresh", "stale", "missing_mca", "missing_png"]
 class ServerMapCache:
     """Path resolver and freshness checker for a server's ``data/.mcmap/`` tree.
 
-    Brokers ownership: backend-created dirs/files inside ``.mcmap/`` are
-    chowned to the data dir's owner so the demoted mcmap subprocess can
-    write into them.
+    Cache directories inherit the data owner's UID/GID when root can change them.
+    mcmap uses --chown for output ownership while retaining its process identity.
     """
 
     data_path: Path

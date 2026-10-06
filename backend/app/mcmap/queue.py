@@ -27,14 +27,13 @@ from ..operations.finalization import finalize
 from ..operations.journal_types import OperationState
 from ..utils import async_fs
 from . import runner
-from .cache import ServerMapCache
 from .events import (
     MCMAP_RENDER_EVENT_ADAPTER,
     MCMapErrorEvent,
     MCMapRenderRegionEvent,
 )
 from .ownership import PreviewRenderTarget, require_usable_cache
-from .types import MCMapError
+from .types import MCMapError, RenderCache
 
 WORKER_IDLE_TIMEOUT_SECONDS = 60.0
 BATCH_COLLECT_TIMEOUT_SECONDS = 0.01
@@ -60,7 +59,7 @@ class ServerRenderQueue:
     """
 
     def __init__(
-        self, server_name: str, region_path: str, cache: ServerMapCache,
+        self, server_name: str, region_path: str, cache: RenderCache,
         *, preview_target: PreviewRenderTarget | None = None,
     ) -> None:
         self._server_name = preview_target.server_id if preview_target is not None else server_name

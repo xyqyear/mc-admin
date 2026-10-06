@@ -46,7 +46,7 @@ class PreviewRenderTarget:
 
 async def require_usable_cache(server_id: str) -> None:
     runtime = current_runtime()
-    recovery = runtime.resources.get("operation_recovery")
+    recovery = runtime.operation_recovery
     if recovery is None or not any(resource.server_id == server_id for resource in recovery.degraded_resources):
         return
     async with get_async_session() as db:

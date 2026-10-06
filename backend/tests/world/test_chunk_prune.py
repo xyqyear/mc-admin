@@ -1,9 +1,10 @@
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.background_tasks import TaskProgress, TaskStatus, TaskType, get_task_manager
+from app.chunk_prune.execution import run_prune
 from app.chunk_prune.models import (
     ChunkPrunePreviewGeometryResponse,
     ChunkPruneTaskMetadata,
@@ -76,10 +77,6 @@ def test_region_relpath_for_event_accepts_relative_and_absolute_paths(tmp_path):
 
 
 async def test_preview_collects_chunks_pruned_region_event(tmp_path, monkeypatch):
-    service = ChunkPruneService(
-        docker=_FakeDocker(tmp_path),  # type: ignore[arg-type]
-        operation_lock=ServerOperationLock(),
-    )
     metadata = ChunkPruneTaskMetadata(
         task_id="chunk-prune-preview-collect",
         server_id="srv1",
@@ -143,9 +140,8 @@ async def test_preview_collects_chunks_pruned_region_event(tmp_path, monkeypatch
         fake_prune_inhabited,
     )
 
-    progress = [
-        item async for item in service._run_prune_task(metadata, dry_run=True)
-    ]
+    async with aclosing(run_prune(metadata, dry_run=True)) as events:
+        progress = [item async for item in events]
 
     assert progress[-1].result is not None
     assert progress[-1].result["affected_region_counts_by_dimension"] == {

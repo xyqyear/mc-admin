@@ -65,7 +65,7 @@ def _patched_runner(events_per_call):
 
 
 @pytest.fixture
-def cache_and_queue():
+async def cache_and_queue():
     with tempfile.TemporaryDirectory() as d:
         data_path = Path(d)
         cache = ServerMapCache(data_path=data_path)
@@ -75,7 +75,10 @@ def cache_and_queue():
             mca.parent.mkdir(parents=True, exist_ok=True)
             mca.write_bytes(b"")
         queue = ServerRenderQueue("srv", "world/region", cache)
-        yield cache, queue
+        try:
+            yield cache, queue
+        finally:
+            await queue.close()
 
 
 async def test_request_resolves_with_png_path(cache_and_queue):
@@ -117,13 +120,13 @@ async def test_duplicate_requests_coalesce_to_single_render(cache_and_queue):
 
 
 async def test_batched_requests_in_single_render(cache_and_queue):
-    _cache, queue = cache_and_queue
+    cache, queue = cache_and_queue
     fake_render, calls = _patched_runner(
         [
             [
+                {"type": "region", "x": 0, "z": 1, "status": "rendered"},
                 {"type": "region", "x": 0, "z": 0, "status": "rendered"},
                 {"type": "region", "x": 1, "z": 0, "status": "rendered"},
-                {"type": "region", "x": 0, "z": 1, "status": "rendered"},
             ]
         ]
     )
@@ -140,7 +143,11 @@ async def test_batched_requests_in_single_render(cache_and_queue):
             ),
             timeout=2.0,
         )
-        assert all(isinstance(p, Path) for p in results)
+        assert results == [
+            cache.png_path("world/region", 0, 0),
+            cache.png_path("world/region", 1, 0),
+            cache.png_path("world/region", 0, 1),
+        ]
         assert calls["i"] == 1
         assert len(calls["mcas"][0]) == 3
 

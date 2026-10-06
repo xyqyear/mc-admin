@@ -1,10 +1,5 @@
 """World subsystem: layout discovery, per-server locking, restore orchestration."""
 
-from .dimension_labels import (
-    dimension_path_for_dir,
-    label_for_dimension_dir,
-    label_for_dimension_path,
-)
 from .events import (
     RestoreError,
     SelectionResolutionError,
@@ -41,11 +36,8 @@ __all__ = [
     "WorldLayoutDiscoveryError",
     "WorldRoot",
     "WorldRootPath",
-    "dimension_path_for_dir",
     "discover_world_root_paths",
     "discover_world_roots",
     "get_server_operation_lock",
-    "label_for_dimension_dir",
-    "label_for_dimension_path",
     "resolve_dimension_folder",
 ]

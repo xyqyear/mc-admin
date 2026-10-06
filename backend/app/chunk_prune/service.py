@@ -258,11 +258,6 @@ class ChunkPruneService:
                 metadata.geometry = None
             await finalize(release_artifact("prune_preview", metadata.task_id))
 
-    async def _run_prune_task(self, metadata: ChunkPruneTaskMetadata, *, dry_run: bool) -> AsyncGenerator[TaskProgress]:
-        async with aclosing(run_prune(metadata, dry_run=dry_run)) as events:
-            async for progress in events:
-                yield progress
-
     async def _run_apply_task(self, metadata: ChunkPruneTaskMetadata) -> AsyncGenerator[TaskProgress]:
         assert metadata.reference is not None and metadata.preview_task_id is not None
         preview = self._preview(metadata.server_id, metadata.preview_task_id)

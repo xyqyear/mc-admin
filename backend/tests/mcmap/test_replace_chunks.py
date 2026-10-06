@@ -13,7 +13,7 @@ import pytest
 
 from app.mcmap import runner
 from app.mcmap.events import MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER
-from tests.support.mcmap import write_fake_mcmap
+from tests.support.mcmap import owned_chown_args, read_fake_mcmap_args, write_fake_mcmap
 
 
 @pytest.fixture
@@ -25,13 +25,13 @@ def fake_owned_dir():
 async def test_replace_chunks_argv_shape_and_events(fake_owned_dir):
     fake = write_fake_mcmap(
         "#!/bin/sh\n"
-        'echo "$@" > "$0.args"\n'
+        'printf "%s\\0" "$@" > "$0.args"\n'
         'echo \'{"type":"chunk_replaced","x":4,"z":15,"source_kind":"external"}\'\n'
         'echo \'{"type":"chunk_replaced","x":13,"z":22,"source_kind":"inline"}\'\n'
         'echo \'{"type":"result","replaced":2}\'\n'
     )
-    src = fake_owned_dir / "src.mca"
-    tgt = fake_owned_dir / "tgt.mca"
+    src = fake_owned_dir / "源 区块.mca"
+    tgt = fake_owned_dir / "目标 区块.mca"
     src.write_bytes(b"")
     tgt.write_bytes(b"")
     try:
@@ -46,17 +46,15 @@ async def test_replace_chunks_argv_shape_and_events(fake_owned_dir):
                     e async for e in proc.events(MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER)
                 ]
             assert proc.returncode == 0
-        args_text = Path(str(fake) + ".args").read_text()
+        args = read_fake_mcmap_args(fake)
     finally:
         fake.unlink(missing_ok=True)
         Path(str(fake) + ".args").unlink(missing_ok=True)
 
-    assert "--json" in args_text
-    assert "replace-chunks" in args_text
-    assert f"-s {src}" in args_text
-    assert f"-t {tgt}" in args_text
-    # Coords serialized as one semicolon-separated -c argument
-    assert "-c 4,15;13,22" in args_text
+    assert args == [
+        "--json", "replace-chunks", "-s", str(src), "-t", str(tgt),
+        "-c", "4,15;13,22", *owned_chown_args(fake_owned_dir),
+    ]
 
     types = [e.type for e in events]
     assert types == ["chunk_replaced", "chunk_replaced", "result"]
@@ -68,12 +66,12 @@ async def test_replace_chunks_argv_shape_and_events(fake_owned_dir):
 async def test_replace_chunks_single_chunk(fake_owned_dir):
     fake = write_fake_mcmap(
         "#!/bin/sh\n"
-        'echo "$@" > "$0.args"\n'
+        'printf "%s\\0" "$@" > "$0.args"\n'
         'echo \'{"type":"chunk_replaced","x":0,"z":0,"source_kind":"empty"}\'\n'
         'echo \'{"type":"result","replaced":1}\'\n'
     )
-    src = fake_owned_dir / "src.mca"
-    tgt = fake_owned_dir / "tgt.mca"
+    src = fake_owned_dir / "源 区块.mca"
+    tgt = fake_owned_dir / "目标 区块.mca"
     src.write_bytes(b"")
     tgt.write_bytes(b"")
     try:
@@ -88,12 +86,12 @@ async def test_replace_chunks_single_chunk(fake_owned_dir):
                     e async for e in proc.events(MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER)
                 ]
             assert proc.returncode == 0
-        args_text = Path(str(fake) + ".args").read_text()
+        args = read_fake_mcmap_args(fake)
     finally:
         fake.unlink(missing_ok=True)
         Path(str(fake) + ".args").unlink(missing_ok=True)
 
-    assert "-c 0,0" in args_text
+    assert args == ["--json", "replace-chunks", "-s", str(src), "-t", str(tgt), "-c", "0,0", *owned_chown_args(fake_owned_dir)]
     assert events[-1].replaced == 1
 
 
@@ -103,8 +101,8 @@ async def test_replace_chunks_error_event_and_nonzero_exit(fake_owned_dir):
         'echo \'{"type":"error","message":"chunk (32,0) out of range"}\'\n'
         "exit 1\n"
     )
-    src = fake_owned_dir / "src.mca"
-    tgt = fake_owned_dir / "tgt.mca"
+    src = fake_owned_dir / "源 区块.mca"
+    tgt = fake_owned_dir / "目标 区块.mca"
     src.write_bytes(b"")
     tgt.write_bytes(b"")
     try:
@@ -127,8 +125,8 @@ async def test_replace_chunks_error_event_and_nonzero_exit(fake_owned_dir):
 
 
 async def test_replace_chunks_empty_list_raises(fake_owned_dir):
-    src = fake_owned_dir / "src.mca"
-    tgt = fake_owned_dir / "tgt.mca"
+    src = fake_owned_dir / "源 区块.mca"
+    tgt = fake_owned_dir / "目标 区块.mca"
     src.write_bytes(b"")
     tgt.write_bytes(b"")
     with pytest.raises(ValueError):

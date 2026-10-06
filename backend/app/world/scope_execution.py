@@ -1,9 +1,10 @@
 from collections.abc import AsyncGenerator
-from contextlib import aclosing
+from contextlib import AbstractAsyncContextManager, aclosing
 from pathlib import Path
-from typing import Any
+from typing import TypeVar
 
 import aiofiles.os as aioos
+from pydantic import TypeAdapter
 
 from app.snapshots.selection_models import RestorationSelection
 
@@ -14,7 +15,9 @@ from ..mcmap.events import (
     MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER,
     MCMAP_REPLACE_CHUNKS_EVENT_ADAPTER,
     MCMapErrorEvent,
+    MCMapRemoveChunksEvent,
     MCMapRemoveChunksResultEvent,
+    MCMapReplaceChunksEvent,
     MCMapReplaceChunksResultEvent,
 )
 from ..mcmap.types import MCMapError
@@ -29,6 +32,8 @@ from .selection import (
     group_chunks_by_region,
     resolve_dimension,
 )
+
+ChunkEvent = TypeVar("ChunkEvent", MCMapReplaceChunksEvent, MCMapRemoveChunksEvent)
 
 
 async def _stage_destination(stage_dir: Path, live_path: Path) -> Path:
@@ -118,7 +123,7 @@ class RestoreScopeExecutor:
                         continue
                     staged_mca = await _stage_destination(stage_root, live_mca)
                     if await aioos.path.exists(staged_mca):
-                        await self._merge_replace(
+                        await self.replace_selected_chunks(
                             source_mca=staged_mca,
                             target_mca=live_mca,
                             chunks=allowed,
@@ -128,7 +133,7 @@ class RestoreScopeExecutor:
                         if not await aioos.path.exists(live_mca):
                             done += 1
                             continue
-                        await self._merge_remove(
+                        await self.remove_selected_chunks(
                             target_mca=live_mca,
                             chunks=allowed,
                             owned_by=data_path,
@@ -165,8 +170,8 @@ class RestoreScopeExecutor:
         self,
         *,
         op_name: str,
-        ctx_manager: Any,
-        event_adapter: Any,
+        ctx_manager: AbstractAsyncContextManager[mcmap_runner.MCMapProcess],
+        event_adapter: TypeAdapter[ChunkEvent],
         expected_count: int,
     ) -> None:
         async with ctx_manager as proc:
@@ -185,7 +190,7 @@ class RestoreScopeExecutor:
                 f"mcmap {op_name} 处理了 {completed_count} 个区块，但请求了 {expected_count} 个区块"
             )
 
-    async def _merge_replace(
+    async def replace_selected_chunks(
         self,
         *,
         source_mca: Path,
@@ -206,7 +211,7 @@ class RestoreScopeExecutor:
             expected_count=len(chunks),
         )
 
-    async def _merge_remove(
+    async def remove_selected_chunks(
         self,
         *,
         target_mca: Path,

@@ -3,7 +3,7 @@ import os
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Literal, TypeVar
 
 import aiofiles.os as aioos
 from pydantic import TypeAdapter, ValidationError
@@ -267,7 +267,3 @@ async def prune_inhabited(
         args.extend(["--exclude-ftb-claims", str(exclude_ftb_claims)])
     async with _run(args, owned_by) as p:
         yield p
-
-
-def parse_event_for_test(line: bytes) -> Any:
-    return MCMAP_GENERIC_EVENT_ADAPTER.validate_json(line.strip())

@@ -14,6 +14,15 @@ def write_fake_mcmap(content: str, *, prefix: str = "fake_mcmap_") -> Path:
     return path
 
 
+def read_fake_mcmap_args(binary: Path) -> list[str]:
+    return Path(f"{binary}.args").read_bytes().removesuffix(b"\0").decode().split("\0")
+
+
+def owned_chown_args(directory: Path) -> list[str]:
+    owner = directory.stat()
+    return ["--chown", f"{owner.st_uid}:{owner.st_gid}"] if os.geteuid() == 0 else []
+
+
 def mcmap_config(batch_size: int = 4, thread_count: int = 2) -> Mock:
     config = Mock()
     config.batch_size = batch_size

@@ -1,6 +1,7 @@
 """Tests for queue cancellation: refcount, pre-batch skip, mid-batch terminate."""
 import asyncio
 import tempfile
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import patch
@@ -9,7 +10,6 @@ import pytest
 
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.queue import ServerRenderQueue
-from app.mcmap.types import MCMapError
 from tests.support.mcmap import mcmap_config
 from tests.support.runtime import patch_runtime_resource
 
@@ -24,7 +24,7 @@ class HangingProc:
     def __aiter__(self):
         return self._iter()
 
-    async def _iter(self):
+    async def _iter(self) -> AsyncGenerator[dict[str, object]]:
         # Yield nothing; just wait for termination
         await self.terminated.wait()
         # Simulate end of stream
@@ -39,7 +39,7 @@ class HangingProc:
 
 
 @pytest.fixture
-def queue_with_cache():
+async def queue_with_cache():
     with tempfile.TemporaryDirectory() as d:
         data_path = Path(d)
         cache = ServerMapCache(data_path=data_path)
@@ -48,56 +48,67 @@ def queue_with_cache():
             mca.parent.mkdir(parents=True, exist_ok=True)
             mca.write_bytes(b"")
         queue = ServerRenderQueue("srv", "world/region", cache)
-        yield queue
+        try:
+            yield queue
+        finally:
+            await queue.close()
 
 
 async def test_refcount_keeps_request_alive_when_one_consumer_cancels(
     queue_with_cache,
 ):
-    """Two consumers on same key; one cancels, the other still completes."""
     queue = queue_with_cache
     started = asyncio.Event()
-    proc = HangingProc()
+    release = asyncio.Event()
+    rendered_mcas = []
+
+    class GatedProc(HangingProc):
+        async def _iter(self):
+            await release.wait()
+            yield {"type": "region", "x": 0, "z": 0, "status": "rendered"}
+
+        def events(self, adapter):
+            async def typed():
+                async for event in self._iter():
+                    yield adapter.validate_python(event)
+            return typed()
+
+    proc = GatedProc()
 
     @asynccontextmanager
     async def fake_render(*, palette, output_dir, mcas, threads, owned_by):
+        rendered_mcas.append(list(mcas))
         started.set()
         try:
             yield proc
         finally:
             await proc.terminate()
 
-    # We control when the future resolves manually
-    async def driver():
-        # Wait for render to start, then resolve the (0,0) future externally
-        await started.wait()
-        await asyncio.sleep(0.01)
-        # Resolve via queue internals: simulate the worker getting a region event.
-        # Easier: just terminate the hanging proc → worker will fall through to
-        # the defensive "did not complete" branch and set MCMapError.
-        await proc.terminate()
-
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
         patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
         config_mock.mcmap = mcmap_config()
-
         c1 = asyncio.create_task(queue.request(0, 0))
         c2 = asyncio.create_task(queue.request(0, 0))
-        # Let the worker start
-        await asyncio.sleep(0.05)
-        # Cancel one consumer; refs goes 2 → 1; should NOT terminate proc
-        c1.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await c1
-        # Proc should still be running (not terminated by cancellation)
-        assert not proc.terminated.is_set()
-        # Drive termination to make the test finish
-        asyncio.create_task(driver())
-        with pytest.raises(MCMapError, match="render did not complete"):
-            # c2 sees MCMapError because proc terminated without emitting event
-            await asyncio.wait_for(c2, timeout=2.0)
+        try:
+            await asyncio.wait_for(started.wait(), timeout=2)
+            assert not c1.done() and not c2.done()
+            c1.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await c1
+            assert not proc.terminated.is_set()
+            assert not c2.done()
+            release.set()
+            assert await asyncio.wait_for(c2, timeout=2) == queue._cache.png_path("world/region", 0, 0)
+            assert rendered_mcas == [[queue._cache.mca_path("world/region", 0, 0)]]
+        finally:
+            release.set()
+            for consumer in (c1, c2):
+                if not consumer.done():
+                    consumer.cancel()
+            await asyncio.gather(c1, c2, return_exceptions=True)
+            await queue.close()
 
 
 async def test_last_consumer_cancel_terminates_running_subprocess(
