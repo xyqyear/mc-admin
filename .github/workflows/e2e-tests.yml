@@ -252,7 +252,10 @@ jobs:
         audit_args=()
         if [ "$NO_REUSE" = true ]; then audit_args+=(--no-reuse); fi
         if [ "$profile" = regression ] || [ "$profile" = qualification ]; then audit_args+=(--require-observed); fi
-        ./e2e-artifacts/mc-admin-e2e ci-audit --plan api-planning/plan.json --profile "$profile" --revision "$SOURCE_SHA" --backend-image "$image" --output coverage "${audit_args[@]}" shard-reports/api-results-*
+        shopt -s nullglob
+        reports=(shard-reports/api-results-*/)
+        if [ -f shard-reports/results.json ]; then reports+=(shard-reports); fi
+        ./e2e-artifacts/mc-admin-e2e ci-audit --plan api-planning/plan.json --profile "$profile" --revision "$SOURCE_SHA" --backend-image "$image" --output coverage "${audit_args[@]}" "${reports[@]}"
     - name: Publish audited API lifecycle history
       run: |
         uv run --no-project python scripts/ci/timing_history.py publish --component api --profile "${{ needs.plan.outputs.history_profile }}" --compatibility "${{ needs.plan.outputs.compatibility }}" --costs coverage/costs.json --output coverage/history.json

@@ -207,10 +207,15 @@ jobs:
           merge-multiple: false
       - name: Audit exact-once current cases, plan, candidate and cleanup
         run: |
+          shopt -s nullglob
+          reports=(browser-reports/browser-results-*/)
+          if [[ -f browser-reports/shard-report.json ]]; then
+            reports+=(browser-reports)
+          fi
           uv run --no-project python scripts/ci/browser_shards.py audit \
             --inventory .browser-plan/inventory.json --plan .browser-plan/plan.json \
             --candidate candidate-artifacts/candidate.json --output .browser-audit \
-            browser-reports/browser-results-*
+            "${reports[@]}"
           cat .browser-audit/browser-audit.json >> "$GITHUB_STEP_SUMMARY"
       - name: Require all browser shards to succeed
         env:

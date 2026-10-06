@@ -1,8 +1,12 @@
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 spec = importlib.util.spec_from_file_location("browser_shards", Path(__file__).resolve().parents[3] / "scripts/ci/browser_shards.py")
 assert spec is not None and spec.loader is not None
@@ -139,6 +143,91 @@ def reports(tmp_path, value):
         (directory / "candidate-evidence.json").write_text(json.dumps(evidence))
         directories.append(directory)
     return directories
+
+
+def run_workflow_audit(workspace, document, value):
+    root = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load((root / ".github/workflows/browser-tests.yml").read_text())
+    command = next(step["run"] for step in workflow["jobs"]["audit"]["steps"] if step.get("name") == "Audit exact-once current cases, plan, candidate and cleanup")
+    for name, payload in ((".browser-plan/inventory.json", document), (".browser-plan/plan.json", value), ("candidate-artifacts/candidate.json", candidate())):
+        path = workspace / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps(payload))
+    (workspace / "scripts").symlink_to(root / "scripts", target_is_directory=True)
+    return subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command],
+        cwd=workspace, env={**os.environ, "GITHUB_STEP_SUMMARY": str(workspace / "summary.md")},
+        capture_output=True, text=True, check=False, timeout=30,
+    )
+
+
+@pytest.mark.parametrize("layout", ["single_flat", "multiple_nested"])
+def test_browser_workflow_audits_downloaded_artifact_layouts(tmp_path, layout):
+    first, second = case("first"), case("second")
+    document = inventory(first, second)
+    costs = history({first["id"]: 220, second["id"]: 220}) if layout == "multiple_nested" else {}
+    value = browser.plan(document, costs, candidate())
+    directories = reports(tmp_path, value)
+    destination = tmp_path / "browser-reports"
+    if layout == "single_flat":
+        directories[0].rename(destination)
+    else:
+        destination.mkdir()
+        for directory in directories:
+            directory.rename(destination / f"browser-results-{directory.name}")
+    result = run_workflow_audit(tmp_path, document, value)
+    assert result.returncode == 0, result.stdout + result.stderr
+    audit = json.loads((tmp_path / ".browser-audit/browser-audit.json").read_text())
+    assert audit["audited"] is True and audit["cases"] == 2
+    assert audit["shards"] == (1 if layout == "single_flat" else 2)
+    assert audit["source_sha"] == candidate()["source"]["revision"]
+    assert audit["plan_sha256"] == value["plan_sha256"]
+    measured = json.loads((tmp_path / ".browser-audit/costs.json").read_text())
+    assert measured["cases"] == {first["id"]: 11, second["id"]: 11}
+    assert measured["setup_seconds"] == 12 and measured["cleanup_seconds"] == 3
+    assert json.loads((tmp_path / "summary.md").read_text()) == audit
+
+
+@pytest.mark.parametrize("fault,error", [
+    ("missing_reports", "missing planned shards"), ("missing_nested_report", "FileNotFoundError"),
+    ("duplicate_nested", "missing, duplicated or unsuccessful"), ("mixed_duplicate", "missing, duplicated or unsuccessful"),
+    ("flat_candidate", "candidate evidence is inconsistent"), ("flat_cleanup", "owned cleanup is incomplete"),
+])
+def test_browser_workflow_rejects_incomplete_or_duplicate_artifact_layouts(tmp_path, fault, error):
+    document = inventory(case("first"), case("second"))
+    value = browser.plan(document, {}, candidate())
+    directory = reports(tmp_path, value)[0]
+    destination = tmp_path / "browser-reports"
+    if fault == "missing_reports":
+        destination.mkdir()
+    elif fault in ("missing_nested_report", "duplicate_nested", "mixed_duplicate"):
+        destination.mkdir()
+        nested = destination / "browser-results-1"
+        shutil.copytree(directory, nested)
+        if fault == "missing_nested_report":
+            (nested / "shard-report.json").unlink()
+        elif fault == "duplicate_nested":
+            shutil.copytree(directory, destination / "browser-results-2")
+        else:
+            shutil.copytree(directory, destination, dirs_exist_ok=True)
+    else:
+        directory.rename(destination)
+        if fault == "flat_candidate":
+            evidence_path = destination / "candidate-evidence.json"
+            evidence = json.loads(evidence_path.read_text())
+            evidence["source"]["revision"] = "b" * 40
+            evidence_path.write_text(json.dumps(evidence))
+        else:
+            manifest_path = destination / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["environments"][0]["cleaned"] = False
+            manifest_path.write_text(json.dumps(manifest))
+    result = run_workflow_audit(tmp_path, document, value)
+    assert result.returncode != 0
+    assert error in result.stderr
+    assert not (tmp_path / ".browser-audit/browser-audit.json").exists()
+    assert not (tmp_path / ".browser-audit/costs.json").exists()
+    assert not (tmp_path / "summary.md").exists()
 
 
 def test_browser_audit_extracts_only_complete_successful_case_and_fixture_costs(tmp_path):

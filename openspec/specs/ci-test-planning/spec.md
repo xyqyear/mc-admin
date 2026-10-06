@@ -43,6 +43,10 @@ Every execution SHALL use one immutable plan and historical snapshot for its fam
 - **WHEN** shard evidence does not match the family's shared plan identity
 - **THEN** the aggregate audit rejects it
 
+#### Scenario: A plan requires only one shard
+- **WHEN** an API or browser plan assigns one shard and its artifact is extracted at the download root
+- **THEN** the aggregate audit consumes that report and requires the same complete coverage, successful outcomes, candidate identity and owned cleanup as a multiple-shard plan
+
 ### Requirement: Integrated provider execution
 API E2E SHALL own external-provider scenarios, their costs, execution plans and aggregate audits. Ordinary pull request regression, regular automatic CI and complete qualification SHALL independently require every current API case except DNSPod and verified owned cloud cleanup. Provider dependency metadata SHALL select required private configuration and recovery steps. Every API shard SHALL use `dns-e2e` as an unrestricted configuration store with no environment protection or branch authorization gate, and provider steps SHALL receive credentials only when required.
 
