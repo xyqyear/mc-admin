@@ -1,12 +1,11 @@
 import functools
 import gzip
-import inspect
 import os
 import shutil
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from gzip import GzipFile
 from logging.handlers import TimedRotatingFileHandler
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import Any
 
 from .config import get_settings
 from .runtime_logging import OwnedLogger, file_logger
@@ -33,45 +32,23 @@ def get_logger() -> OwnedLogger:
     return current_runtime().app_logger
 
 
-P = ParamSpec("P")
-R = TypeVar("R")
-
-
-def log_exception(
+def log_exception[**P, R](
     prefix: str = "",
-    default_return: Any = None,
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Log safe failure context and return the configured fallback."""
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Coroutine[Any, Any, R | None]]]:
 
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Coroutine[Any, Any, R | None]]:
         context = prefix or f"Operation {func.__qualname__} failed"
 
-        if inspect.iscoroutinefunction(func):
+        @functools.wraps(func)
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R | None:
+            logger = get_logger()
+            try:
+                return await func(*args, **kwargs)
+            except Exception as error:  # noqa: BLE001 - ordinary failures must leave async consumers running
+                from .errors import log_safe_error
+                log_safe_error(error, context, logger=logger)
+                return None
 
-            @functools.wraps(func)
-            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                logger = get_logger()
-                try:
-                    return await func(*args, **kwargs)
-                except Exception as error:  # noqa: BLE001 - decorated operations preserve their configured failure return
-                    from .errors import log_safe_error
-                    log_safe_error(error, context, logger=logger)
-                    return default_return
-
-            return cast(Callable[P, R], async_wrapper)
-
-        else:
-
-            @functools.wraps(func)
-            def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
-                logger = get_logger()
-                try:
-                    return func(*args, **kwargs)
-                except Exception as error:  # noqa: BLE001 - decorated operations preserve their configured failure return
-                    from .errors import log_safe_error
-                    log_safe_error(error, context, logger=logger)
-                    return default_return
-
-            return cast(Callable[P, R], sync_wrapper)
+        return async_wrapper
 
     return decorator
