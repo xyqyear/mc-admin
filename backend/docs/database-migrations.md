@@ -305,9 +305,18 @@ do not discard safety evidence to force an older application to start.
 
 ## Retained task results
 
-Revision `2026100100` is the current migration head. It adds nullable
+Revision `2026100100` adds nullable
 `operation_journal.task_result_json` without changing existing operation history.
 Legacy rows have no payload; new task results survive list dismissal and backend
 restart for the journal retention period. The ORM defers this column so list and
 recovery queries do not load large results. Downgrade removes the payload column
 and its contents while preserving operation metadata and recovery evidence.
+
+## Snapshot notes
+
+Revision `2026100600` is the current migration head and follows `2026100100`.
+It adds `snapshot_notes`, keyed by actual Restic repository config ID and complete
+snapshot ID. A check constraint limits note text to 500 Unicode characters.
+Historical snapshots project an empty note without a database backfill. Existing
+restoration references, retained task results and repository content remain intact.
+Downgrade removes notes while preserving those existing tables and their evidence.

@@ -11,6 +11,7 @@ the subtree root, never against original absolute paths.
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncGenerator, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -119,6 +120,13 @@ class ResticClient:
     async def _run(self, *args: str) -> str:
         full = self._build_args(*args)
         return await exec_command(*full, env=self.env)
+
+    async def repository_id(self) -> str:
+        config = json.loads(await self._run("cat", "config"))
+        repository_id = config.get("id")
+        if not isinstance(repository_id, str) or not re.fullmatch("[0-9a-f]{64}", repository_id):
+            raise ResticProtocolError("快照仓库没有有效的完整标识")
+        return repository_id
 
     async def backup(
         self,

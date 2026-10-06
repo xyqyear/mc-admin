@@ -24,6 +24,7 @@ class ResticSnapshot(BaseModel):
     program_version: str | None = None
     id: str
     short_id: str
+    note: str = ""
 
 
 class ResticSnapshotSummary(BaseModel):

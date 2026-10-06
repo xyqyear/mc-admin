@@ -36,6 +36,7 @@ from .models import (
     ResticSnapshot,
     ResticSnapshotWithSummary,
 )
+from .notes import SnapshotNotes
 from .planner import (
     DirStep,
     EmptyStep,
@@ -49,9 +50,13 @@ from .restic import ResticClient
 
 
 class SnapshotService:
-    def __init__(self, client: ResticClient, mc_manager: InstanceProvider):
+    def __init__(
+        self, client: ResticClient, mc_manager: InstanceProvider,
+        notes: SnapshotNotes | None = None,
+    ):
         self._client = client
         self._mc_manager = mc_manager
+        self._notes = notes
         self.repository_use = RepositoryUse()
 
     async def protection(
@@ -389,7 +394,27 @@ class SnapshotService:
         yield ResticRestoreEvent(kind="summary", files_deleted=len(removed))
 
     async def get_snapshot(self, snapshot_id: str) -> ResticSnapshot:
-        return await self._client.get_snapshot(snapshot_id)
+        snapshot = await self._client.get_snapshot(snapshot_id)
+        await self._project_notes([snapshot])
+        return snapshot
+
+    async def save_note(self, snapshot_id: str, note: str) -> ResticSnapshot:
+        if self._notes is None:
+            raise HTTPException(status_code=503, detail="快照备注服务不可用")
+        with self.repository_use.retain([snapshot_id]):
+            snapshot = await self._client.get_snapshot(snapshot_id)
+            await self._notes.save(await self._client.repository_id(), snapshot.id, note)
+            snapshot.note = note
+            return snapshot
+
+    async def _project_notes(self, snapshots: list[ResticSnapshot]) -> None:
+        if self._notes is None or not snapshots:
+            return
+        notes = await self._notes.read(
+            await self._client.repository_id(), [snapshot.id for snapshot in snapshots]
+        )
+        for snapshot in snapshots:
+            snapshot.note = notes.get(snapshot.id, "")
 
     async def list_snapshots(
         self, path_filter: Path | None = None
@@ -398,6 +423,7 @@ class SnapshotService:
         cover it and whose recorded excludes don't disqualify it."""
         snapshots = await self._client.list_snapshots()
         if path_filter is None:
+            await self._project_notes(snapshots)
             return snapshots
 
         resolved_filter = await async_fs.resolve(path_filter)
@@ -406,6 +432,7 @@ class SnapshotService:
             paths, excludes = await self._resolved_coverage_paths(snapshot)
             if covers(resolved_filter, paths, excludes):
                 filtered.append(snapshot)
+        await self._project_notes(filtered)
         return filtered
 
     async def find_snapshots_covering(
@@ -433,6 +460,7 @@ class SnapshotService:
             ):
                 matching.append(snapshot)
         matching.sort(key=lambda s: s.time, reverse=True)
+        await self._project_notes(matching)
         return matching
 
     @staticmethod

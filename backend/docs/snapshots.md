@@ -11,6 +11,8 @@ Restic deduplicates at the chunk level, encrypts at rest, and supports forget/pr
 ```text
 app/snapshots/
 ├── models.py    # ResticSnapshot, ResticSnapshotWithSummary, ResticRestoreEvent, NodeKind
+├── note_models.py # repository/snapshot-bound editable note persistence
+├── notes.py     # bounded note reads and SQLite upserts
 ├── restic.py    # ResticClient — stateless CLI wrapper, one method per restic command
 ├── ignores.py   # ignore-path resolution (<LEVEL_NAME> expansion) and pattern translation
 ├── coverage.py  # exclude-aware "does this snapshot cover this path" predicate
@@ -36,7 +38,7 @@ app/snapshots/
 └── file_restore.py # stopped-world checks and derived-tile cleanup for file scopes
 ```
 
-`get_snapshot_service()` returns the active runtime’s actual `SnapshotService`, or `None` when Restic is not configured. The composition root creates its Restic adapter and injects its Minecraft manager. Routers, cron jobs, self-checks and world restoration use this owned service; application callers do not construct competing repository clients.
+`get_snapshot_service()` returns the active runtime’s actual `SnapshotService`, or `None` when Restic is not configured. The composition root creates its Restic adapter and injects its Minecraft manager and database-bound note store. Routers, cron jobs, self-checks and world restoration use this owned service; application callers do not construct competing repository clients.
 
 The explicit scope contract distinguishes the servers root, an entire server
 project, paths relative to `data`, and world selections. It collapses duplicate
@@ -114,7 +116,7 @@ speculative missing sidecars while requiring at least one existing target.
 Manual requests retain missing-target validation. Ignored-path, coverage and
 restore planning remain shared through `SnapshotService`.
 
-Manual creation uses `POST /snapshots {scope}`. File and world recovery use
+Manual creation uses `POST /snapshots {scope, note?}`. File and world recovery use
 `POST /snapshots/restorations {scope, source_snapshot_id}` and returns
 `202 {task_id, restoration_id, skipped_paths}`. The task worker waits for its
 resources, revalidates frozen identity/path/protection, creates and persists a
@@ -168,6 +170,28 @@ unavailable reason. Ordinary file restoration remains available online.
 带 `preview_id` 恢复时，受理和实际写入前都核对源 ID、规范化范围、服务器代次、当前保护规则和已观测目标版本。版本结合选中目标的文件元数据与相关路径的操作记录；普通在线文件不扫描整棵目录、不承诺外部程序的原子状态。范围外的文件写入不会使预览失效。直接恢复仍可用，安全快照始终捕获执行前的真实状态。
 
 `GET /api/snapshots/usage`、`GET /locks` 为普通读取。`DELETE /{snapshot_id}` 和 `POST /unlock` 返回任务；仓库独占占用从受理保留至所属进程及收尾结束，期间拒绝新的快照依赖。清锁只移除 Restic 判断已失效的锁，不能强制移除活跃锁。
+
+## Snapshot notes
+
+`snapshot_notes` uses the real repository ID returned by `restic cat config` and
+the complete 64-character snapshot ID as its composite key. Repository location
+or a snapshot's abbreviated ID cannot select a note. Reads obtain the current
+repository identity rather than caching a location-derived identity. Notes default
+to empty for historical snapshots and contain at most 500 Unicode characters.
+Bounded SQL batches project the same note into ordinary lists, eligible sources
+and service detail reads; editing uses authenticated `PUT /snapshots/{id}/note`.
+
+Notes belong to the application database and its backups. Their creation and
+editing never change Restic tags, IDs, content, restoration evidence or preview
+bindings. A manual creation task returning `note_warning` still returns its
+created snapshot as a successful content result. The shared creation dialog keeps
+that identity visible and offers a separate note save retry. It never resubmits
+snapshot creation to repair metadata.
+
+`POST /snapshots/eligible` requires every non-world selected root to be permitted
+by the union of current and source protection. A source entirely excluding one
+root cannot qualify by covering the others. Exclusions strictly inside selected
+directories retain the existing protected-descendant skip behavior.
 
 ## Observation and target feedback
 

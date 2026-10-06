@@ -5,7 +5,7 @@ import type { CreateSnapshotResponse, DeleteSnapshotResponse, UnlockResponse } f
 import { queryKeys } from "@/shared/http/api";
 import { toast } from "sonner";
 import { waitForTaskResult } from '@/features/tasks/commands';
-import type { SnapshotScope } from './contracts';
+import type { CreateSnapshotRequest, SnapshotScope } from './contracts';
 import { useState } from 'react';
 import type { BackgroundTask } from '@/features/tasks/contracts';
 
@@ -15,14 +15,30 @@ export function useCreateSnapshot() {
   const client = useQueryClient();
   const [task, setTask] = useState<BackgroundTask | null>(null);
   const mutation = useMutation({
-    mutationFn: async (scope: SnapshotScope) => {
+    mutationFn: async (request: SnapshotScope | CreateSnapshotRequest) => {
       setTask(null);
-      return waitForTaskResult<CreateSnapshotResponse>(client, await snapshotApi.createSnapshot(scope), { onProgress: setTask });
+      const { scope, note } = 'scope' in request ? request : { scope: request, note: undefined };
+      return waitForTaskResult<CreateSnapshotResponse>(client, await snapshotApi.createSnapshot(scope, note), { onProgress: setTask });
     },
-    onSuccess: data => { toast.success(`快照创建成功: ${data.snapshot.short_id}`) },
+    onSuccess: data => {
+      if (data.note_warning) toast.warning(`快照已创建: ${data.snapshot.short_id}`, { description: data.note_warning });
+      else toast.success(`快照创建成功: ${data.snapshot.short_id}`);
+    },
     onError: (error: Error) => { toast.error(`快照创建失败: ${error.message}`) },
   });
   return { ...mutation, task };
+}
+
+export function useUpdateSnapshotNote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ snapshotId, note }: { snapshotId: string; note: string }) => snapshotApi.updateNote(snapshotId, note),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: queryKeys.snapshots.all });
+      toast.success('快照备注已保存');
+    },
+    onError: (error: Error) => toast.error(`备注保存失败: ${error.message}`),
+  });
 }
 
 export function fileSnapshotScope(serverId: string, paths?: string[]): SnapshotScope {

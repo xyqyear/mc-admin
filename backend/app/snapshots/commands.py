@@ -14,7 +14,7 @@ from fastapi import HTTPException
 
 from ..background_tasks import TaskProgress, TaskType
 from ..background_tasks.manager import BackgroundTaskManager
-from ..errors import PublicOperationError, public_error_message
+from ..errors import PublicOperationError, log_safe_error, public_error_message
 from ..files.resources import path_claims
 from ..minecraft import DockerMCManager
 from ..operation_admission import get_server_write_admission
@@ -148,7 +148,7 @@ class SnapshotCommands:
         self._active[task_id] = resolved
         stack.callback(self._active.pop, task_id, None)
 
-    async def create(self, scope: SnapshotScope, actor_id: int) -> dict:
+    async def create(self, scope: SnapshotScope, actor_id: int, note: str = "") -> dict:
         task_id = secrets.token_hex(16)
         with ExitStack() as stack:
             stack.enter_context(self.snapshots.repository_use.retain())
@@ -170,7 +170,7 @@ class SnapshotCommands:
             submitted = await self._tasks.submit_durable(
                 TaskType.SNAPSHOT_CREATE,
                 "创建快照",
-                self._create(prepared, actor_id),
+                self._create(prepared, actor_id, note=note),
                 server_id=None if isinstance(scope, GlobalScope) else scope.server_id,
                 server_refs=prepared.resolved.servers,
                 claims=prepared.claims,
@@ -232,6 +232,8 @@ class SnapshotCommands:
                 prepared.protection, source
             )
             allowed = [path for path in paths if protection.permits(path)]
+            if not isinstance(scope, WorldScope) and len(allowed) != len(paths):
+                continue
             absent = snapshot_absence(source)
             if allowed and all(
                 any(path.is_relative_to(parent) for parent in absent)
@@ -248,6 +250,8 @@ class SnapshotCommands:
         prepared: PreparedSnapshot,
         actor_id: int | None,
         policy: ConflictPolicy = ConflictPolicy.WAIT,
+        *,
+        note: str = "",
     ) -> AsyncGenerator[TaskProgress]:
         yield TaskProgress(message="正在等待快照目标可用")
         holder = LockHolder(
@@ -273,12 +277,21 @@ class SnapshotCommands:
                 snapshot = await self.snapshots.create_snapshot(
                     paths, protection=prepared.protection, tags=absence_tags(missing)
                 )
+                note_warning = None
+                if note:
+                    try:
+                        await finalize(self.snapshots.save_note(snapshot.id, note))
+                        snapshot.note = note
+                    except Exception as error:  # noqa: BLE001 - Committed snapshots survive metadata failures.
+                        log_safe_error(error, "Snapshot note persistence failed")
+                        note_warning = "快照已创建，但备注保存失败；请仅重试保存备注"
                 yield TaskProgress(
                     progress=100,
-                    message="快照创建完成",
+                    message=note_warning or "快照创建完成",
                     result={
                         "snapshot": snapshot.model_dump(mode="json"),
                         "skipped_paths": self._skipped(prepared),
+                        "note_warning": note_warning,
                     },
                 )
 

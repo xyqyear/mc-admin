@@ -32,10 +32,13 @@ export const snapshotApi = {
     return res.data.snapshots;
   },
 
-  createSnapshot: async (scope: SnapshotScope): Promise<SnapshotTaskAccepted> => {
-    const res = await api.post<SnapshotTaskAccepted>("/snapshots", { scope });
+  createSnapshot: async (scope: SnapshotScope, note?: string): Promise<SnapshotTaskAccepted> => {
+    const res = await api.post<SnapshotTaskAccepted>("/snapshots", { scope, ...(note ? { note } : {}) });
     return res.data;
   },
+
+  updateNote: async (snapshotId: string, note: string): Promise<Snapshot> =>
+    (await api.put<Snapshot>(`/snapshots/${snapshotId}/note`, { note })).data,
 
   preparePreview: async (request: SnapshotPreviewRequest) =>
     (await api.post<SnapshotTaskAccepted>('/snapshots/previews', request)).data,

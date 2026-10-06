@@ -53,6 +53,11 @@ const snapshotColumns: ColumnDef<Snapshot, any>[] = [
     sortingFn: (a, b) => new Date(a.original.time).getTime() - new Date(b.original.time).getTime(),
   },
   {
+    accessorKey: 'note',
+    header: '备注',
+    cell: ({ row }) => <span className="whitespace-pre-wrap break-words text-sm">{row.original.note || '无备注'}</span>,
+  },
+  {
     accessorKey: 'username',
     header: '用户',
     size: 120,

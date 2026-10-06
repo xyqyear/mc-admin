@@ -20,6 +20,7 @@ from app.snapshots.api_models import (
     RestoreRequest,
     SnapshotTargetCheck,
     SnapshotTaskAccepted,
+    UpdateSnapshotNoteRequest,
 )
 
 from ..background_tasks import get_task_manager
@@ -40,6 +41,7 @@ from ..snapshots.file_restore import (
     SnapshotServerRunning,
 )
 from ..snapshots.maintenance import SnapshotMaintenance
+from ..snapshots.models import ResticSnapshot
 from ..snapshots.policy import check_backup_time_restriction
 from ..snapshots.preview_models import PreviewActions, PreviewRequest, PreviewResult
 from ..snapshots.previews import get_snapshot_previews
@@ -94,7 +96,7 @@ async def create_global_snapshot(
 ):
     await _check_backup_time_restriction()
     try:
-        return await _commands().create(request.scope, user.id)
+        return await _commands().create(request.scope, user.id, request.note)
     except TargetIgnoredError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -116,6 +118,15 @@ async def list_global_snapshots(
 
     snapshots = await service.list_snapshots(path_filter=filter_path)
     return ListSnapshotsResponse(snapshots=snapshots)
+
+
+@router.put("/{snapshot_id}/note", response_model=ResticSnapshot)
+async def update_snapshot_note(
+    request: UpdateSnapshotNoteRequest,
+    snapshot_id: str = PathParameter(pattern="^[0-9a-f]{64}$"),
+    _: UserPublic = Depends(get_current_user),
+):
+    return await _get_snapshot_service().save_note(snapshot_id, request.note)
 
 
 @router.post("/eligible", response_model=ListSnapshotsResponse)

@@ -11,6 +11,7 @@ from app.operations.journal import OperationJournal
 from app.runtime_resources import current_runtime
 from app.servers.models import Server
 from app.snapshots.commands import SnapshotCommands
+from app.snapshots.notes import SnapshotNotes
 from app.snapshots.restic import ResticClient
 from app.snapshots.service import SnapshotService
 from app.utils.exec import exec_command
@@ -69,7 +70,7 @@ async def case(tmp_path):
         repository_path=str(tmp_path / "repository"), password="command-test"
     )
     await exec_command(str(client.binary_path), "init", env=client.env)
-    snapshots = SnapshotService(client, Manager())
+    snapshots = SnapshotService(client, Manager(), SnapshotNotes(runtime.database.session_factory))
     replace_runtime_resource(runtime, "snapshot_service", snapshots)
     commands = runtime.snapshot_commands
     assert isinstance(commands, SnapshotCommands)

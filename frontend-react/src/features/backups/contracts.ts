@@ -24,6 +24,7 @@ export interface Snapshot {
   username: string;
   id: string;
   short_id: string;
+  note?: string;
   program_version?: string;
   summary?: SnapshotSummary;
 }
@@ -31,6 +32,12 @@ export interface Snapshot {
 export interface CreateSnapshotResponse {
   snapshot: Snapshot;
   skipped_paths: string[];
+  note_warning?: string | null;
+}
+
+export interface CreateSnapshotRequest {
+  scope: SnapshotScope;
+  note?: string;
 }
 
 export type SnapshotScope =

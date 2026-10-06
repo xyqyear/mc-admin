@@ -157,6 +157,7 @@ export const SnapshotPicker: React.FC<SnapshotPickerProps> = ({
                       <div className="text-xs text-muted-foreground">
                         {formatTime(s.time)}
                       </div>
+                      <p className="whitespace-pre-wrap break-words text-sm">{s.note || '无备注'}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       {selection &&

@@ -16,6 +16,7 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
 		{ID: "snapshots.restore-and-protection", Suite: "snapshots", Tags: []string{"smoke", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: restore},
 		{ID: "snapshots.repository-and-selection", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: repository},
+		{ID: "snapshots.notes-and-multiple-paths", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: notesAndMultiplePaths},
 		{ID: "snapshots.backup-time-restriction", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: timeRestriction},
 		{ID: "snapshots.stale-lock-recovery", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: staleLock},
 	}

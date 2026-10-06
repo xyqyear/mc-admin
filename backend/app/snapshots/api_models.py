@@ -12,6 +12,12 @@ from .scopes import SnapshotScope
 class CreateSnapshotRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scope: SnapshotScope
+    note: str = Field(default="", max_length=500)
+
+
+class UpdateSnapshotNoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(max_length=500)
 
 
 class RestoreRequest(BaseModel):

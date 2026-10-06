@@ -1,4 +1,5 @@
-import { SnapshotCreationStatus } from './ui/SnapshotCreationStatus'
+import { SnapshotCreateDialog } from './ui/SnapshotCreateDialog'
+import { SnapshotNoteDialog } from './ui/SnapshotNoteDialog'
 import React, { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
@@ -8,6 +9,7 @@ import {
   Plus,
   Unlock,
   Loader2,
+  Pencil,
 } from 'lucide-react'
 import {
   type ColumnDef,
@@ -90,6 +92,11 @@ const columns: ColumnDef<Snapshot, any>[] = [
     ),
   },
   {
+    accessorKey: 'note',
+    header: '备注',
+    cell: ({ row }) => <span className="whitespace-pre-wrap break-words text-sm">{row.original.note || '无备注'}</span>,
+  },
+  {
     accessorKey: 'program_version',
     header: '版本信息',
     size: 120,
@@ -114,6 +121,8 @@ const Snapshots: React.FC = () => {
   const [locksInfo, setLocksInfo] = useState<string>('')
   const [unlockOutput, setUnlockOutput] = useState<string>('')
   const [isLoadingLocks, setIsLoadingLocks] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editingNote, setEditingNote] = useState<Snapshot | null>(null)
 
   const { confirm, confirmDialog } = useConfirm()
 
@@ -143,25 +152,30 @@ const Snapshots: React.FC = () => {
   const actionColumn: ColumnDef<Snapshot, any> = useMemo(() => ({
     id: 'actions',
     header: '操作',
-    size: 100,
+    size: 180,
     cell: ({ row }) => (
-      <Button
-        variant="destructive"
-        size="sm"
-        onClick={() =>
-          confirm({
-            title: '删除快照',
-            description: `确定要删除此快照吗？快照ID: ${row.original.short_id}`,
-            confirmText: '确认删除',
-            cancelText: '取消',
-            variant: 'destructive',
-            onConfirm: async () => { await deleteSnapshotMutation.mutateAsync(row.original.id) },
-          })
-        }
-      >
-        <Trash2 className="mr-1 h-3.5 w-3.5" />
-        删除
-      </Button>
+      <div className="flex items-center gap-1">
+        <Button variant="outline" size="sm" onClick={() => setEditingNote(row.original)}>
+          <Pencil className="mr-1 h-3.5 w-3.5" />备注
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() =>
+            confirm({
+              title: '删除快照',
+              description: `确定要删除此快照吗？快照ID: ${row.original.short_id}`,
+              confirmText: '确认删除',
+              cancelText: '取消',
+              variant: 'destructive',
+              onConfirm: async () => { await deleteSnapshotMutation.mutateAsync(row.original.id) },
+            })
+          }
+        >
+          <Trash2 className="mr-1 h-3.5 w-3.5" />
+          删除
+        </Button>
+      </div>
     ),
   }), [confirm, deleteSnapshotMutation])
 
@@ -181,7 +195,7 @@ const Snapshots: React.FC = () => {
   })
 
   const handleCreateSnapshot = () => {
-    createSnapshotMutation.mutate({ kind: 'global' })
+    setCreateOpen(true)
   }
 
   const handleUnlockClick = async () => {
@@ -244,7 +258,8 @@ const Snapshots: React.FC = () => {
         }
       />
 
-      <SnapshotCreationStatus pending={createSnapshotMutation.isPending} task={createSnapshotMutation.task} />
+      <SnapshotCreateDialog request={createOpen ? { scope: { kind: 'global' }, label: '全部服务器项目' } : null} creation={createSnapshotMutation} onClose={() => setCreateOpen(false)} />
+      <SnapshotNoteDialog snapshot={editingNote} onClose={() => setEditingNote(null)} />
       {isError && (
         <Alert variant="destructive">
           <AlertTitle>加载快照列表失败</AlertTitle>

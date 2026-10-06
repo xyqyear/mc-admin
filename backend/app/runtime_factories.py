@@ -85,6 +85,7 @@ def create_docker_mc_manager(runtime: Runtime) -> DockerMCManager:
 
 
 def create_snapshot_service(runtime: Runtime) -> SnapshotService | None:
+    from .snapshots.notes import SnapshotNotes
     from .snapshots.restic import ResticClient
     from .snapshots.service import SnapshotService
 
@@ -98,6 +99,7 @@ def create_snapshot_service(runtime: Runtime) -> SnapshotService | None:
             binary_path=runtime.settings.restic_binary_path,
         ),
         runtime.docker_mc_manager,
+        SnapshotNotes(runtime.session_factory),
     )
 
 
