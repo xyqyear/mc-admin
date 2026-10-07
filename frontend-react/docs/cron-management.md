@@ -4,7 +4,7 @@ Page at `/cron` for managing scheduled jobs backed by the backend's APScheduler 
 
 ## Status model
 
-Saved configuration status is separate from runtime registration. `status=active` means “已启用”; `registration_status` is `registered`, `pending`, `failed`, `blocked` or `inactive`, with an optional readable `registration_error`. List, detail and server restart cards show both states. Failed or blocked saved jobs remain visible; an enabled, unregistered user task exposes “重新启用” through the existing resume endpoint. Failed registration does not display a future execution countdown. Older responses lacking these additive fields remain supported.
+Saved configuration status is separate from runtime registration. `status=active` means “已启用”; `registration_status` is `registered`, `pending`, `failed` or `inactive`, with an optional readable `registration_error`. List, detail and server restart cards show both states. Failed saved jobs remain visible; an enabled, unregistered user task exposes “重新启用” through the existing resume endpoint. Failed registration does not display a future execution countdown. Responses lacking these additive fields remain supported.
 
 A user-managed job moves through `active → paused → active` (pause / resume) or `active → cancelled` (cancel; it can be resumed). The default filter on the list page hides cancelled rows so the table stays focused on operational jobs. Pause/resume/cancel are mutation-driven with `useConfirm` confirmations.
 
@@ -79,7 +79,7 @@ The execution table polls every few seconds while the modal is open so an in-fli
 
 ## Restart-schedule integration
 
-The server overview's `ServerRestartScheduleCard.tsx` creates a generation-bound managed schedule through `POST /servers/{id}/restart-schedule` after confirmation. The backend assigns its daily restart time. A failed read is displayed separately from a missing schedule and disables creation. The card refreshes after creation; its manage action opens `/cron?job=<id>` with that job's detail dialog visible. The schedule UI uses `restartSchedule.detail(serverId)`; independent cron creation remains separate from managed server plans.
+The server overview's `ServerRestartScheduleCard.tsx` creates a managed schedule through `POST /servers/{id}/restart-schedule` after confirmation. The target is the exact server name in the job parameters; the display name is independent. With multiple retained managed plans, the backend selects the earliest non-cancelled plan, or the latest cancelled plan if none remain enabled. Other plans remain independent and retain their state and history. The backend assigns a daily restart time when no custom expression is supplied. A failed read is displayed separately from a missing schedule and disables creation. The card refreshes after creation; its manage action opens `/cron?job=<id>` with that exact job's detail dialog visible. Detail shows the managed-purpose classification and target parameters alongside registration errors. The schedule UI uses `restartSchedule.detail(serverId)`; independent cron creation remains separate from managed server plans.
 
 ## Files
 

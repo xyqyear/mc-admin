@@ -14,7 +14,7 @@ from app.cron.models import CronJobStatus, ExecutionStatus
 
 from ..dynamic_config.schemas import BaseConfigSchema
 
-RegistrationStatus = Literal["registered", "pending", "failed", "blocked", "inactive"]
+RegistrationStatus = Literal["registered", "pending", "failed", "inactive"]
 
 # Type alias for async cron job functions
 AsyncCronJobFunction = Callable[["ExecutionContext"], Awaitable[None]]
@@ -52,7 +52,6 @@ class ExecutionContext(BaseModel):
     execution_id: str
     params: BaseConfigSchema
     started_at: datetime
-    managed_server_generation: int | None = None
     ended_at: datetime | None = None
     duration_ms: int | None = None
     status: ExecutionStatus = ExecutionStatus.RUNNING
@@ -105,9 +104,7 @@ class CronJobConfig(BaseModel):
     second: str | None = None
     params: BaseConfigSchema
     execution_count: int = 0
-    managed_server_generation: int | None = None
     managed_purpose: str | None = None
-    managed_binding_issue: str | None = None
     is_system: bool = False
     status: CronJobStatus = CronJobStatus.ACTIVE
     registration_status: RegistrationStatus = "pending"

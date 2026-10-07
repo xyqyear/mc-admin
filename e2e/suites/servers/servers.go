@@ -16,7 +16,7 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 		{ID: "servers.configuration-versions", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: configurationVersions},
 		{ID: "servers.configuration-partial-failure-recovery", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Lifecycle, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: configurationPartialFailure},
 		{ID: "servers.restart-schedule-and-creation", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: schedules},
-		{ID: "servers.restart-schedule-generation", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: scheduleGeneration},
+		{ID: "servers.restart-schedule-logical-target", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: scheduleLogicalTarget},
 		{ID: "servers.restart-schedule-legacy-migration", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: scheduleMigration},
 		{ID: "servers.sync-reconciliation", Suite: "servers", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: reconciliation},
 	}

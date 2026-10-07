@@ -58,6 +58,22 @@ it.each([false, true])('submits accepted zero-valued minute, hour, weekday and o
   await waitFor(() => expect(writes).toEqual([{ identifier: 'fixture_job', params: {}, cron: '0 0 * * 0', name: '测试任务', second: '0' }]))
 })
 
+it('edits a managed restart target without deriving it from the display name', async () => {
+  const writes: unknown[] = []
+  server.use(
+    http.get('*/api/cron/registered', () => HttpResponse.json([{ identifier: 'restart_server', description: '服务器重启', parameter_schema: { type: 'object', required: ['server_id'], properties: { server_id: { type: 'string', title: '服务器 ID' } } } }])),
+    http.get('*/api/cron/restart-alpha', () => HttpResponse.json({ cronjob_id: 'restart-alpha', identifier: 'restart_server', name: '凌晨维护窗口', cron: '40 3 * * *', params: { server_id: 'alpha' }, managed_purpose: 'restart', status: 'active' })),
+    http.put('*/api/cron/restart-alpha', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ message: '已更新' }) }),
+  )
+  render(<TestProviders client={client}><CreateCronJobDialog open onCancel={() => {}} isEdit cronjobId="restart-alpha" /></TestProviders>)
+  const target = await screen.findByRole('textbox', { name: /服务器 ID/ })
+  expect((target as HTMLInputElement).value).toBe('alpha')
+  expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe('凌晨维护窗口')
+  fireEvent.change(target, { target: { value: 'beta' } })
+  fireEvent.click(screen.getByRole('button', { name: '更新任务' }))
+  await waitFor(() => expect(writes).toEqual([{ identifier: 'restart_server', params: { server_id: 'beta' }, cron: '40 3 * * *', name: '凌晨维护窗口' }]))
+})
+
 it('renders dynamic parameter types and validation and discards the previous job draft before creating', async () => {
   const writes: unknown[] = []
   server.use(

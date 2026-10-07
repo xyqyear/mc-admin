@@ -58,7 +58,7 @@
     "servers.configuration-partial-failure-recovery": 28.068,
     "servers.configuration-versions": 13.945,
     "servers.restart-schedule-and-creation": 13.977,
-    "servers.restart-schedule-generation": 15.064,
+    "servers.restart-schedule-logical-target": 15.064,
     "servers.restart-schedule-legacy-migration": 22.482,
     "servers.sync-reconciliation": 15.29,
     "servers.template-snapshot": 13.801,

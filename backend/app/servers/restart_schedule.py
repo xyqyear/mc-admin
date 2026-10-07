@@ -50,20 +50,10 @@ async def schedule_auto_restart(
 
     if request.custom_cron:
         cron_expr = request.custom_cron
-        cron_parts = cron_expr.strip().split()
-        if len(cron_parts) >= 2:
-            minute, hour = cron_parts[0], cron_parts[1]
-            scheduled_time = f"{hour}:{minute.zfill(2)}"
-        else:
-            scheduled_time = "Custom"
     else:
         cron_expr = await get_restart_scheduler().generate_restart_cron(
             exclude_server_id=server_id
         )
-        hour, minute = await get_restart_scheduler().find_next_available_restart_time(
-            exclude_server_id=server_id
-        )
-        scheduled_time = f"{hour:02d}:{minute:02d}"
 
     params = ServerRestartParams(server_id=server_id)
 
@@ -102,11 +92,21 @@ async def schedule_auto_restart(
         next_run_datetime.strftime("%Y-%m-%d %H:%M:%S") if next_run_datetime else None
     )
 
+    cron_parts = job_config.cron.strip().split()
+    if len(cron_parts) >= 2:
+        minute, hour = cron_parts[0], cron_parts[1]
+        if request.custom_cron is None and hour.isdigit() and minute.isdigit():
+            scheduled_time = f"{int(hour):02d}:{int(minute):02d}"
+        else:
+            scheduled_time = f"{hour}:{minute.zfill(2)}"
+    else:
+        scheduled_time = "Custom"
+
     return RestartScheduleResponse(
         cronjob_id=cronjob_id,
         server_id=server_id,
-        name=schedule_name,
-        cron=cron_expr,
+        name=job_config.name,
+        cron=job_config.cron,
         status=job_config.status.value,
         registration_status=job_config.registration_status,
         registration_error=job_config.registration_error,

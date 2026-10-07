@@ -223,7 +223,7 @@ server data. See [operation ownership and recovery](operations.md) for retention
 explicit reference resolution, startup ordering and supported single-writer
 deployment constraints.
 
-## Managed restart schedule bindings
+## Historical managed restart schedule bindings
 
 Revision `2026092502` follows `2026092501`. It
 adds nullable `CronJob.managed_server_generation`, `managed_purpose` and
@@ -247,11 +247,10 @@ table creation, allowing a direct retry. Tests exercise mixed valid/ambiguous
 history, same-name generations, integrity constraints, failed upgrade and retry,
 and equivalence with fresh metadata.
 
-Inspect the report on a disposable database copy and use the cron detail API to
-review retained jobs. Unresolved non-cancelled candidates return 409 from affected
-server-plan operations and do not run automatically. Explicitly cancelling a
-reviewed ambiguous plan preserves its evidence and allows creating a fresh managed
-plan for the current server. See [cron](cron.md) for the exact rules and report query.
+These fields belong to this intermediate schema revision. The current head
+removes instance bindings through `2026100700`; retained valid plans resolve their
+target by the configured server name. See [cron](cron.md) for current selection
+and execution rules.
 
 Downgrade below `2026092502` refuses to remove the binding fields while any managed
 binding or ambiguity report remains, regardless of task status. Losing that
@@ -314,9 +313,30 @@ and its contents while preserving operation metadata and recovery evidence.
 
 ## Snapshot notes
 
-Revision `2026100600` is the current migration head and follows `2026100100`.
+Revision `2026100600` follows `2026100100`.
 It adds `snapshot_notes`, keyed by actual Restic repository config ID and complete
 snapshot ID. A check constraint limits note text to 500 Unicode characters.
 Historical snapshots project an empty note without a database backfill. Existing
 restoration references, retained task results and repository content remain intact.
 Downgrade removes notes while preserving those existing tables and their evidence.
+
+## Name-based restart schedules
+
+Revision `2026100700` is the current migration head and follows `2026100600`.
+It removes `cronjob.managed_server_generation`, `managed_binding_issue`,
+`uq_cronjob_managed_binding` and `ck_cronjob_managed_binding`. The retained
+`managed_purpose` distinguishes server-managed schedules from independent jobs.
+Job IDs, names, parameters, desired status, execution counts and history remain
+unchanged, including multiple historical plans for one server name. Valid active
+plans can register without interpreting their display name or creation time as
+instance evidence. Paused and cancelled plans keep their desired state.
+
+SQLite begins a real transaction before dropping the index and replacing the
+table. A failed replacement rolls back the schema and rows and permits retry.
+Tests compare retained data, current metadata, integrity and downgrade boundaries.
+
+Downgrade to `2026100600` is refused while any managed plan exists; the logical
+target does not prove a historical instance binding. With no managed plans, the
+old nullable columns, index and check constraint can be restored without changing
+independent jobs. A production rollback must use a schema-compatible build or a
+separately reviewed database recovery.

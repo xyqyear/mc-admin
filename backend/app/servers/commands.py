@@ -31,7 +31,6 @@ class ServerCommands:
         *,
         actor_id: int | None = None,
         only_if_running: bool = False,
-        expected_generation: int | None = None,
         reference: ServerRef | None = None,
     ) -> ServerCommandResult:
         settings = get_settings()
@@ -42,11 +41,9 @@ class ServerCommands:
                 async with get_async_session() as session:
                     reference = await resolve_server_ref(session, server_id, servers_root=settings.server_path)
         except HTTPException as exc:
-            if only_if_running and expected_generation is not None and exc.status_code in (404, 409):
-                return ServerCommandResult(True, "计划绑定的服务器实例已停用，跳过同名新实例的重启")
+            if only_if_running and exc.status_code in (404, 409):
+                return ServerCommandResult(True, "目标服务器未登记或实例已变更，跳过本次重启")
             raise
-        if expected_generation is not None and reference.generation != expected_generation:
-            return ServerCommandResult(True, "计划绑定的服务器实例已停用，跳过同名新实例的重启")
         if action in ("stop", "down"):
             await self._run(reference, action, actor_id)
             return ServerCommandResult()
@@ -61,11 +58,13 @@ class ServerCommands:
                 try:
                     await revalidate_server_ref(session, reference)
                 except HTTPException as exc:
-                    if only_if_running and expected_generation is not None and exc.status_code in (404, 409):
-                        return ServerCommandResult(True, "计划绑定的服务器实例已停用，跳过同名新实例的重启")
+                    if only_if_running and exc.status_code in (404, 409):
+                        return ServerCommandResult(True, "目标服务器未登记或实例已变更，跳过本次重启")
                     raise
             instance = get_docker_mc_manager().get_instance(server_id)
             if not await instance.exists():
+                if only_if_running:
+                    return ServerCommandResult(True, "目标服务器不存在，跳过本次重启")
                 raise HTTPException(status_code=404, detail=f"Server '{server_id}' not found")
             if only_if_running and not await instance.running():
                 return ServerCommandResult(True, f"服务器 '{server_id}' 未在运行中，跳过重启")

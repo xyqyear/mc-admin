@@ -267,13 +267,6 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
 
                 {jobDetail && (
                   <>
-                    {jobDetail.managed_binding_issue && <Alert variant="destructive">
-                      <AlertTitle>服务器计划归属需要核对</AlertTitle>
-                      <AlertDescription>{jobDetail.managed_binding_issue}</AlertDescription>
-                    </Alert>}
-                    {jobDetail.managed_server_generation != null && <p className="text-sm text-muted-foreground">
-                      此计划属于服务器实例 #{jobDetail.managed_server_generation}，用途：定时重启。服务器同名重建后不会继承此计划。
-                    </p>}
                     <Card>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-sm">基本信息</CardTitle>
@@ -288,6 +281,10 @@ const CronJobDetailDialog: React.FC<CronJobDetailDialogProps> = ({
                             <span className="text-muted-foreground">任务名称:</span>
                             <span className="ml-2">{jobDetail.name}</span>
                           </div>
+                          {jobDetail.managed_purpose === 'restart' && <div className="col-span-2">
+                            <span className="text-muted-foreground">用途:</span>
+                            <span className="ml-2">服务器重启计划</span>
+                          </div>}
                           <div>
                             <span className="text-muted-foreground">任务类型:</span>
                             <StatusBadge tone="info" badgeStyle="soft" className="ml-2">

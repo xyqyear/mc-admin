@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
@@ -19,7 +19,7 @@ let resumes = 0
 let nextRunReads = 0
 beforeEach(() => {
   client = createTestClient(); resumes = 0; nextRunReads = 0
-  job = { cronjob_id: 'restart-alpha', identifier: 'restart', name: 'Alpha 每日重启', cron: '0 0 * * *', params: { server_id: 'alpha' }, execution_count: 0, is_system: false, status: 'active', created_at: '2026-09-25T00:00:00Z', updated_at: '2026-09-25T00:00:00Z', registration_status: 'failed', registration_error: '调度器注册失败，请重新启用任务' }
+  job = { cronjob_id: 'restart-alpha', identifier: 'restart_server', name: 'Alpha 每日重启', cron: '0 0 * * *', params: { server_id: 'alpha' }, execution_count: 0, is_system: false, status: 'active', created_at: '2026-09-25T00:00:00Z', updated_at: '2026-09-25T00:00:00Z', registration_status: 'failed', registration_error: '调度器注册失败，请重新启用任务' }
   server.use(
     http.get('*/api/cron/registered', () => HttpResponse.json([])),
     http.get('*/api/cron/', () => HttpResponse.json([job])),
@@ -57,7 +57,8 @@ it('keeps old responses readable without claiming a registration failure', async
   await screen.findByText('下次执行:')
 })
 
-it('creates a managed server restart schedule and opens its details from the card', async () => {
+it('creates a managed server restart schedule and opens its actual target independently of the display name', async () => {
+  job = { ...job, name: '凌晨维护窗口', managed_purpose: 'restart', registration_status: 'registered', registration_error: null }
   let created = false
   server.use(
     http.get('*/api/servers/alpha/restart-schedule', () => HttpResponse.json(created ? { ...job, server_id: 'alpha', scheduled_time: '00:00' } : null)),
@@ -79,6 +80,9 @@ it('creates a managed server restart schedule and opens its details from the car
   await screen.findByText('00:00')
   expect(created).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: '管理' }))
-  await screen.findByRole('dialog')
-  await screen.findByText('restart-alpha')
+  const dialog = within(await screen.findByRole('dialog'))
+  await dialog.findByText('restart-alpha')
+  expect(dialog.getByText('凌晨维护窗口')).not.toBeNull()
+  expect(dialog.getByText('服务器重启计划')).not.toBeNull()
+  expect(dialog.getByText('服务器 ID').parentElement?.textContent).toContain('alpha')
 })

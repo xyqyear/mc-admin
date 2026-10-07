@@ -23,7 +23,6 @@ async def restart_server_cronjob(context: ExecutionContext):
     context.log(f"正在检查定时重启: {params.server_id}")
     result = await ServerCommands().execute(
         params.server_id, "restart", only_if_running=True,
-        expected_generation=context.managed_server_generation,
     )
     if result.skipped:
         context.skip(result.reason or "服务器未满足重启条件，跳过重启")

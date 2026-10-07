@@ -6,9 +6,6 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cron.models import CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
-from app.servers.models import Server, ServerStatus
-
-from .bindings import RESTART_PURPOSE, binding_issue_message
 
 
 async def get_cronjob(session: AsyncSession, cronjob_id: str) -> CronJob | None:
@@ -18,42 +15,28 @@ async def get_cronjob(session: AsyncSession, cronjob_id: str) -> CronJob | None:
     return result.scalar_one_or_none()
 
 
+def targets_server(job: CronJob, server_id: str) -> bool:
+    try:
+        params = json.loads(job.params_json)
+    except (ValueError, TypeError):
+        return False
+    return isinstance(params, dict) and params.get("server_id") == server_id
+
+
 async def get_managed_restart_cronjob(
-    session: AsyncSession, server_id: str
+    session: AsyncSession, server_id: str,
 ) -> CronJob | None:
-    unresolved = await session.scalars(select(CronJob).where(
-        CronJob.managed_purpose == RESTART_PURPOSE,
-        CronJob.managed_binding_issue.is_not(None),
-        CronJob.status != CronJobStatus.CANCELLED,
-    ))
-    for job in unresolved:
-        try:
-            params = json.loads(job.params_json)
-        except (ValueError, TypeError):
-            params = None
-        if job.name == f"restart-{server_id}" or isinstance(params, dict) and params.get("server_id") == server_id:
-            raise ValueError(
-                f"服务器 '{server_id}' 的受管重启计划归属不明确："
-                f"{binding_issue_message(job.managed_binding_issue or '')}（任务 {job.cronjob_id}）。"
-                "请在定时任务中核对并取消有歧义的计划，再为当前服务器创建计划"
-            )
-    result = await session.execute(select(CronJob).join(
-        Server, Server.id == CronJob.managed_server_generation,
-    ).where(
-        Server.server_id == server_id,
-        Server.status == ServerStatus.ACTIVE,
-        CronJob.managed_purpose == RESTART_PURPOSE,
-    ))
-    return result.scalar_one_or_none()
-
-
-async def get_active_server_generation(session: AsyncSession, server_id: str) -> int:
-    generation = await session.scalar(select(Server.id).where(
-        Server.server_id == server_id, Server.status == ServerStatus.ACTIVE,
-    ))
-    if generation is None:
-        raise ValueError("服务器实例未登记或已停用，不能创建受管重启计划")
-    return generation
+    jobs = await session.scalars(select(CronJob).where(
+        CronJob.managed_purpose == "restart", CronJob.identifier == "restart_server",
+    ).order_by(CronJob.id))
+    cancelled = None
+    for job in jobs:
+        if not targets_server(job, server_id):
+            continue
+        if job.status != CronJobStatus.CANCELLED:
+            return job
+        cancelled = job
+    return cancelled
 
 
 async def create_cronjob(
@@ -66,7 +49,6 @@ async def create_cronjob(
     params_json: str,
     second: str | None = None,
     is_system: bool = False,
-    managed_server_generation: int | None = None,
     managed_purpose: str | None = None,
 ) -> None:
     cronjob = CronJob(
@@ -77,7 +59,6 @@ async def create_cronjob(
         second=second,
         params_json=params_json,
         is_system=is_system,
-        managed_server_generation=managed_server_generation,
         managed_purpose=managed_purpose,
         status=CronJobStatus.ACTIVE,
     )
@@ -134,22 +115,7 @@ async def get_active_restart_cronjobs_for_server(
             CronJob.status == CronJobStatus.ACTIVE,
         )
     )
-    generation = await session.scalar(select(Server.id).where(
-        Server.server_id == server_id, Server.status == ServerStatus.ACTIVE,
-    ))
-    owned = []
-    for job in result.scalars():
-        if job.managed_purpose is not None:
-            if job.managed_purpose == RESTART_PURPOSE and generation is not None and job.managed_server_generation == generation:
-                owned.append(job)
-            continue
-        try:
-            params = json.loads(job.params_json)
-        except (ValueError, TypeError):
-            continue
-        if isinstance(params, dict) and params.get("server_id") == server_id:
-            owned.append(job)
-    return owned
+    return [job for job in result.scalars() if targets_server(job, server_id)]
 
 
 async def get_execution_history(

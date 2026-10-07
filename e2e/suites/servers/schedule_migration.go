@@ -3,7 +3,9 @@ package servers
 import (
 	"context"
 	"fmt"
+	"slices"
 
+	"mc-admin/e2e/internal/api"
 	"mc-admin/e2e/internal/engine"
 	"mc-admin/e2e/internal/environment"
 	"mc-admin/e2e/internal/fixtures"
@@ -43,7 +45,7 @@ db=sqlite3.connect('/data/db.sqlite3')
 first,second=sys.argv[1:]
 for job_id,server,name,status in [('legacy-duplicate-a',first,'restart-'+first,'ACTIVE'),('legacy-duplicate-b',first,'restart-'+first,'PAUSED'),('legacy-exact',second,'restart-'+second,'ACTIVE'),('legacy-independent',first,'independent restart','ACTIVE')]:
  created=db.execute("SELECT created_at FROM server WHERE server_id=? AND status='ACTIVE'",(server,)).fetchone()[0]
- stamp=(datetime.datetime.fromisoformat(created)+datetime.timedelta(seconds=1)).isoformat()
+ stamp=(datetime.datetime.fromisoformat(created)+datetime.timedelta(seconds=-1 if job_id=='legacy-exact' else 1)).isoformat()
  db.execute('INSERT INTO cronjob (cronjob_id,identifier,name,cron,second,params_json,execution_count,is_system,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',(job_id,'restart_server',name,'0 6 1 1 *','0',json.dumps({'server_id':server}),1,False,status,stamp,stamp))
  db.execute('INSERT INTO cronjob_execution (cronjob_id,execution_id,started_at,ended_at,duration_ms,status,messages_json) VALUES (?,?,?,?,?,?,?)',(job_id,job_id+'-history',stamp,stamp,0,'COMPLETED','["retained legacy execution"]'))
 db.commit()
@@ -55,85 +57,153 @@ db.close()
 	if err = b.Restart(ctx); err != nil {
 		return err
 	}
-	if err = t.Step("migration binds unambiguous history and reports duplicate plans without changing rows or executions", func() error {
-		for _, sample := range []struct{ id, status, issue string }{
-			{"legacy-duplicate-a", "active", "存在多个历史受管计划，无法确定唯一归属"},
-			{"legacy-duplicate-b", "paused", "存在多个历史受管计划，无法确定唯一归属"},
-			{"legacy-exact", "active", ""},
-			{"legacy-independent", "active", ""},
+	if err = t.Step("startup preserves legacy plans and histories while registering exact logical targets", func() error {
+		for _, sample := range []struct {
+			id, status, target string
+			managed            bool
+		}{
+			{"legacy-duplicate-a", "active", first, true},
+			{"legacy-duplicate-b", "paused", first, true},
+			{"legacy-exact", "active", second, true},
+			{"legacy-independent", "active", first, false},
 		} {
 			job, err := readScheduleIdentity(ctx, c, sample.id)
 			if err != nil {
 				return err
 			}
-			if job.Status != sample.status || job.Cron != "0 6 1 1 *" {
-				return fmt.Errorf("migration rewrote retained schedule state: %+v", job)
+			name := "independent restart"
+			if sample.managed {
+				name = "restart-" + sample.target
 			}
-			if sample.issue != "" {
-				if job.Generation != nil || job.Issue == nil || *job.Issue != sample.issue || job.Purpose == nil || *job.Purpose != "restart" {
-					return fmt.Errorf("ambiguous plan was silently assigned or lacked a diagnosis: %+v", job)
+			registration := "registered"
+			if sample.status == "paused" {
+				registration = "inactive"
+			}
+			if job.ID != sample.id || job.Name != name || job.Identifier != "restart_server" || job.Params.ServerID != sample.target || job.Status != sample.status || job.Cron != "0 6 1 1 *" || job.Count != 1 || job.Registration != registration || job.RegistrationError != nil {
+				return fmt.Errorf("migration rewrote a retained plan or prevented valid registration: %+v", job)
+			}
+			if sample.managed {
+				if job.Purpose == nil || *job.Purpose != "restart" {
+					return fmt.Errorf("migration discarded managed purpose: %+v", job)
 				}
-			} else if sample.id == "legacy-exact" {
-				if job.Generation == nil || *job.Generation <= 0 || job.Issue != nil || job.Purpose == nil || *job.Purpose != "restart" {
-					return fmt.Errorf("unambiguous historical plan lost its binding: %+v", job)
-				}
-			} else if job.Generation != nil || job.Purpose != nil || job.Issue != nil {
+			} else if job.Purpose != nil {
 				return fmt.Errorf("independent historical task became managed: %+v", job)
 			}
-			var history []struct {
-				ID       string   `json:"execution_id"`
-				Status   string   `json:"status"`
-				Messages []string `json:"messages"`
-			}
-			if err := c.JSON(ctx, "GET", "/api/cron/"+sample.id+"/executions", nil, &history, 200); err != nil {
+			if err := checkLegacyScheduleHistory(ctx, c, sample.id); err != nil {
 				return err
 			}
-			if len(history) != 1 || history[0].ID != sample.id+"-history" || history[0].Status != "completed" || len(history[0].Messages) != 1 || history[0].Messages[0] != "retained legacy execution" {
-				return fmt.Errorf("migration changed historical execution identity or outcome: %+v", history)
+		}
+		for _, sample := range []struct{ server, id string }{{first, "legacy-duplicate-a"}, {second, "legacy-exact"}} {
+			var selected scheduleIdentity
+			if err := c.JSON(ctx, "GET", "/api/servers/"+sample.server+"/restart-schedule", nil, &selected, 200); err != nil {
+				return err
 			}
-		}
-		var bound scheduleIdentity
-		if err := c.JSON(ctx, "GET", "/api/servers/"+second+"/restart-schedule", nil, &bound, 200); err != nil {
-			return err
-		}
-		if bound.ID != "legacy-exact" {
-			return fmt.Errorf("server lookup did not retain the unambiguous legacy schedule")
+			if selected.ID != sample.id {
+				return fmt.Errorf("server did not choose the oldest noncancelled exact-target plan: %+v", selected)
+			}
 		}
 		return nil
 	}); err != nil {
 		return err
 	}
-	return t.Step("ambiguous management is rejected until explicit cancellation and unrelated plans remain available", func() error {
+	return t.Step("duplicate plans remain independent and management selects oldest live then newest cancelled history", func() error {
 		base := "/api/servers/" + first + "/restart-schedule"
-		for _, action := range []struct{ method, suffix string }{{"GET", ""}, {"POST", ""}, {"POST", "/pause"}, {"POST", "/resume"}, {"DELETE", ""}} {
-			if err := c.JSON(ctx, action.method, base+action.suffix, nil, nil, 409); err != nil {
-				return err
+		check := func(id, status, cron string) error {
+			job, err := readScheduleIdentity(ctx, c, id)
+			if err == nil && (job.Status != status || job.Cron != cron || job.Count != 1) {
+				return fmt.Errorf("management unexpectedly changed another retained plan: %+v", job)
 			}
-		}
-		if err := c.JSON(ctx, "POST", "/api/cron/legacy-duplicate-b/resume", nil, nil, 409); err != nil {
 			return err
 		}
-		for _, id := range []string{"legacy-duplicate-a", "legacy-duplicate-b"} {
-			if err := c.JSON(ctx, "DELETE", "/api/cron/"+id, nil, nil, 200); err != nil {
+		selected := func(id, status string) error {
+			var job scheduleIdentity
+			if err := c.JSON(ctx, "GET", base, nil, &job, 200); err != nil {
 				return err
 			}
+			if job.ID != id || job.Status != status {
+				return fmt.Errorf("managed selection did not preserve the deterministic single-plan contract: %+v", job)
+			}
+			return nil
 		}
-		var created scheduleIdentity
-		if err := c.JSON(ctx, "POST", base, map[string]string{"custom_cron": "0 7 1 1 *"}, &created, 200); err != nil {
+		if err := c.JSON(ctx, "POST", base+"/pause", nil, nil, 200); err != nil {
 			return err
 		}
-		if created.ID == "" || created.ID == "legacy-duplicate-a" || created.ID == "legacy-duplicate-b" {
-			return fmt.Errorf("explicit repair reused an ambiguous task identity")
+		if err := check("legacy-duplicate-a", "paused", "0 6 1 1 *"); err != nil {
+			return err
+		}
+		if err := check("legacy-duplicate-b", "paused", "0 6 1 1 *"); err != nil {
+			return err
+		}
+		if err := c.JSON(ctx, "POST", base+"/resume", nil, nil, 200); err != nil {
+			return err
+		}
+		if err := selected("legacy-duplicate-a", "active"); err != nil {
+			return err
+		}
+		if err := c.JSON(ctx, "DELETE", base, nil, nil, 200); err != nil {
+			return err
+		}
+		if err := selected("legacy-duplicate-b", "paused"); err != nil {
+			return err
+		}
+		if err := c.JSON(ctx, "DELETE", base, nil, nil, 200); err != nil {
+			return err
+		}
+		if err := selected("legacy-duplicate-b", "cancelled"); err != nil {
+			return err
 		}
 		for _, id := range []string{"legacy-exact", "legacy-independent"} {
-			job, err := readScheduleIdentity(ctx, c, id)
-			if err != nil {
+			if err := check(id, "active", "0 6 1 1 *"); err != nil {
 				return err
 			}
-			if job.Status != "active" || job.Cron != "0 6 1 1 *" {
-				return fmt.Errorf("repair changed unrelated schedule: %+v", job)
+		}
+		if err := c.JSON(ctx, "POST", base+"/resume", nil, nil, 200); err != nil {
+			return err
+		}
+		var updated scheduleIdentity
+		if err := c.JSON(ctx, "POST", base, map[string]string{"custom_cron": "0 7 1 1 *"}, &updated, 200); err != nil {
+			return err
+		}
+		if updated.ID != "legacy-duplicate-b" || updated.Name != "restart-"+first || updated.Status != "active" || updated.Cron != "0 7 1 1 *" {
+			return fmt.Errorf("explicit re-enable or update replaced retained plan identity: %+v", updated)
+		}
+		if err := check("legacy-duplicate-a", "cancelled", "0 6 1 1 *"); err != nil {
+			return err
+		}
+		var removed struct {
+			IDs []string `json:"cancelled_restart_cronjob_ids"`
+		}
+		if err := c.RunTask(ctx, "POST", "/api/servers/"+first+"/operations", map[string]string{"action": "remove"}, &removed); err != nil {
+			return err
+		}
+		slices.Sort(removed.IDs)
+		if !slices.Equal(removed.IDs, []string{"legacy-duplicate-b", "legacy-independent"}) {
+			return fmt.Errorf("removal cancelled plans outside the exact target or missed active plans: %v", removed.IDs)
+		}
+		for _, sample := range []struct{ id, status, cron string }{
+			{"legacy-duplicate-a", "cancelled", "0 6 1 1 *"},
+			{"legacy-duplicate-b", "cancelled", "0 7 1 1 *"},
+			{"legacy-exact", "active", "0 6 1 1 *"},
+			{"legacy-independent", "cancelled", "0 6 1 1 *"},
+		} {
+			if err := check(sample.id, sample.status, sample.cron); err != nil {
+				return err
+			}
+			if err := checkLegacyScheduleHistory(ctx, c, sample.id); err != nil {
+				return err
 			}
 		}
-		return nil
+		return fixtures.Status(ctx, c, second, "exists")
 	})
+}
+
+func checkLegacyScheduleHistory(ctx context.Context, c *api.Client, id string) error {
+	rows, err := scheduleHistory(ctx, c, id)
+	if err != nil {
+		return err
+	}
+	if len(rows) != 1 || rows[0].ID != id+"-history" || rows[0].Status != "completed" || rows[0].Ended == nil || rows[0].Duration == nil || *rows[0].Duration != 0 || !slices.Equal(rows[0].Messages, []string{"retained legacy execution"}) {
+		return fmt.Errorf("migration or management changed historical execution identity or outcome: %+v", rows)
+	}
+	return nil
 }

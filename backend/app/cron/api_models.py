@@ -44,9 +44,7 @@ class CronJobResponse(BaseModel):
     registration_error: str | None = None
     created_at: datetime
     updated_at: datetime
-    managed_server_generation: int | None = None
     managed_purpose: str | None = None
-    managed_binding_issue: str | None = None
 
 
 class CronJobExecutionResponse(BaseModel):

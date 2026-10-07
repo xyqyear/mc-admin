@@ -16,17 +16,20 @@ automatic self-check.
 
 ## Server-managed restart plans
 
-The server schedule API identifies its plan by `CronJob.managed_server_generation`
-and `managed_purpose="restart"`. The generation is the retained `Server.id`, whose
-allocation is never reused. A unique index permits one managed plan per generation
-and purpose, including paused and cancelled plans. Creating the plan again for the
-same generation resumes its retained identity. Its display name can change without
-changing ownership.
+The server schedule API identifies a managed restart plan by
+`managed_purpose="restart"`, type `restart_server`, and the exact logical server
+name in `params.server_id`. Display names never determine the target. When several
+retained plans match, the API selects the lowest row ID among non-cancelled plans;
+if all are cancelled, it selects the highest row ID. Other plans retain their
+configuration, desired state and history. Recreating a plan through the server
+endpoint updates and explicitly resumes the selected plan. The configuration lock
+serializes selection and creation so concurrent requests cannot add duplicates.
 
-Jobs created through the generic cron API have no managed binding, even if their
+Jobs created through the generic cron API have no managed purpose, even if their
 name is exactly `restart-<server_id>`. Multiple independent restart jobs remain
-supported. Automatic time selection excludes only the current managed job; a
-similarly named independent job continues to reserve its time slot.
+supported. Managed plans can change their display name and target parameter, but
+retain their restart type. Automatic time selection excludes only the selected
+managed job; other plans continue to reserve their time slots.
 
 Automatic scheduling examines five-minute slots from the configured start time,
 rounded down to the nearest five minutes, and crosses hour/day boundaries. Active
@@ -35,75 +38,35 @@ occupied, the original unrounded start time is retained. Generated expressions a
 daily (`minute hour * * *`); user-provided custom expressions retain all five fields
 unchanged in configuration and API responses.
 
-Deleting and recreating a server name creates a different generation. The new
-server's schedule GET returns `null` until a plan is explicitly created, and that
-plan receives a new cron job ID. Old plans and execution history remain readable.
-Generic update/create-with-ID cannot retarget a bound plan; resuming a retired
-generation's plan returns 409. Execution checks its persisted binding and repeats
-the generation check after obtaining maintenance ownership, before calling Docker.
-Unavailable or ambiguous bindings do not register during scheduler recovery. An
-already dispatched attempt records `skipped` with its reason.
+Each scheduled execution resolves the current server by its configured logical
+name. A different same-name instance can be the target of a later execution; an
+execution already waiting for resources retains its captured `ServerRef` and
+rejects a replacement before calling Docker. Missing or stopped targets record
+`skipped`. Historical timestamps do not prevent valid plans from registering.
+Paused and cancelled plans do not resume automatically.
 
-Server deletion cancels the current generation's active managed plan and active
-independent restart jobs targeting that public server ID. Paused jobs, explicitly
-bound old generations and unresolved historical candidates are retained. Malformed
-parameters do not break unrelated server deletion. An administrator can explicitly resume an independent job later; this
-does not turn it into the new server's managed plan.
+Server deletion cancels active managed and independent restart jobs whose target
+parameter exactly matches the public server name. Paused jobs and execution
+history remain retained. Malformed parameters do not break unrelated deletion.
+Resuming a retained plan is an explicit administrator action.
 
-`GET /cron/` and `GET /cron/{cronjob_id}` include three additive nullable fields:
-`managed_server_generation`, `managed_purpose`, and `managed_binding_issue`.
-The issue is a Chinese diagnostic for display. Server schedule URLs and request
-shapes remain stable; responses also expose the registration state described below.
+`GET /cron/` and `GET /cron/{cronjob_id}` include nullable `managed_purpose`;
+their target is the authored parameter. Server schedule URLs and request shapes
+remain stable and expose the registration state described below.
 
-### Historical binding migration
+### Schema and historical plans
 
-Revision `2026092502` adds the nullable fields, backfills defensible bindings, then
-creates the unique index. SQLite enters a real transaction before batch DDL, so a
-failed constraint installation rolls back cleanly and can be retried without
-removing migration artifacts by hand. It changes no pre-existing job fields, IDs, status,
-execution count or execution-history rows. Fresh generic jobs are never inferred
-from names at runtime.
+Revision `2026100700` follows `2026100600` and removes the permanent instance
+binding columns, index and check constraint. It preserves managed-purpose
+classification, all other job fields, IDs, status, execution counts and history.
+SQLite enters a real transaction before batch DDL, so failed table replacement
+rolls back and can be retried. Published historical revisions remain in the graph.
 
-Backfill requires all of the following:
-
-- the exact historical name `restart-<params.server_id>` and type `restart_server`;
-- valid parameters and ordered creation/update timestamps;
-- the job's entire recorded lifetime fits exactly one retained server lifetime,
-  and does not overlap another same-name generation;
-- no other historical candidate resolves to that same generation and purpose.
-
-A retained removed server's `updated_at` bounds its lifetime; an active server has
-no end bound. Missing, inconsistent or overlapping evidence leaves the binding
-unassigned. A paused old plan whose evidence identifies the old generation stays
-bound to that old generation. A plan spanning a same-name recreation remains
-unresolved. Separate plans with non-overlapping evidence may bind to their own
-distinct generations.
-
-Unresolved candidates retain `managed_purpose="restart"`, a null generation and a
-stable issue code in `managed_binding_issue`. Migration warnings report job IDs and
-codes; the columns retain that report after startup. Inspect a stopped disposable
-database copy before rollout, and review the persisted report with:
-
-```sql
-SELECT cronjob_id, name, managed_server_generation, managed_binding_issue
-FROM cronjob
-WHERE managed_purpose = 'restart'
-ORDER BY id;
-```
-
-An unresolved non-cancelled plan makes affected server schedule GET/create/update/
-pause/resume/delete return 409 with a diagnostic and job ID. Generic cron detail,
-list, history, pause and cancel remain available. Invalid historical JSON is
-represented as empty parameters in the read response, with its explicit issue;
-the original database value remains intact. Generic update or resume cannot erase
-the ambiguity. After reviewing the retained records, explicitly cancel the affected
-plans and create a fresh plan on the server page. Cancelled ambiguous rows retain
-their evidence and history but no longer block creating a new bound plan.
-
-Downgrading below this revision is refused while any managed binding or ambiguity
-report exists. Removing the columns would let name-based older code reinterpret
-those records. Rollback must use a schema-compatible application version; restoring
-a database backup is a separate controlled recovery, not an automatic downgrade.
+Downgrade to the binding schema is refused while any managed plan exists because
+the logical-name configuration cannot establish a historical instance binding.
+Databases containing only independent jobs can restore the old nullable columns
+and constraints without changing those jobs. Rollback uses a schema-compatible
+application build or a separately reviewed database recovery.
 
 Scheduled restart holds the same maintenance mutex as API startup and rebuild.
 A busy or stopped server records `skipped`, with a reason and completion time;
@@ -120,7 +83,6 @@ cron detail, and the per-server restart schedule response also expose:
 | `registration_status=registered` | The initialized scheduler has the current definition. |
 | `pending` | Active configuration awaits scheduler startup or registration. |
 | `failed` | The active definition is invalid, its type is unavailable, or scheduler registration failed. |
-| `blocked` | An active managed plan has an unresolved or retired server binding. |
 | `inactive` | Desired state is paused or cancelled. |
 | `registration_error` | Nullable, safe diagnostic; no adapter exception details. |
 
@@ -136,7 +98,7 @@ of an already registered active job still returns 409. Validation precedes chang
 a paused job to active. Next-run-time never reports a stale definition's trigger.
 
 Every trigger carries a fingerprint of its persisted type, parameters and schedule.
-At dispatch, the manager rechecks desired state, managed identity and that
+At dispatch, the manager rechecks desired state and that
 fingerprint before calling a command. A queued old trigger after pause, cancellation
 or edit records a skipped attempt instead of executing stale configuration.
 Already running commands retain ownership and finish through their normal outcome
@@ -262,9 +224,8 @@ commits `cancelled`; a snapshot already created remains retained.
 
 ### `restart_server` (`jobs/restart.py`)
 
-Params: `ServerRestartParams(server_id)`. Managed generation metadata is carried
-separately in the execution context and cannot be authored through the parameter
-editor. Calls `servers.commands.ServerCommands.execute(..., only_if_running=True)`.
+Params: `ServerRestartParams(server_id)`, where `server_id` is the exact logical
+server name. Calls `servers.commands.ServerCommands.execute(..., only_if_running=True)`.
 The same public command handles manual start/up/restart/stop/down. It captures a
 `ServerRef`, revalidates generation after acquiring maintenance ownership, and
 skips a stopped scheduled restart. Manual startup retains its existing behavior.
@@ -319,7 +280,6 @@ and stack locations without exception values, causes or locals.
 - `weekdays.py` — conventional-crontab weekday normalization for APScheduler 3
 - `types.py` — `ExecutionContext`, registration/config/record types
 - `crud.py` — DB operations on `CronJob` and `CronJobExecution`
-- `bindings.py` — managed identity validation and retained ambiguity diagnostics
 - `errors.py` — authored cron diagnostics on unchanged exception types
 - `jobs/backup.py` — backup job
 - `jobs/restart.py` — restart job

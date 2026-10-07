@@ -1,4 +1,4 @@
-export type RegistrationStatus = 'registered' | 'pending' | 'failed' | 'blocked' | 'inactive'
+export type RegistrationStatus = 'registered' | 'pending' | 'failed' | 'inactive'
 
 import type { RJSFSchema } from '@rjsf/utils';
 
@@ -16,9 +16,7 @@ export interface RegisteredCronJob {
 export interface CronJob {
   registration_status?: RegistrationStatus
   registration_error?: string | null
-  managed_server_generation?: number | null
   managed_purpose?: 'restart' | null
-  managed_binding_issue?: string | null
   cronjob_id: string
   identifier: string
   name: string

@@ -54,8 +54,6 @@ async def get_restart_schedule(
 
     Returns None if no restart schedule exists.
     """
-    schedule_name = f"restart-{server_id}"
-
     # Find existing restart schedule
     job_config = await get_managed_restart_schedule(server_id)
 
@@ -88,7 +86,7 @@ async def get_restart_schedule(
     return RestartScheduleResponse(
         cronjob_id=job_config.cronjob_id,
         server_id=server_id,
-        name=schedule_name,
+        name=job_config.name,
         cron=job_config.cron,
         status=job_config.status.value,
         registration_status=job_config.registration_status,

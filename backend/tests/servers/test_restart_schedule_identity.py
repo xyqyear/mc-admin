@@ -1,20 +1,23 @@
+import asyncio
+import json
 from datetime import UTC, datetime, time
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx2 as httpx
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.auth.models import UserRole
 from app.auth.schemas import UserPublic
 from app.cron.jobs.backup import BackupJobParams
-from app.cron.jobs.restart import ServerRestartParams
+from app.cron.jobs.restart import ServerRestartParams, restart_server_cronjob
 from app.cron.manager import CronManager
-from app.cron.models import CronJob, CronJobStatus
+from app.cron.models import CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
 from app.cron.restart_scheduler import RestartScheduler
 from app.db.metadata import Base
 from app.dependencies import get_current_user
+from app.operations.journal import OperationJournal
 from app.routers import cron as cron_routes
 from app.routers.servers import restart_schedule as routes
 from app.servers.models import Server, ServerStatus
@@ -22,30 +25,32 @@ from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
-async def schedules(tmp_path, monkeypatch):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'schedules.db'}")
+async def schedules(isolated_runtime, monkeypatch):
+    engine = isolated_runtime.database.engine
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    factory = isolated_runtime.database.session_factory
     async with factory() as session:
         session.add_all([Server(server_id=name) for name in ("survival", "survival2")])
         await session.commit()
     monkeypatch.setattr("app.cron.manager.get_async_session", factory)
     manager = CronManager()
     manager.scheduler.start(paused=True)
-    set_runtime_resource(monkeypatch, 'cron_manager', manager)
-    set_runtime_resource(monkeypatch, 'cron_manager', manager)
-    set_runtime_resource(monkeypatch, 'cron_manager', manager)
+    set_runtime_resource(monkeypatch, "cron_manager", manager)
+    journal = OperationJournal(factory)
+    await journal.initialize_changes()
+    monkeypatch.setattr(isolated_runtime, "journal", journal)
     app = FastAPI()
     app.include_router(routes.router)
     app.include_router(cron_routes.router)
     app.dependency_overrides[get_current_user] = lambda: UserPublic(
         id=1, username="review-owner", role=UserRole.OWNER, created_at=datetime.now(UTC)
     )
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        yield client, manager, factory
-    await manager.shutdown()
-    await engine.dispose()
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            yield client, manager, factory
+    finally:
+        await manager.shutdown()
 
 
 async def test_prefix_schedule_operations_preserve_other_server_and_custom_jobs(schedules):
@@ -82,34 +87,6 @@ async def test_prefix_schedule_operations_preserve_other_server_and_custom_jobs(
                     for row in rows if row.cronjob_id in protected} == protected
 
 
-@pytest.mark.parametrize("ambiguous", ["duplicate", "mismatched-params"])
-async def test_ambiguous_schedule_is_reported_without_mutation(schedules, ambiguous):
-    client, manager, factory = schedules
-    await manager.create_cronjob(
-        "restart_server", ServerRestartParams(server_id="survival"), "0 6 1 1 *", name="restart-survival"
-    )
-    if ambiguous == "duplicate":
-        await manager.create_cronjob(
-            "restart_server", ServerRestartParams(server_id="survival"), "0 7 1 1 *", name="restart-survival"
-        )
-    async with factory() as db:
-        for job in (await db.execute(select(CronJob))).scalars():
-            job.managed_purpose = "restart"
-            job.managed_binding_issue = "duplicate_candidates" if ambiguous == "duplicate" else "name_params_mismatch"
-            if ambiguous == "mismatched-params":
-                job.params_json = '{"server_id":"different"}'
-        await db.commit()
-    async with factory() as db:
-        before = [(job.cronjob_id, job.params_json, job.cron, job.status) for job in (await db.execute(select(CronJob))).scalars()]
-    for method, suffix in (("GET", ""), ("POST", ""), ("POST", "/pause"), ("POST", "/resume"), ("DELETE", "")):
-        response = await client.request(method, "/servers/survival/restart-schedule" + suffix,
-                                        json={"custom_cron": "0 9 1 1 *"} if method == "POST" and not suffix else None)
-        assert response.status_code == 409, response.text
-    async with factory() as db:
-        after = [(job.cronjob_id, job.params_json, job.cron, job.status) for job in (await db.execute(select(CronJob))).scalars()]
-    assert after == before
-
-
 async def test_display_name_is_not_ownership_and_custom_canonical_name_remains_independent(schedules):
     client, manager, factory = schedules
     response = await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})
@@ -118,98 +95,12 @@ async def test_display_name_is_not_ownership_and_custom_canonical_name_remains_i
     custom = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival"), "0 7 * * *", name="restart-survival")
     response = await client.get("/servers/survival/restart-schedule")
     assert response.json()["cronjob_id"] == managed
+    assert response.json()["name"] == "My schedule"
     assert (await client.post("/servers/survival/restart-schedule/pause")).status_code == 200
     async with factory() as session:
         row = await session.scalar(select(CronJob).where(CronJob.cronjob_id == custom))
         assert row is not None and row.status == CronJobStatus.ACTIVE
-        assert row.managed_purpose is None and row.managed_server_generation is None
-
-
-async def test_recreated_name_does_not_inherit_or_execute_old_plan(schedules):
-    from unittest.mock import AsyncMock
-
-    client, manager, factory = schedules
-    response = await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})
-    old_job = response.json()["cronjob_id"]
-    await manager.pause_cronjob(old_job)
-    async with factory() as session:
-        old = await session.scalar(select(Server).where(Server.server_id == "survival"))
-        assert old is not None
-        old.status = ServerStatus.REMOVED
-        await session.flush()
-        current = Server(server_id="survival")
-        session.add(current)
-        await session.commit()
-        new_generation = current.id
-    assert (await client.get("/servers/survival/restart-schedule")).json() is None
-    response = await client.post(f"/cron/{old_job}/resume")
-    assert response.status_code == 409, response.text
-    response = await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 8 * * *"})
-    new_job = response.json()["cronjob_id"]
-    assert new_job != old_job
-    detail = (await client.get(f"/cron/{new_job}")).json()
-    assert detail["managed_server_generation"] == new_generation
-    assert detail["managed_purpose"] == "restart"
-    function = AsyncMock()
-    await manager._execute_cronjob_wrapper(old_job, "restart_server", ServerRestartParams(server_id="survival"), function)
-    function.assert_not_awaited()
-    history = await manager.get_execution_history(old_job)
-    assert history[0].status.value == "skipped"
-    assert any("同名新实例" in message for message in history[0].messages)
-
-
-async def test_managed_plan_cannot_be_retargeted_by_generic_cron_api(schedules):
-    client, _, _ = schedules
-    response = await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})
-    job_id = response.json()["cronjob_id"]
-    for method, url in (("PUT", f"/cron/{job_id}"), ("POST", "/cron/")):
-        response = await client.request(method, url, json={
-            "identifier": "restart_server", "params": {"server_id": "survival2"},
-            "cron": "0 9 * * *", "cronjob_id": job_id,
-        })
-        assert response.status_code == 409, response.text
-    detail = (await client.get(f"/cron/{job_id}")).json()
-    assert detail["params"] == {"server_id": "survival"}
-    assert detail["cron"] == "0 6 * * *"
-
-
-async def test_ambiguous_invalid_params_remain_readable_and_cancel_resolves_block(schedules):
-    client, manager, factory = schedules
-    job_id = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival"), "0 6 * * *", name="restart-survival")
-    async with factory() as session:
-        job = await session.scalar(select(CronJob).where(CronJob.cronjob_id == job_id))
-        assert job is not None
-        job.params_json = "invalid historical JSON"
-        job.managed_purpose = "restart"
-        job.managed_binding_issue = "invalid_params"
-        await session.commit()
-    response = await client.get(f"/cron/{job_id}")
-    assert response.status_code == 200
-    assert response.json()["managed_binding_issue"] == "历史任务参数无效，无法确定归属"
-    response = await client.get("/cron/")
-    assert response.status_code == 200 and any(row["cronjob_id"] == job_id for row in response.json())
-    assert (await client.get("/servers/survival/restart-schedule")).status_code == 409
-    assert (await client.delete(f"/cron/{job_id}")).status_code == 200
-    assert (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 8 * * *"})).status_code == 200
-    async with factory() as session:
-        job = await session.scalar(select(CronJob).where(CronJob.cronjob_id == job_id))
-        assert job is not None and job.params_json == "invalid historical JSON"
-        assert job.managed_binding_issue == "invalid_params"
-
-
-async def test_managed_schedule_uniqueness_under_concurrent_creates(schedules):
-    import asyncio
-
-    _, manager, factory = schedules
-    results = await asyncio.gather(*(
-        manager.create_managed_restart_schedule("survival", ServerRestartParams(server_id="survival"), "0 6 * * *", "restart-survival")
-        for _ in range(2)
-    ), return_exceptions=True)
-    assert sum(isinstance(result, str) for result in results) == 1
-    assert sum(isinstance(result, ValueError) for result in results) == 1
-    async with factory() as session:
-        rows = list(await session.scalars(select(CronJob)))
-        assert len(rows) == 1 and rows[0].managed_server_generation is not None
+        assert row.managed_purpose is None
 
 
 async def test_slot_selection_excludes_only_current_managed_plan(schedules):
@@ -239,7 +130,6 @@ async def test_auto_schedule_persists_selected_slot_and_preserves_custom_cron(sc
     async with factory() as session:
         original = await session.scalar(select(CronJob).where(CronJob.cronjob_id == managed_id))
         assert original is not None and original.cron == custom_cron
-        generation = original.managed_server_generation
     for _ in range(2):
         response = await client.post("/servers/survival/restart-schedule", json={})
         assert response.status_code == 200
@@ -247,17 +137,204 @@ async def test_auto_schedule_persists_selected_slot_and_preserves_custom_cron(sc
         assert response.json()["cron"] == "15 6 * * *" and response.json()["scheduled_time"] == "06:15"
         async with factory() as session:
             rows = {row.cronjob_id: row for row in await session.scalars(select(CronJob))}
-            assert rows[managed_id].cron == "15 6 * * *" and rows[managed_id].managed_server_generation == generation
+            assert rows[managed_id].cron == "15 6 * * *" and rows[managed_id].managed_purpose == "restart"
             assert rows[backup_id].status == rows[independent_id].status == CronJobStatus.PAUSED
-            assert rows[independent_id].cron == "5 6 * * *" and rows[independent_id].managed_server_generation is None
+            assert rows[independent_id].cron == "5 6 * * *" and rows[independent_id].managed_purpose is None
             assert rows[other_id].cron == "10 6 * * *" and rows[other_id].status == CronJobStatus.ACTIVE
 
 
-async def test_restart_revalidates_generation_after_acquiring_maintenance(schedules, monkeypatch):
-    from contextlib import asynccontextmanager
-    from unittest.mock import MagicMock
+async def test_multiple_historical_plans_choose_one_without_mutating_history(schedules):
+    client, manager, factory = schedules
+    async with factory() as session:
+        for identifier, target, state, purpose in (
+            ("older-cancelled", "survival", CronJobStatus.CANCELLED, "restart"),
+            ("oldest-paused", "survival", CronJobStatus.PAUSED, "restart"),
+            ("newer-active", "survival", CronJobStatus.ACTIVE, "restart"),
+            ("newest-cancelled", "survival", CronJobStatus.CANCELLED, "restart"),
+            ("similar-target", "survival2", CronJobStatus.ACTIVE, "restart"),
+            ("independent", "survival", CronJobStatus.ACTIVE, None),
+        ):
+            session.add(CronJob(
+                cronjob_id=identifier, identifier="restart_server", name="restart-unrelated",
+                cron="0 6 * * *", params_json=json.dumps({"server_id": target}),
+                managed_purpose=purpose, status=state,
+            ))
+        session.add(CronJobExecution(
+            cronjob_id="older-cancelled", execution_id="kept-history",
+            started_at=datetime.now(UTC), status=ExecutionStatus.COMPLETED,
+            messages_json='["原有历史"]',
+        ))
+        await session.commit()
+        before = [(row.cronjob_id, row.name, row.params_json, row.status, row.updated_at)
+                  for row in await session.scalars(select(CronJob).order_by(CronJob.id))]
+    for _ in range(2):
+        response = await client.get("/servers/survival/restart-schedule")
+        assert response.status_code == 200
+        assert response.json()["cronjob_id"] == "oldest-paused"
+        assert response.json()["name"] == "restart-unrelated"
+    async with factory() as session:
+        after = [(row.cronjob_id, row.name, row.params_json, row.status, row.updated_at)
+                 for row in await session.scalars(select(CronJob).order_by(CronJob.id))]
+        assert before == after
+    await manager._recover_cronjobs_from_database()
+    assert all(manager.scheduler.get_job(job) is not None for job in ("newer-active", "similar-target", "independent"))
+    assert manager.scheduler.get_job("oldest-paused") is None
+    await manager.cancel_cronjob("oldest-paused")
+    assert (await client.get("/servers/survival/restart-schedule")).json()["cronjob_id"] == "newer-active"
+    await manager.cancel_cronjob("newer-active")
+    current = (await client.get("/servers/survival/restart-schedule")).json()
+    assert current["cronjob_id"] == "newest-cancelled" and current["status"] == "cancelled"
+    assert manager.scheduler.get_job("newest-cancelled") is None
+    response = await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 8 * * *"})
+    assert response.status_code == 200 and response.json()["cronjob_id"] == "newest-cancelled"
+    async with factory() as session:
+        rows = {row.cronjob_id: row for row in await session.scalars(select(CronJob))}
+        assert rows["newest-cancelled"].status == CronJobStatus.ACTIVE
+        assert all(rows[job].status == CronJobStatus.CANCELLED for job in ("older-cancelled", "oldest-paused", "newer-active"))
+        assert rows["independent"].status == rows["similar-target"].status == CronJobStatus.ACTIVE
+        history = await session.scalar(select(CronJobExecution).where(CronJobExecution.execution_id == "kept-history"))
+        assert history is not None and history.messages_json == '["原有历史"]'
 
-    from app.cron.jobs import restart
+
+@pytest.mark.parametrize("method", ["PUT", "POST"])
+async def test_managed_plan_can_change_name_and_parameter_target(schedules, method):
+    client, _, _ = schedules
+    response = await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})
+    job_id = response.json()["cronjob_id"]
+    url = f"/cron/{job_id}" if method == "PUT" else "/cron/"
+    response = await client.request(method, url, json={
+        "identifier": "restart_server", "params": {"server_id": "survival2"},
+        "cron": "0 9 * * *", "cronjob_id": job_id, "name": "restart-survival",
+    })
+    assert response.status_code == 200
+    assert (await client.get("/servers/survival/restart-schedule")).json() is None
+    current = (await client.get("/servers/survival2/restart-schedule")).json()
+    assert current["cronjob_id"] == job_id and current["name"] == "restart-survival"
+    detail = (await client.get(f"/cron/{job_id}")).json()
+    assert detail["params"] == {"server_id": "survival2"} and detail["managed_purpose"] == "restart"
+    assert "managed_server_generation" not in detail and "managed_binding_issue" not in detail
+
+
+@pytest.mark.parametrize("method", ["PUT", "POST"])
+async def test_managed_plan_keeps_restart_type(schedules, method):
+    client, _, _ = schedules
+    job_id = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).json()["cronjob_id"]
+    response = await client.request(method, f"/cron/{job_id}" if method == "PUT" else "/cron/", json={
+        "identifier": "backup", "params": {"enable_forget": False}, "cron": "0 8 * * *", "cronjob_id": job_id,
+    })
+    assert response.status_code == 409
+    detail = (await client.get(f"/cron/{job_id}")).json()
+    assert detail["identifier"] == "restart_server" and detail["params"] == {"server_id": "survival"}
+
+
+async def test_invalid_historical_params_remain_readable_and_can_be_repaired(schedules):
+    client, manager, factory = schedules
+    job_id = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).json()["cronjob_id"]
+    await manager.pause_cronjob(job_id)
+    async with factory() as session:
+        job = await session.scalar(select(CronJob).where(CronJob.cronjob_id == job_id))
+        assert job is not None
+        job.params_json = "invalid historical JSON"
+        await session.commit()
+    detail = (await client.get(f"/cron/{job_id}")).json()
+    assert detail["registration_error"] == "定时任务配置无效，请修改后重新启用"
+    assert detail["params"] == {} and detail["status"] == "paused"
+    assert (await client.post(f"/cron/{job_id}/resume")).status_code == 400
+    assert (await client.put(f"/cron/{job_id}", json={
+        "identifier": "restart_server", "params": {"server_id": "survival"}, "cron": "0 6 * * *",
+    })).status_code == 200
+    assert (await client.post(f"/cron/{job_id}/resume")).status_code == 200
+    assert (await client.get("/servers/survival/restart-schedule")).json()["cronjob_id"] == job_id
+
+
+async def test_managed_schedule_concurrent_creates_return_same_plan(schedules):
+    _, manager, factory = schedules
+    results = await asyncio.gather(*(
+        manager.create_managed_restart_schedule("survival", ServerRestartParams(server_id="survival"), "0 6 * * *", "restart-survival")
+        for _ in range(6)
+    ))
+    assert len(set(results)) == 1
+    async with factory() as session:
+        rows = list(await session.scalars(select(CronJob)))
+        assert len(rows) == 1 and rows[0].managed_purpose == "restart"
+    await manager.pause_cronjob(results[0])
+    retained = await manager.create_managed_restart_schedule("survival", ServerRestartParams(server_id="survival"), "0 9 * * *", "new name")
+    assert retained == results[0]
+    async with factory() as session:
+        row = await session.scalar(select(CronJob))
+        assert row is not None and row.cron == "0 6 * * *" and row.status == CronJobStatus.PAUSED
+        assert row.name == "restart-survival"
+
+
+async def test_next_restart_uses_current_same_named_instance(schedules, monkeypatch):
+    from app.servers import commands
+
+    client, manager, factory = schedules
+    job_id = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).json()["cronjob_id"]
+    async with factory() as session:
+        old = await session.scalar(select(Server).where(Server.server_id == "survival"))
+        assert old is not None
+        old_id = old.id
+        old.status = ServerStatus.REMOVED
+        await session.flush()
+        current = Server(server_id="survival")
+        session.add(current)
+        await session.commit()
+        new_id = current.id
+        assert new_id != old_id
+    assert (await client.get("/servers/survival/restart-schedule")).json()["cronjob_id"] == job_id
+    project = commands.get_settings().server_path / "survival"
+    project.mkdir()
+    (project / "docker-compose.yml").write_text("services: {}\n")
+    instance = MagicMock(exists=AsyncMock(return_value=True), running=AsyncMock(return_value=True))
+    docker = MagicMock()
+    docker.get_instance.return_value = instance
+    set_runtime_resource(monkeypatch, "docker_mc_manager", docker)
+    run = AsyncMock()
+    monkeypatch.setattr(commands.ServerCommands, "_run", run)
+    await manager._execute_cronjob_wrapper(job_id, "restart_server", ServerRestartParams(server_id="survival"), restart_server_cronjob)
+    assert run.await_args is not None
+    reference, action, actor_id = run.await_args.args
+    assert reference.generation == new_id and reference.server_id == "survival"
+    assert action == "restart" and actor_id is None
+    history = await manager.get_execution_history(job_id)
+    assert history[0].status.value == "completed"
+
+
+@pytest.mark.parametrize("mutation", ["pause", "cancel"])
+async def test_paused_or_cancelled_plan_does_not_execute(schedules, mutation):
+    client, manager, _ = schedules
+    job_id = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).json()["cronjob_id"]
+    await getattr(manager, f"{mutation}_cronjob")(job_id)
+    job = AsyncMock()
+    await manager._execute_cronjob_wrapper(job_id, "restart_server", ServerRestartParams(server_id="survival"), job)
+    job.assert_not_awaited()
+    assert (await manager.get_execution_history(job_id))[0].status.value == "skipped"
+
+
+async def test_recovery_registers_valid_targets_without_historical_name_checks(schedules):
+    client, manager, factory = schedules
+    job_id = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).json()["cronjob_id"]
+    async with factory() as session:
+        job = await session.scalar(select(CronJob).where(CronJob.cronjob_id == job_id))
+        assert job is not None
+        job.name = "restart-an-unrelated-name"
+        old = await session.scalar(select(Server).where(Server.server_id == "survival"))
+        assert old is not None
+        old.status = ServerStatus.REMOVED
+        await session.flush()
+        session.add(Server(server_id="survival"))
+        await session.commit()
+    manager.scheduler.remove_all_jobs()
+    await manager._recover_cronjobs_from_database()
+    assert manager.scheduler.get_job(job_id) is not None
+    current = (await client.get("/servers/survival/restart-schedule")).json()
+    assert current["cronjob_id"] == job_id and current["name"] == "restart-an-unrelated-name"
+
+
+async def test_restart_revalidates_current_reference_after_acquiring_maintenance(schedules, monkeypatch):
+    from contextlib import asynccontextmanager
+
     from app.cron.types import ExecutionContext
     from app.servers import commands
     from app.world.locks import get_server_operation_lock
@@ -282,64 +359,66 @@ async def test_restart_revalidates_generation_after_acquiring_maintenance(schedu
     project = commands.get_settings().server_path / "survival"
     project.mkdir()
     (project / "docker-compose.yml").write_text("services: {}\n")
-    monkeypatch.setattr(commands, "get_async_session", factory)
     docker = MagicMock()
-    set_runtime_resource(monkeypatch, 'docker_mc_manager', docker)
+    set_runtime_resource(monkeypatch, "docker_mc_manager", docker)
     context = ExecutionContext(
         cronjob_id="old", execution_id="old-execution", identifier="restart_server",
         params=ServerRestartParams(server_id="survival"), started_at=datetime.now(UTC),
-        managed_server_generation=generation,
     )
-    await restart.restart_server_cronjob(context)
+    await restart_server_cronjob(context)
     assert context.status.value == "skipped"
-    assert any("同名新实例" in message for message in context.messages)
+    assert any("实例已变更" in message for message in context.messages)
     docker.get_instance.assert_not_called()
 
 
-async def test_recovery_does_not_register_ambiguous_or_retired_plan(schedules):
+@pytest.mark.parametrize("state", ["missing", "missing_project", "missing_container", "stopped"])
+async def test_missing_or_stopped_target_records_skipped_restart(schedules, monkeypatch, state):
+    from app.servers import commands
+
     client, manager, factory = schedules
-    response = await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})
-    bound_id = response.json()["cronjob_id"]
-    ambiguous_id = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival2"), "0 7 * * *", name="restart-survival2")
+    job_id = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).json()["cronjob_id"]
+    if state == "missing":
+        async with factory() as session:
+            old = await session.scalar(select(Server).where(Server.server_id == "survival"))
+            assert old is not None
+            old.status = ServerStatus.REMOVED
+            await session.commit()
+    elif state != "missing_project":
+        project = commands.get_settings().server_path / "survival"
+        project.mkdir()
+        (project / "docker-compose.yml").write_text("services: {}\n")
+    instance = MagicMock(exists=AsyncMock(return_value=state != "missing_container"), running=AsyncMock(return_value=False), restart=AsyncMock())
+    docker = MagicMock()
+    docker.get_instance.return_value = instance
+    set_runtime_resource(monkeypatch, "docker_mc_manager", docker)
+    await manager._execute_cronjob_wrapper(job_id, "restart_server", ServerRestartParams(server_id="survival"), restart_server_cronjob)
+    [history] = await manager.get_execution_history(job_id)
+    assert history.status.value == "skipped" and history.ended_at is not None and history.messages
+    instance.restart.assert_not_awaited()
+    if state in ("missing", "missing_project"):
+        docker.get_instance.assert_not_called()
+
+
+async def test_deactivation_cancels_only_active_exact_parameter_targets(schedules):
+    from app.servers.lifecycle.primitives import cancel_restart_cronjobs_for_server
+
+    client, manager, factory = schedules
+    managed = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).json()["cronjob_id"]
+    independent = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival"), "0 7 * * *", name="restart-survival2")
+    similar = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival2"), "0 8 * * *", name="restart-survival")
+    paused = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival"), "0 9 * * *")
+    invalid = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival2"), "0 10 * * *")
+    await manager.pause_cronjob(paused)
     async with factory() as session:
-        old = await session.scalar(select(Server).where(Server.server_id == "survival"))
-        assert old is not None
-        old.status = ServerStatus.REMOVED
-        job = await session.scalar(select(CronJob).where(CronJob.cronjob_id == ambiguous_id))
+        job = await session.scalar(select(CronJob).where(CronJob.cronjob_id == invalid))
         assert job is not None
-        job.managed_purpose = "restart"
-        job.managed_binding_issue = "generation_uncertain"
+        job.params_json = "malformed historical JSON"
         await session.commit()
-    manager.scheduler.remove_all_jobs()
-    await manager._recover_cronjobs_from_database()
-    assert manager.scheduler.get_job(bound_id) is None
-    assert manager.scheduler.get_job(ambiguous_id) is None
     async with factory() as session:
-        assert all(job.status == CronJobStatus.ACTIVE for job in await session.scalars(select(CronJob)))
-
-
-async def test_deactivation_finds_only_current_binding_and_matching_independent_jobs(schedules):
-    from app.cron.crud import get_active_restart_cronjobs_for_server
-
-    client, manager, factory = schedules
-    old_id = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 6 * * *"})).json()["cronjob_id"]
-    independent = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival"), "0 7 * * *", name="custom")
-    other = await manager.create_cronjob("restart_server", ServerRestartParams(server_id="survival2"), "0 8 * * *", name="restart-survival2")
+        cancelled = await cancel_restart_cronjobs_for_server(session, "survival")
+    assert set(cancelled) == {managed, independent}
     async with factory() as session:
-        old = await session.scalar(select(Server).where(Server.server_id == "survival"))
-        assert old is not None
-        old.status = ServerStatus.REMOVED
-        await session.flush()
-        session.add(Server(server_id="survival"))
-        invalid = await session.scalar(select(CronJob).where(CronJob.cronjob_id == other))
-        assert invalid is not None
-        invalid.params_json = "malformed historical JSON"
-        invalid.managed_purpose = "restart"
-        invalid.managed_binding_issue = "invalid_params"
-        await session.commit()
-    new_id = (await client.post("/servers/survival/restart-schedule", json={"custom_cron": "0 9 * * *"})).json()["cronjob_id"]
-    async with factory() as session:
-        found = await get_active_restart_cronjobs_for_server(session, "survival")
-        assert {job.cronjob_id for job in found} == {new_id, independent}
-        assert (await session.scalar(select(CronJob.status).where(CronJob.cronjob_id == old_id))) == CronJobStatus.ACTIVE
-        assert await get_active_restart_cronjobs_for_server(session, "survival2") == []
+        rows = {row.cronjob_id: row for row in await session.scalars(select(CronJob))}
+        assert rows[managed].status == rows[independent].status == CronJobStatus.CANCELLED
+        assert rows[similar].status == rows[invalid].status == CronJobStatus.ACTIVE
+        assert rows[paused].status == CronJobStatus.PAUSED

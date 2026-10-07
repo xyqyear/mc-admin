@@ -7,11 +7,11 @@ from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
 
 from app.cron.models import CronJobStatus, ExecutionStatus
 
+from ..config import get_settings
 from ..db.database import get_async_session
 from ..dynamic_config.schemas import BaseConfigSchema
 from ..errors import log_safe_error
@@ -22,13 +22,8 @@ from ..operations.execution import operation_scope
 from ..operations.finalization import finalize
 from ..operations.journal_types import TERMINAL_STATES, OperationState
 from ..runtime_resources import current_runtime
+from ..servers.references import resolve_server_ref
 from . import crud
-from .bindings import (
-    RESTART_PURPOSE,
-    managed_binding_problem,
-    read_cron_params,
-    validate_managed_update,
-)
 from .errors import cron_error_message, cron_value_error
 from .models import CronJob
 from .registration import definition_version, retained_params
@@ -79,75 +74,77 @@ class CronManager:
         name: str | None = None,
         second: str | None = None,
         is_system: bool = False,
-        *,
-        managed_server_generation: int | None = None,
     ) -> str:
         """Create a new cron job, or revive an existing cancelled one."""
         async with self._configuration_lock:
-            registration = get_cron_registry().get_cronjob(identifier)
-            if not registration:
-                raise cron_value_error(f"定时任务类型 '{identifier}' 未注册", public_message='定时任务类型未注册')
-            if registration.is_system and not is_system:
-                raise cron_value_error(f"系统定时任务类型 '{identifier}' 不能手动创建", public_message='系统定时任务类型不能手动创建')
-
-            if cronjob_id is None:
-                cronjob_id = f"{identifier}_{secrets.token_urlsafe(8)}"
-
-            self._build_cron_trigger(cron, second)
-            cronjob_name = name or identifier
-
-            async with get_async_session() as session:
-                existing = await crud.get_cronjob(session, cronjob_id)
-
-                if existing:
-                    await validate_managed_update(session, existing, identifier, params)
-                    if managed_server_generation is not None and existing.managed_server_generation != managed_server_generation:
-                        raise cron_value_error("受管计划不能转移到其他服务器实例")
-                    if existing.is_system and existing.identifier != identifier:
-                        raise cron_value_error("系统定时任务不能修改任务类型")
-
-                    await crud.update_cronjob(
-                        session,
-                        cronjob_id,
-                        identifier=identifier,
-                        name=cronjob_name,
-                        cron=cron,
-                        second=second,
-                        params_json=params.model_dump_json(),
-                        status=CronJobStatus.ACTIVE,
-                        is_system=is_system or existing.is_system,
-                    )
-                else:
-                    await crud.create_cronjob(
-                        session,
-                        cronjob_id=cronjob_id,
-                        identifier=identifier,
-                        name=cronjob_name,
-                        cron=cron,
-                        second=second,
-                        params_json=params.model_dump_json(),
-                        is_system=is_system,
-                        managed_server_generation=managed_server_generation,
-                        managed_purpose=RESTART_PURPOSE if managed_server_generation is not None else None,
-                    )
-
-            await self._submit_cronjob_to_scheduler(
-                cronjob_id, identifier, params, cron, second
+            return await self._create_cronjob(
+                identifier, params, cron, cronjob_id, name, second, is_system,
             )
 
-            return cronjob_id
+    async def _create_cronjob(
+        self,
+        identifier: str,
+        params: BaseConfigSchema,
+        cron: str,
+        cronjob_id: str | None = None,
+        name: str | None = None,
+        second: str | None = None,
+        is_system: bool = False,
+        *,
+        managed_purpose: str | None = None,
+    ) -> str:
+        registration = get_cron_registry().get_cronjob(identifier)
+        if not registration:
+            raise cron_value_error(f"定时任务类型 '{identifier}' 未注册", public_message='定时任务类型未注册')
+        if registration.is_system and not is_system:
+            raise cron_value_error(f"系统定时任务类型 '{identifier}' 不能手动创建", public_message='系统定时任务类型不能手动创建')
+
+        if cronjob_id is None:
+            cronjob_id = f"{identifier}_{secrets.token_urlsafe(8)}"
+
+        self._build_cron_trigger(cron, second)
+        cronjob_name = name or identifier
+
+        async with get_async_session() as session:
+            existing = await crud.get_cronjob(session, cronjob_id)
+            if existing:
+                self._validate_managed_type(existing, identifier)
+                if existing.is_system and existing.identifier != identifier:
+                    raise cron_value_error("系统定时任务不能修改任务类型")
+                await crud.update_cronjob(
+                    session, cronjob_id, identifier=identifier, name=cronjob_name,
+                    cron=cron, second=second, params_json=params.model_dump_json(),
+                    status=CronJobStatus.ACTIVE, is_system=is_system or existing.is_system,
+                )
+            else:
+                await crud.create_cronjob(
+                    session, cronjob_id=cronjob_id, identifier=identifier,
+                    name=cronjob_name, cron=cron, second=second,
+                    params_json=params.model_dump_json(), is_system=is_system,
+                    managed_purpose=managed_purpose,
+                )
+
+        await self._submit_cronjob_to_scheduler(cronjob_id, identifier, params, cron, second)
+        return cronjob_id
+
+    @staticmethod
+    def _validate_managed_type(job: CronJob, identifier: str) -> None:
+        if job.managed_purpose == "restart" and identifier != "restart_server":
+            raise cron_value_error("受管重启计划不能修改任务类型；请另建独立定时任务")
 
     async def create_managed_restart_schedule(
         self, server_id: str, params: BaseConfigSchema, cron: str, name: str,
     ) -> str:
-        async with get_async_session() as session:
-            generation = await crud.get_active_server_generation(session, server_id)
-        try:
-            return await self.create_cronjob(
-                "restart_server", params, cron, name=name, managed_server_generation=generation,
+        if getattr(params, "server_id", None) != server_id:
+            raise cron_value_error("重启计划参数与目标服务器名称不一致")
+        async with self._configuration_lock:
+            async with get_async_session() as session:
+                existing = await crud.get_managed_restart_cronjob(session, server_id)
+                if existing is not None:
+                    return existing.cronjob_id
+            return await self._create_cronjob(
+                "restart_server", params, cron, name=name, managed_purpose="restart",
             )
-        except IntegrityError as exc:
-            raise cron_value_error("当前服务器已存在受管重启计划，请刷新后重试") from exc
 
     async def update_cronjob(
         self,
@@ -170,7 +167,7 @@ class CronManager:
                 if not existing:
                     raise cron_value_error(f"定时任务 '{cronjob_id}' 不存在", public_message='定时任务不存在')
 
-                await validate_managed_update(session, existing, identifier, params)
+                self._validate_managed_type(existing, identifier)
 
                 if existing.is_system and existing.identifier != identifier:
                     raise cron_value_error("系统定时任务不能修改任务类型")
@@ -229,15 +226,11 @@ class CronManager:
                 if cronjob_row.status == CronJobStatus.ACTIVE and self.scheduler.get_job(cronjob_id) is not None and cronjob_id not in self._registration_errors:
                     raise cron_value_error(f"定时任务 '{cronjob_id}' 已在运行中", public_message='定时任务已在运行中')
 
-                problem = await managed_binding_problem(session, cronjob_row)
-                if problem:
-                    raise cron_value_error(f"{problem}；不能恢复该计划，请核对后取消并重新创建")
-
                 schema_cls = get_cron_registry().get_schema_class(cronjob_row.identifier)
                 if not schema_cls:
                     raise cron_value_error(f"定时任务类型 '{cronjob_row.identifier}' 未注册", public_message='定时任务类型未注册')
 
-                params = read_cron_params(cronjob_row, schema_cls)
+                params = schema_cls.model_validate_json(cronjob_row.params_json)
                 self._build_cron_trigger(cronjob_row.cron, cronjob_row.second)
                 await crud.update_cronjob(session, cronjob_id, status=CronJobStatus.ACTIVE)
 
@@ -278,26 +271,23 @@ class CronManager:
             if not cronjob_row:
                 return None
 
-            return await self._project_config(session, cronjob_row)
+            return self._project_config(cronjob_row)
 
-    async def _project_config(self, session: AsyncSession, job: CronJob) -> CronJobConfig:
+    def _project_config(self, job: CronJob) -> CronJobConfig:
         error = self._registration_errors.get(job.cronjob_id)
-        problem = await managed_binding_problem(session, job)
         schema_cls = get_cron_registry().get_schema_class(job.identifier)
         params = retained_params(job.params_json)
         if schema_cls is None:
             error = "定时任务类型未注册，请核对任务配置"
         else:
             try:
-                params = read_cron_params(job, schema_cls)
+                params = schema_cls.model_validate_json(job.params_json)
                 self._build_cron_trigger(job.cron, job.second)
             except (ValueError, TypeError):
                 error = "定时任务配置无效，请修改后重新启用"
         state = "pending"
         if job.status != CronJobStatus.ACTIVE:
             state = "inactive"
-        elif problem:
-            state, error = "blocked", problem
         elif error:
             state = "failed"
         else:
@@ -309,8 +299,7 @@ class CronManager:
         return CronJobConfig(
             cronjob_id=job.cronjob_id, identifier=job.identifier, name=job.name,
             cron=job.cron, second=job.second, params=params,
-            managed_server_generation=job.managed_server_generation,
-            managed_purpose=job.managed_purpose, managed_binding_issue=job.managed_binding_issue,
+            managed_purpose=job.managed_purpose,
             execution_count=job.execution_count, is_system=job.is_system, status=job.status,
             registration_status=state, registration_error=error,
             created_at=job.created_at, updated_at=job.updated_at,
@@ -319,10 +308,6 @@ class CronManager:
     async def get_managed_restart_schedule(self, server_id: str) -> CronJobConfig | None:
         async with get_async_session() as session:
             job = await crud.get_managed_restart_cronjob(session, server_id)
-            if job is not None:
-                problem = await managed_binding_problem(session, job)
-                if problem:
-                    raise cron_value_error(problem)
             job_id = job.cronjob_id if job is not None else None
         return await self.get_cronjob_config(job_id) if job_id is not None else None
 
@@ -337,7 +322,7 @@ class CronManager:
                 session, identifier=identifier, status=status, name=name
             )
 
-            return [await self._project_config(session, row) for row in cronjob_rows]
+            return [self._project_config(row) for row in cronjob_rows]
 
     async def get_execution_history(
         self, cronjob_id: str, limit: int = 50
@@ -472,18 +457,22 @@ class CronManager:
                 if job is None:
                     context.skip("定时任务配置已删除，跳过执行")
                     return
-                problem = await managed_binding_problem(session, job)
-                if problem:
-                    context.skip(problem)
-                    return
                 if job.status != CronJobStatus.ACTIVE:
                     context.skip("定时任务已暂停或取消，跳过执行")
                     return
                 if definition_token is not None and definition_token != definition_version(job.identifier, job.params_json, job.cron, job.second):
                     context.skip("定时任务配置已变更，跳过旧调度")
                     return
-                context.managed_server_generation = job.managed_server_generation
             server_id = getattr(params, "server_id", None)
+            if identifier == "restart_server" and server_id:
+                try:
+                    async with get_async_session() as session:
+                        await resolve_server_ref(session, server_id, servers_root=get_settings().server_path)
+                except HTTPException as error:
+                    if error.status_code in (404, 409):
+                        context.skip("目标服务器未登记或项目已缺失，跳过本次重启")
+                        return
+                    raise
             server_ids = [server_id] if server_id else []
             claims = None
             if identifier == "backup" and not server_ids:
@@ -540,17 +529,12 @@ class CronManager:
                     self._executions.discard(worker)
 
     async def _recover_cronjobs_from_database(self) -> None:
-        logger = get_logger()
         async with get_async_session() as session:
             active_cronjobs = await crud.get_cronjobs_by_status(
                 session, CronJobStatus.ACTIVE
             )
 
             for cronjob_row in active_cronjobs:
-                problem = await managed_binding_problem(session, cronjob_row)
-                if problem:
-                    logger.warning("Cron job %s is not scheduled: %s", cronjob_row.cronjob_id, problem)
-                    continue
                 schema_cls = get_cron_registry().get_schema_class(cronjob_row.identifier)
                 if not schema_cls:
                     continue

@@ -2,7 +2,7 @@ from app.cron.api_models import CronJobResponse
 from app.servers.restart_schedule import RestartScheduleRequest, RestartScheduleResponse
 
 
-def test_cron_binding_and_registration_metadata_are_additive():
+def test_cron_management_and_registration_metadata_are_additive():
     schema = CronJobResponse.model_json_schema()
     assert set(schema["required"]) == {
         "cronjob_id", "identifier", "name", "cron", "params", "execution_count",
@@ -13,7 +13,7 @@ def test_cron_binding_and_registration_metadata_are_additive():
         "is_system", "status", "created_at", "updated_at",
     }
     additions = {
-        "managed_server_generation": "integer", "managed_purpose": "string", "managed_binding_issue": "string",
+        "managed_purpose": "string",
     }
     assert set(schema["properties"]) == original_properties | additions.keys() | {"registration_status", "registration_error"}
     for name, kind in additions.items():
@@ -30,7 +30,7 @@ def test_cron_binding_and_registration_metadata_are_additive():
     }
     for contract in (schema, response):
         registration = contract["properties"]["registration_status"]
-        assert registration["enum"] == ["registered", "pending", "failed", "blocked", "inactive"]
+        assert registration["enum"] == ["registered", "pending", "failed", "inactive"]
         assert registration["type"] == "string" and registration["default"] == "pending"
         error = contract["properties"]["registration_error"]
         assert error["anyOf"] == [{"type": "string"}, {"type": "null"}]

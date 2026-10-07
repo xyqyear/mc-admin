@@ -3,8 +3,13 @@
 import hashlib
 import json
 
+from pydantic import ConfigDict
+
 from ..dynamic_config.schemas import BaseConfigSchema
-from .bindings import RetainedCronParams
+
+
+class RetainedCronParams(BaseConfigSchema):
+    model_config = ConfigDict(extra="allow")
 
 
 def definition_version(identifier: str, params_json: str, cron: str, second: str | None) -> str:

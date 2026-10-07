@@ -18,7 +18,6 @@ from ..cron.api_models import (
     RegisteredCronJobResponse,
     UpdateCronJobRequest,
 )
-from ..cron.bindings import binding_issue_message
 from ..cron.errors import cron_error_message
 from ..dependencies import get_current_user
 from ..dynamic_config.schemas import BaseConfigSchema
@@ -150,9 +149,7 @@ async def list_cronjobs(
                 cron=config.cron,
                 second=config.second,
                 params=config.params.model_dump(),
-                managed_server_generation=config.managed_server_generation,
                 managed_purpose=config.managed_purpose,
-                managed_binding_issue=binding_issue_message(config.managed_binding_issue) if config.managed_binding_issue else None,
                 execution_count=config.execution_count,
                 is_system=config.is_system,
                 status=config.status.value,
@@ -238,9 +235,7 @@ async def get_cronjob(cronjob_id: str, _: UserPublic = Depends(get_current_user)
         cron=cronjob_config.cron,
         second=cronjob_config.second,
         params=cronjob_config.params.model_dump(),
-        managed_server_generation=cronjob_config.managed_server_generation,
         managed_purpose=cronjob_config.managed_purpose,
-        managed_binding_issue=binding_issue_message(cronjob_config.managed_binding_issue) if cronjob_config.managed_binding_issue else None,
         execution_count=cronjob_config.execution_count,
         is_system=cronjob_config.is_system,
         status=cronjob_config.status.value,
