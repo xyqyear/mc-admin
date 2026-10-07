@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMultiFileUpload, FILES_PER_BATCH } from '@/features/files/useMultiFileUpload'
+import { queryKeys } from '@/shared/http/api'
 
 const mocks = vi.hoisted(() => ({
   checkUploadConflicts: vi.fn(), setUploadPolicy: vi.fn(), uploadFileBatch: vi.fn(), invalidateQueries: vi.fn(),
@@ -74,6 +75,7 @@ describe('ordinary file upload lifecycle', () => {
     expect(mocks.uploadFileBatch.mock.calls[0][5].aborted).toBe(true)
     await act(async () => { first.resolve(batchResult(files.slice(0, FILES_PER_BATCH))) })
     expect(mocks.uploadFileBatch).toHaveBeenCalledTimes(1)
-    expect(mocks.invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.files.lists('server') })
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.snapshots.rules('server') })
   })
 })
