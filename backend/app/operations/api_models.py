@@ -42,6 +42,25 @@ class OperationPublic(BaseModel):
     resolved_at: datetime | None
 
 
+class OperationChangePublic(BaseModel):
+    sequence: int
+    operation_id: str
+    kind: str
+    state: str
+    data_changed: bool
+    updated_at: datetime
+    ended_at: datetime | None
+    resources: list[ResourcePublic]
+
+
+class OperationChangesPublic(BaseModel):
+    items: list[OperationChangePublic]
+    next_cursor: str
+    has_more: bool
+    active_count: int
+    reset_required: bool
+
+
 class ResolveOperationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: ResolveAction

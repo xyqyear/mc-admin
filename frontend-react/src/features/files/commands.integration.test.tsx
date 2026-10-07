@@ -5,7 +5,10 @@ import { setupServer } from 'msw/node'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { queryKeys } from '@/shared/http/api'
-import { useCreateFile, useDeleteFile, useBulkDeleteFiles } from './commands'
+import { useCreateFile, useDeleteFile, useBulkDeleteFiles, useUpdateFile, useRenameFile } from './commands'
+import { OperationObserver } from '@/app/operations/OperationObserver'
+import { createOperationFeed } from '@/test/operations'
+import { useMapRevision } from '@/features/world/map/revision'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -76,4 +79,59 @@ it('submits one batch and exposes confirmed partial failure without treating acc
   expect(result.current.isPending).toBe(true)
   await act(async () => { terminal.resolve(); expect(await deletion).toEqual(outcome) })
   expect(writes).toEqual([{ paths: ['/a.txt', '/locked'] }])
+})
+
+it.each(['file_write', 'file_create', 'file_rename'])('immediately refreshes idle world caches after a synchronous %s command', async kind => {
+  const feed = createOperationFeed()
+  const path = '/world/region/r.0.0.mca'
+  server.use(feed.handler, http.post('*/api/servers/alpha/files/:action', () => {
+    feed.publish({ operation_id: 'write', kind, state: 'succeeded', data_changed: true, updated_at: '2026-10-07T00:00:00Z', ended_at: '2026-10-07T00:00:00Z', resources: [{ kind: 'files', server_id: 'alpha', generation: 1, path }] })
+    return HttpResponse.json({ message: '已完成' })
+  }))
+  const { result } = renderHook(() => ({ write: useUpdateFile('alpha'), create: useCreateFile('alpha'), rename: useRenameFile('alpha'), revision: useMapRevision('alpha') }), {
+    wrapper: ({ children }) => <TestProviders client={client}><OperationObserver sessionId="owner" />{children}</TestProviders>,
+  })
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('owner'))).toEqual({ cursor: '1:0', active_count: 0 }))
+  await waitFor(() => expect(result.current.revision).toBeDefined())
+  const before = result.current.revision
+  const map = queryKeys.map.regions('alpha', 'world/region'), other = queryKeys.map.regions('beta', 'world/region')
+  client.setQueryData(map, []); client.setQueryData(other, [])
+  await act(async () => {
+    if (kind === 'file_write') await result.current.write.mutateAsync({ path, content: 'changed' })
+    else if (kind === 'file_create') await result.current.create.mutateAsync({ path: '/world/region', name: 'r.0.0.mca', type: 'file' })
+    else await result.current.rename.mutateAsync({ old_path: path, new_name: 'r.1.0.mca' })
+  })
+  await waitFor(() => expect(result.current.revision).not.toBe(before))
+  expect(client.getQueryState(map)?.isInvalidated).toBe(true)
+  expect(client.getQueryState(other)?.isInvalidated).toBe(false)
+  expect(client.getQueryData(queryKeys.operations.checkpoint('owner'))).toEqual({ cursor: '1:1', active_count: 0 })
+})
+
+it('restarts pending bootstrap observation when a file command completes after its captured head', async () => {
+  const feed = createOperationFeed()
+  const captured = deferred<void>(), release = deferred<void>()
+  let first = true
+  server.use(
+    http.get('*/api/operations/changes', async () => {
+      if (!first) return
+      first = false
+      captured.resolve(); await release.promise
+      return HttpResponse.json({ items: [], next_cursor: '1:0', has_more: false, active_count: 0, reset_required: true })
+    }),
+    feed.handler,
+    http.post('*/api/servers/alpha/files/create', () => {
+      feed.publish({ operation_id: 'created', kind: 'file_create', state: 'succeeded', data_changed: true, updated_at: '2026-10-07T00:00:00Z', ended_at: '2026-10-07T00:00:00Z', resources: [{ kind: 'files', server_id: 'alpha', generation: 1, path: 'world/region/r.0.0.mca' }] })
+      return HttpResponse.json({ message: '已创建' })
+    }),
+  )
+  const view = renderHook(() => useCreateFile('alpha'), { wrapper: ({ children }) => <TestProviders client={client}><OperationObserver sessionId="owner" />{children}</TestProviders> })
+  await captured.promise
+  expect(client.getQueryData(queryKeys.operations.session('owner'))).toBeNull()
+  const map = queryKeys.map.regions('alpha', 'world/region')
+  client.setQueryData(map, [])
+  await act(async () => { await view.result.current.mutateAsync({ path: '/world/region', name: 'r.0.0.mca', type: 'file' }) })
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.checkpoint('owner'))).toEqual({ cursor: '1:1', active_count: 0 }))
+  expect(client.getQueryState(map)?.isInvalidated).toBe(true)
+  await act(async () => { release.resolve() })
+  expect(client.getQueryData(queryKeys.operations.checkpoint('owner'))).toEqual({ cursor: '1:1', active_count: 0 })
 })

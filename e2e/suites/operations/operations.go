@@ -9,6 +9,7 @@ import (
 
 func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "operations.incremental-refresh-feed", Suite: "operations", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: incrementalRefresh},
 		{ID: "operations.interrupted-task-and-cron-history", Suite: "operations", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: interruptedHistory},
 		{ID: "operations.scoped-recovery-and-permissions", Suite: "operations", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: scopedRecovery},
 		{ID: "operations.cache-degradation-and-recovery", Suite: "operations", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: cacheRecovery},

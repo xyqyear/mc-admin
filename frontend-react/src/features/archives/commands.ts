@@ -35,6 +35,7 @@ export const useRenameItem = () => {
   return useMutation({
     mutationFn: (request: RenameArchiveFileRequest) =>
       archiveApi.renameArchiveItem(request),
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: queryKeys.operations.all }) },
     onSuccess: (_, request) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.archive.files(getParentPath(request.old_path))
@@ -52,6 +53,7 @@ export const useCreateArchive = () => {
   return useMutation({
     mutationFn: (request: CreateArchiveRequest) =>
       archiveApi.createArchive({ ...request, client_timestamp: request.client_timestamp ?? formatLocalFilenameTimestamp() }),
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: queryKeys.operations.all }) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
     },

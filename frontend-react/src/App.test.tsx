@@ -51,7 +51,7 @@ it.each([500, 'network'] as const)('retains the protected route and permits retr
   showApp()
   expect(await screen.findByText('暂时无法验证登录状态')).toBeTruthy()
   expect(screen.queryByText('登录页面')).toBeNull()
-  adapter.mockImplementation(async config => httpResponse(config, config.url === '/operations' ? [] : { id: 1, username: 'owner', role: 'OWNER' }))
+  adapter.mockImplementation(async config => httpResponse(config, config.url === '/operations/changes' ? { items: [], next_cursor: 'app:0', has_more: false, active_count: 0, reset_required: true } : { id: 1, username: 'owner', role: 'OWNER' }))
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
   await waitFor(() => expect(screen.getByText('服务器总览')).toBeTruthy())
 })
@@ -74,15 +74,15 @@ it.each(['event', 'http401'])('clears the real expired session and isolates the 
     }
     if (config.url === '/servers/') return httpResponse(config, [serverRecord(owner === 'new' ? 'new-server' : 'old-server')])
     if (config.url === '/expired-session') return httpResponse(config, { detail: '登录已过期' }, 401)
-    if (config.url === '/operations') {
+    if (config.url === '/operations/changes') {
       operationReads++
       if (operationReads === 2) {
         oldSignal = config.signal
         await oldObservation.promise
-        return httpResponse(config, [{ operation_id: 'late-old', kind: 'server_rebuild', state: 'succeeded', data_changed: true,
-          resources: [{ kind: 'server', server_id: 'alpha', generation: 1, path: '' }] }])
+        return httpResponse(config, { items: [{ sequence: 1, operation_id: 'late-old', kind: 'server_rebuild', state: 'succeeded', data_changed: true,
+          resources: [{ kind: 'server', server_id: 'alpha', generation: 1, path: '' }] }], next_cursor: 'old:1', has_more: false, active_count: 0, reset_required: false })
       }
-      return httpResponse(config, [])
+      return httpResponse(config, { items: [], next_cursor: `${owner}:0`, has_more: false, active_count: 0, reset_required: true })
     }
     throw new Error(`unexpected request: ${config.url}`)
   })
@@ -90,7 +90,7 @@ it.each(['event', 'http401'])('clears the real expired session and isolates the 
   client.setQueryData(queryKeys.compose.detail('alpha'), { yaml_content: 'old-secret' })
   showApp()
   await screen.findByText('服务器总览')
-  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('1'))).toEqual([]))
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('1'))).toEqual({ cursor: 'old:0', active_count: 0 }))
   const polling = client.refetchQueries({ queryKey: queryKeys.operations.session('1') })
   await waitFor(() => expect(oldSignal).toBeDefined())
   owner = 'logged-out'
@@ -108,7 +108,7 @@ it.each(['event', 'http401'])('clears the real expired session and isolates the 
   await screen.findByText('new-owner：new-server')
   expect(credentials).toEqual({ grant_type: 'password', username: 'new-owner', password: 'new-password' })
   expect(client.getQueryData(queryKeys.user.me())).toMatchObject({ id: 2, username: 'new-owner' })
-  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('2'))).toEqual([]))
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('2'))).toEqual({ cursor: 'new:0', active_count: 0 }))
   client.setQueryData(queryKeys.compose.detail('alpha'), { yaml_content: 'new-secret' })
   await act(async () => { oldObservation.resolve(); await polling })
   expect(client.getQueryData(queryKeys.operations.session('1'))).toBeUndefined()

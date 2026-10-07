@@ -353,6 +353,14 @@
         "session_or_master"
       ],
       "method": "GET",
+      "path": "/api/operations/changes"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
       "path": "/api/operations/{operation_id}"
     },
     {
@@ -2688,6 +2696,102 @@
           "title": "LoginResponse",
           "type": "object"
         },
+        "OperationChangePublic": {
+          "properties": {
+            "data_changed": {
+              "title": "Data Changed",
+              "type": "boolean"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "operation_id": {
+              "title": "Operation Id",
+              "type": "string"
+            },
+            "resources": {
+              "items": {
+                "$ref": "#/components/schemas/ResourcePublic"
+              },
+              "title": "Resources",
+              "type": "array"
+            },
+            "sequence": {
+              "title": "Sequence",
+              "type": "integer"
+            },
+            "state": {
+              "title": "State",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sequence",
+            "operation_id",
+            "kind",
+            "state",
+            "data_changed",
+            "updated_at",
+            "ended_at",
+            "resources"
+          ],
+          "title": "OperationChangePublic",
+          "type": "object"
+        },
+        "OperationChangesPublic": {
+          "properties": {
+            "active_count": {
+              "title": "Active Count",
+              "type": "integer"
+            },
+            "has_more": {
+              "title": "Has More",
+              "type": "boolean"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/OperationChangePublic"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "title": "Next Cursor",
+              "type": "string"
+            },
+            "reset_required": {
+              "title": "Reset Required",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "items",
+            "next_cursor",
+            "has_more",
+            "active_count",
+            "reset_required"
+          ],
+          "title": "OperationChangesPublic",
+          "type": "object"
+        },
         "PathsScope": {
           "additionalProperties": false,
           "properties": {
@@ -2728,6 +2832,48 @@
             "task_id"
           ],
           "title": "RebuildResponse",
+          "type": "object"
+        },
+        "ResourcePublic": {
+          "properties": {
+            "generation": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Generation"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            },
+            "server_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Server Id"
+            }
+          },
+          "required": [
+            "kind",
+            "server_id",
+            "generation",
+            "path"
+          ],
+          "title": "ResourcePublic",
           "type": "object"
         },
         "RestartScheduleRequest": {
@@ -4343,6 +4489,94 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/operations/changes": {
+        "get": {
+          "parameters": [
+            {
+              "in": "query",
+              "name": "cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cursor"
+              }
+            },
+            {
+              "in": "query",
+              "name": "limit",
+              "required": false,
+              "schema": {
+                "default": 200,
+                "maximum": 1000,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OperationChangesPublic"
                   }
                 }
               },

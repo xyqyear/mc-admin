@@ -226,6 +226,7 @@ async def recover_runtime(runtime: "Runtime") -> None:
 
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal
+    await journal.initialize_changes()
     recovery = RecoveryService(
         journal, probe=confirm_runtime_writers_stopped, servers_root=runtime.settings.server_path,
         archive_root=runtime.settings.archive_path,

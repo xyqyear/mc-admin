@@ -21,6 +21,7 @@ export const useUpdateFile = (serverId: string | undefined) => {
   return useMutation({
     mutationFn: ({ path, content }: { path: string; content: string }) =>
       fileApi.updateFileContent(serverId!, path, content),
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: queryKeys.operations.all }); },
     onSuccess: () => {
       toast.success("文件更新成功");
       invalidateFileList(queryClient, serverId);
@@ -36,6 +37,7 @@ export const useCreateFile = (serverId: string | undefined) => {
   return useMutation({
     mutationFn: (createRequest: CreateFileRequest) =>
       fileApi.createFileOrDirectory(serverId!, createRequest),
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: queryKeys.operations.all }); },
     onSuccess: (_, variables) => {
       toast.success(
         `${variables.type === "file" ? "文件" : "文件夹"}创建成功`
@@ -94,6 +96,7 @@ export const useRenameFile = (serverId: string | undefined) => {
   return useMutation({
     mutationFn: (renameRequest: RenameFileRequest) =>
       fileApi.renameFileOrDirectory(serverId!, renameRequest),
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: queryKeys.operations.all }); },
     onSuccess: () => {
       toast.success("重命名成功");
       invalidateFileList(queryClient, serverId);

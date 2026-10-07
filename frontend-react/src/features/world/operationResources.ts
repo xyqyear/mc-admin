@@ -3,13 +3,14 @@ import type { Operation } from '@/shared/operations/contracts'
 import { taskQueryKeys } from '@/features/tasks/queries'
 import { queryKeys } from '@/shared/http/api'
 import { latestMapRevision, type MapRevision } from './map/revision'
+export { resetMapRevision } from './map/revision'
 const worldInputKinds = new Set(['world_restore', 'chunk_prune_apply', 'snapshot_restore', 'snapshot_backup', 'archive_extract', 'file_write', 'file_create', 'file_delete', 'file_rename', 'file_upload'])
 
-export function updateMapRevision(client: QueryClient, operation: Operation) {
+export function updateMapRevision(client: QueryClient, operation: Operation, sequence?: number) {
   if (!(operation.data_changed && worldInputKinds.has(operation.kind)) && operation.kind !== 'map_initialize') return
   const time = Date.parse(operation.ended_at ?? operation.updated_at)
   if (!Number.isFinite(time)) return
-  const revision = { time, id: operation.operation_id }
+  const revision = { time, id: operation.operation_id, sequence }
   client.setQueryDefaults(queryKeys.map.revisions(), { gcTime: Infinity })
   const global = operation.resources.some(resource => resource.kind === 'files' && !resource.server_id)
   const targets = global ? [undefined] : [...new Set(operation.resources.flatMap(resource => resource.server_id ? [resource.server_id] : []))]

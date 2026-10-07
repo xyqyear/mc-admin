@@ -54,6 +54,7 @@ async def sign_in(client, role: UserRole, runtime) -> str:
 async def test_operation_history_requires_authentication(operation_client):
     client, _ = operation_client
     assert (await client.get("/api/operations")).status_code == 401
+    assert (await client.get("/api/operations/changes")).status_code == 401
     assert (await client.get("/api/operations/retained")).status_code == 401
     assert (await client.post("/api/operations/retained/resolve", json={"action": "acknowledge_partial"})).status_code == 401
 
@@ -67,6 +68,39 @@ async def test_admin_reads_history_but_cannot_release_recovery(operation_client,
     assert response.json()[0]["resources"][0]["generation"] == 12
     assert "processes" not in response.text and "root_ino" not in response.text
     assert (await client.post("/api/operations/retained/resolve", json={"action": "acknowledge_partial"}, headers={CSRF_HEADER_NAME: csrf})).status_code == 403
+
+
+async def test_admin_reads_lightweight_changes_without_history_or_database_polling(operation_client, isolated_runtime, journal, monkeypatch):
+    client, _ = operation_client
+    await sign_in(client, UserRole.ADMIN, isolated_runtime)
+    initial = await client.get("/api/operations/changes")
+    assert initial.status_code == 200
+    cursor = initial.json()["next_cursor"]
+    assert initial.json()["reset_required"] and initial.json()["items"] == []
+    await journal.accept(OperationSpec("file_write", (ResourceReference("files", "survival", 12, "world/test"),), operation_id="new"))
+    await journal.finish("new", OperationState.FAILED, writers_stopped=True, changed=True)
+
+    def unexpected_database_read():
+        raise AssertionError("Notification reads must not query the journal database")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(journal, "session_factory", unexpected_database_read)
+        page = await client.get("/api/operations/changes", params={"cursor": cursor, "limit": 1})
+        body = page.json()
+        assert page.status_code == 200 and body["has_more"] and body["active_count"] == 0
+        assert body["items"][0]["state"] == "queued"
+        assert set(body["items"][0]) == {
+            "sequence", "operation_id", "kind", "state", "data_changed", "updated_at", "ended_at", "resources",
+        }
+        final = await client.get("/api/operations/changes", params={"cursor": body["next_cursor"]})
+        assert not final.json()["has_more"]
+        assert final.json()["items"][0]["state"] == "failed" and final.json()["items"][0]["data_changed"]
+        idle = await client.get("/api/operations/changes", params={"cursor": final.json()["next_cursor"]})
+        assert idle.json()["items"] == [] and not idle.json()["reset_required"]
+    for limit in (0, 1001):
+        assert (await client.get("/api/operations/changes", params={"limit": limit})).status_code == 422
+    reset = await client.get("/api/operations/changes", params={"cursor": "broken"})
+    assert reset.status_code == 200 and reset.json()["reset_required"] and reset.json()["items"] == []
 
 
 async def test_owner_requires_csrf_and_confirmed_writers_with_no_force_bypass(operation_client, isolated_runtime):

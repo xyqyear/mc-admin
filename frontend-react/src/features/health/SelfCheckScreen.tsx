@@ -588,6 +588,7 @@ const SelfCheck: React.FC = () => {
     setRunning(true)
     try {
       const accepted = await selfCheckApi.runSelfCheck()
+      void queryClient.invalidateQueries({ queryKey: queryKeys.operations.all })
       setTaskId(accepted.task_id)
     } catch (error) {
       setRunning(false)

@@ -144,6 +144,7 @@ export function useMultiFileUpload(open: boolean, serverId: string, basePath: st
     } finally {
       if (running.current === controller) running.current = null
       if (wrote) await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.operations.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.files.lists(serverId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.rules(serverId) }),
       ])

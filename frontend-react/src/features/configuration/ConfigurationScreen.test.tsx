@@ -7,6 +7,7 @@ import { queryKeys } from '@/shared/http/api'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import ConfigurationScreen from '@/features/configuration/ConfigurationScreen'
+import { createOperationFeed } from '@/test/operations'
 import { OperationObserver } from '@/app/operations/OperationObserver'
 
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), info: vi.fn() }))
@@ -203,19 +204,20 @@ it('keeps conversion variables when a check detects a newer server configuration
 
 it.each([false, true])('accepts only its successful task version and preserves newer edits (template=%s)', async mode => {
   templateMode = mode
-  const operation = { operation_id: 'operation', kind: 'server_rebuild', state: 'running', legacy_id: 'task', resources: [{ kind: 'server', server_id: 'alpha', generation: 1, path: '' }], data_changed: false, failure_code: null }
-  server.use(http.get('*/api/operations', () => HttpResponse.json([operation])))
+  const feed = createOperationFeed(1)
+  const operation = { updated_at: '2026-10-07T00:00:00Z', ended_at: null, operation_id: 'operation', kind: 'server_rebuild', state: 'running', resources: [{ kind: 'server', server_id: 'alpha', generation: 1, path: '' }], data_changed: false }
+  server.use(feed.handler)
   show(true); const editor = await edit(); await submit()
   await screen.findByText('应用中')
   fireEvent.change(editor, { target: { value: 'next draft' } })
-  remote = 'local draft'; version = 'v2'; operation.state = 'succeeded'
+  remote = 'local draft'; version = 'v2'; operation.state = 'succeeded'; feed.publish(operation)
   server.use(http.get('*/api/tasks/task', () => HttpResponse.json({ task_id: 'task', task_type: 'server_rebuild', status: 'completed', created_at: '2026-09-25T12:00:00Z', result: { version: 'v2' } })))
   await act(async () => { await client.refetchQueries({ queryKey: queryKeys.operations.all }) })
   await waitFor(() => expect(toast.success).toHaveBeenCalledWith('服务器配置更新完成'))
   expect(editor.value).toBe('next draft')
   expect(screen.queryByText('在线配置已变更')).toBeNull()
 
-  remote = 'other user v3'; version = 'v3'; operation.operation_id = 'another-operation'
+  remote = 'other user v3'; version = 'v3'; operation.operation_id = 'another-operation'; feed.publish(operation)
   await act(async () => { await client.refetchQueries({ queryKey: queryKeys.operations.all }) })
   await screen.findByText('在线配置已变更')
   expect(editor.value).toBe('next draft')
@@ -227,11 +229,12 @@ it.each([false, true])('accepts only its successful task version and preserves n
 
 it('does not accept a newer remote revision when its own successful result arrives later', async () => {
   const resultReady = deferred<void>()
-  const operation = { operation_id: 'operation', kind: 'server_rebuild', state: 'running', legacy_id: 'task', resources: [{ kind: 'server', server_id: 'alpha', generation: 1, path: '' }], data_changed: false, failure_code: null }
-  server.use(http.get('*/api/operations', () => HttpResponse.json([operation])))
+  const feed = createOperationFeed(1)
+  const operation = { updated_at: '2026-10-07T00:00:00Z', ended_at: null, operation_id: 'operation', kind: 'server_rebuild', state: 'running', resources: [{ kind: 'server', server_id: 'alpha', generation: 1, path: '' }], data_changed: false }
+  server.use(feed.handler)
   show(true); const editor = await edit(); await submit()
   await screen.findByText('应用中')
-  remote = 'external v3'; version = 'v3'; operation.state = 'succeeded'
+  remote = 'external v3'; version = 'v3'; operation.state = 'succeeded'; feed.publish(operation)
   server.use(http.get('*/api/tasks/task', async () => {
     await resultReady.promise
     return HttpResponse.json({ task_id: 'task', task_type: 'server_rebuild', status: 'completed', created_at: '2026-09-25T12:00:00Z', result: { version: 'v2' } })

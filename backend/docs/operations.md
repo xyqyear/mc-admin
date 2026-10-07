@@ -186,6 +186,47 @@ the retained block makes the record visible to startup recovery.
 
 ## History and explicit resolution API
 
+### Incremental cache refresh
+
+The runtime-owned journal owns one in-memory `OperationChangeFeed`; applications
+never share queues or per-client read positions. Successful short transactions
+capture immutable metadata and publish synchronously after commit, before
+session closure or an acceptance callback. Acceptance, terminal outcomes,
+resource/data changes and effective terminal recovery changes notify. Routine
+phase, process ownership and task-result updates do not. Failed transactions
+emit nothing. Notification failure resets the feed identity without changing
+committed business results, and active tracking still reflects committed states.
+
+Authenticated `GET /api/operations/changes` accepts an opaque `cursor` and a
+`limit` from 1 to 1,000, defaulting to 200. It returns `items`, `next_cursor`,
+`has_more`, `active_count` and `reset_required`. Each item contains only
+`sequence`, `operation_id`, `kind`, `state`, `data_changed`, `updated_at`,
+`ended_at` and `resources`. Reads do not query the database or load complete
+history. Task presentation continues using task and feature APIs.
+
+The cursor binds a random per-instance identity to a strictly increasing
+notification sequence. Paged responses pin their initial upper sequence; new
+commits become visible in the following batch. Every continuation checks the
+retention boundary. Missing, malformed, future, different-instance or expired
+cursors return empty items, `reset_required: true` and a current-head cursor.
+Clients refresh relevant authoritative queries and map image versions, then
+consume changes after that cursor, including commits made during refresh.
+
+The feed retains at most 2,000 items and 4 MiB of serialized notification data.
+Python container overhead is additionally bounded by item and journal metadata
+limits. Oldest entries are removed when either limit is reached. An individually
+oversized notification advances the discarded boundary and clears retained
+items, forcing existing readers to resynchronize. Neither notification eviction
+nor restart deletes journal evidence, task results or managed data.
+
+Only nonterminal operation IDs are retained for active counting, bounded by
+journal admission capacity. Startup initializes them from persisted nonterminal
+rows before recovery; committed acceptance and completion update the set. Runtime
+shutdown clears the feed after writers have stopped. Browsers retain their own
+cursor and process bounded batches; the backend stores no subscriber state.
+
+### Historical reads and recovery resolution
+
 Authenticated users can read `GET /api/operations` and
 `GET /api/operations/{operation_id}`. Listing accepts `limit` from 1 to 1,000
 (default 100) and a nonnegative `offset`. Responses retain actor, generation,
@@ -257,6 +298,11 @@ restoration history has its generation-preservation guard in `2026092503` and it
 
 `tests/operations/test_journal.py` covers transaction boundaries, immutable
 terminal outcomes, capacity races, retention and bounded metadata.
+`test_changes.py` covers post-commit visibility, rollback, bounded notification
+retention, pinned pagination, instance resets, active counting and notification
+failure recovery. `test_api.py` checks authenticated lightweight reads without
+journal database polling; the two-application runtime case checks feed isolation
+and shutdown clears retained notifications after draining writers.
 `test_journal_cancellation.py` interrupts real file-backed SQLite calls after
 their worker has executed a statement, retains the cancellation traceback, and
 verifies writes through an independent connection. It also checks repeated

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth.models import UserRole
 from app.auth.schemas import UserPublic
 from app.operations.api_models import (
+    OperationChangesPublic,
     OperationPublic,
     RecoveryReferencePublic,
     ResolveOperationRequest,
@@ -57,6 +58,14 @@ async def list_operations(
     _: UserPublic = Depends(get_current_user),
 ):
     return [_public(record) for record in await _journal().list(limit=limit, offset=offset)]
+
+
+@router.get("/changes", response_model=OperationChangesPublic)
+async def get_operation_changes(
+    cursor: str | None = Query(None), limit: int = Query(200, ge=1, le=1000),
+    _: UserPublic = Depends(get_current_user),
+):
+    return asdict(_journal().changes.read(cursor, limit=limit))
 
 
 @router.get("/{operation_id}", response_model=OperationPublic)

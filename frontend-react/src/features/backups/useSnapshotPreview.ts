@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { waitForTaskResult, useCancelTask } from '@/features/tasks/commands';
-import { getErrorMessage, getErrorStatus } from '@/shared/http/api'
+import { getErrorMessage, getErrorStatus, queryKeys } from '@/shared/http/api'
 import { snapshotApi } from './api'
 import type { SnapshotPreviewRequest, SnapshotPreviewResult } from './contracts'
 
@@ -31,6 +31,7 @@ export function useSnapshotPreview(request: SnapshotPreviewRequest | null) {
       void (async () => {
         try {
           const accepted = await snapshotApi.preparePreview(request)
+          void client.invalidateQueries({ queryKey: queryKeys.operations.all })
           if (observation.signal.aborted) return
           setState(previous => ({ ...previous, taskId: accepted.task_id }))
           const result = await waitForTaskResult<SnapshotPreviewResult>(client, accepted, {

@@ -42,7 +42,7 @@ app/
 ├── runtime_logging.py     # application-owned log handlers
 ├── errors.py              # safe public errors and exception logging
 ├── operation_admission.py # deletion freeze and active writer accounting
-├── operations/            # journal, resource leases, process ownership and recovery
+├── operations/            # journal, bounded refresh notifications, resource leases and recovery
 ├── config.py              # TOML + env settings; directory roots resolved on load
 ├── api_schema.py          # stable public OpenAPI names across internal DTO ownership
 ├── dependencies.py        # DI for sessions, auth, role guards
@@ -116,6 +116,8 @@ Restart scheduling belongs to `app.servers.restart_schedule`. Managed plans bind
 Delayed operations capture `app.servers.references.ServerRef` and revalidate generation and confined paths when acquiring resources. Directory presence alone does not register a server. `app.operations.coordinator` reserves declared resources atomically and validates explicit parent lease reuse; deletion admission freezes separately from execution leases. Operation history is readable by authenticated users; resolving interrupted work requires OWNER authority and fresh ownership/consistency checks.
 
 Journal queries, short write transactions and `operations.context.revalidate_targets` finish cursor consumption, commit or rollback, and session closure before propagating cancellation. Task startup and resource-lease revalidation cannot leave a SQLite reader blocking terminal journal writes. Waiting for the journal mutex remains cancellable; cancellation prevents the caller from continuing into external side effects. Request and task entrypoints use `operations.execution.accept_operation` to own a committed record before cancellation or session closure can fail; see `docs/operations.md`.
+
+The runtime-owned journal publishes immutable refresh notifications after successful commits. Authenticated `GET /operations/changes` reads only its bounded in-memory feed; instance-scoped cursors detect restart and retention gaps and require cache resynchronization. Startup initializes active tracking before recovery, and shutdown clears notifications after writers stop. Full history and durable task results remain separate; see `docs/operations.md`.
 
 File writes claim both lexical and canonical paths. File and archive deletion reject active scope conflicts and recovery blocks before accepting a task; workers reacquire resources before writing. Backup applications declare all affected paths and maintenance resources before acquiring a lease; nested safety snapshots reuse that lease without upgrading it. World changes include map-cache ownership, while ordinary online file edits and unrelated paths remain available. Settle writer ownership and recovery blocks before releasing leases. Archive publication uses an owned stage in the destination filesystem and never replaces an existing destination; cleanup never guesses ownership from a shared filename prefix. Compression names use the server and validated browser-local `client_timestamp`, with a server-local fallback for legacy API callers and numeric collision suffixes.
 

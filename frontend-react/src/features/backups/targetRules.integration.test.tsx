@@ -3,6 +3,7 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-li
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { createOperationFeed } from '@/test/operations'
 import { OperationObserver } from '@/app/operations/OperationObserver'
 import { useUpdateModuleConfig, useResetModuleConfig } from '@/features/settings/commands'
 import { useUpdateFile } from '@/features/files/commands'
@@ -149,20 +150,22 @@ it('refreshes resolved world-name rules after a synchronous server.properties wr
 })
 
 it.each(['snapshot_restore', 'archive_extract', 'server_remove', 'server_create'])('refreshes rules after changed %s operations and ignores read-only archive hashing', async kind => {
-  let operations: Operation[] = []
-  const operation = (id: string, operationKind: string): Operation => ({ operation_id: id, kind: operationKind, legacy_id: null, state: 'succeeded', data_changed: true, updated_at: '2026-10-07T00:00:00Z', ended_at: '2026-10-07T00:00:00Z', failure_code: null, resources: [{ kind: 'files', server_id: 'alpha', generation: 1, path: 'server.properties' }] })
-  server.use(http.get('*/api/operations', () => HttpResponse.json(operations)))
+  const feed = createOperationFeed()
+  const operation = (id: string, operationKind: string): Operation => ({ operation_id: id, kind: operationKind, state: 'succeeded', data_changed: true, updated_at: '2026-10-07T00:00:00Z', ended_at: '2026-10-07T00:00:00Z', resources: [{ kind: 'files', server_id: 'alpha', generation: 1, path: 'server.properties' }] })
+  server.use(feed.handler)
   const view = renderHook(() => { const owner = useSnapshotRules('alpha', true); const target = useSnapshotTarget(fileSnapshotScope('alpha', ['/config'])); return { owner, target } }, { wrapper })
   await waitFor(() => expect(view.result.current.target.data?.allowed).toBe(false))
   render(<TestProviders client={client}><OperationObserver sessionId="session" /></TestProviders>)
-  operations = [operation('hash', 'archive_hash')]
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('session'))).toBeTruthy())
+  reads.length = 0
+  feed.publish(operation('hash', 'archive_hash'))
   await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.operations.all }) })
-  expect(reads).toEqual(['alpha'])
+  expect(reads).toEqual([])
   rules = []
-  operations = [operation('changed', kind), ...operations]
+  feed.publish(operation('changed', kind))
   await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.operations.all }) })
   await waitFor(() => expect(view.result.current.target.data?.allowed).toBe(true))
-  expect(reads).toEqual(['alpha', 'alpha'])
+  expect(reads).toEqual(['alpha'])
 })
 
 it('rejects a rules response for a different server and keeps replacement generations blocked until confirmed', async () => {

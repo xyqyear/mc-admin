@@ -119,6 +119,7 @@ export const queryKeys = {
   operations: {
     all: ['operations'] as const,
     session: (session: string) => [...queryKeys.operations.all, session] as const,
+    checkpoint: (session: string) => [...queryKeys.operations.session(session), 'checkpoint'] as const,
   },
   system: {
     all: ["system"] as const,
@@ -271,6 +272,7 @@ export const queryKeys = {
     all: ["map"] as const,
     revisions: () => [...queryKeys.map.all, 'revision'] as const,
     revision: (serverId?: string) => [...queryKeys.map.revisions(), serverId] as const,
+    resetRevision: () => [...queryKeys.map.revisions(), 'reset', 'global'] as const,
     status: (serverId: string) => [...queryKeys.map.all, "status", serverId] as const,
     regionsForServer: (serverId: string) => [...queryKeys.map.all, "regions", serverId] as const,
     regions: (serverId: string, region: string) =>

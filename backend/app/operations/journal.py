@@ -8,7 +8,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from functools import wraps
 from pathlib import PurePosixPath
-from typing import Any, Concatenate
+from typing import Any, Concatenate, cast
 
 from anyio.lowlevel import checkpoint_if_cancelled
 from fastapi import HTTPException
@@ -16,7 +16,8 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..db.owned_calls import complete_database_call
-from ..errors import PublicOperationError
+from ..errors import PublicOperationError, log_safe_error
+from .changes import OperationChangeFeed
 from .journal_types import (
     TERMINAL_STATES,
     JournalLimits,
@@ -30,6 +31,16 @@ from .journal_types import (
 from .models import OperationJournalEntry
 
 _TOKEN = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
+
+type _TrackedOperation = tuple[OperationJournalEntry, tuple[object, ...] | None]
+
+
+def _refresh_signature(row: OperationJournalEntry) -> tuple[object, ...]:
+    terminal = OperationState(row.state) in TERMINAL_STATES
+    return (
+        row.state if terminal else "active", row.resources_json, row.data_changed,
+        *((row.writers_stopped, row.blocked_reason, row.cache_degraded, row.recovery_refs_json) if terminal else ()),
+    )
 
 
 def _complete_read[**P, T](method: Callable[P, Awaitable[T]]) -> Callable[P, Coroutine[Any, Any, T]]:
@@ -132,14 +143,28 @@ class OperationJournal:
             raise ValueError("Journal retention age must be positive")
         self.clock = clock or (lambda: datetime.now(UTC))
         self._lock = asyncio.Lock()
+        self.changes = OperationChangeFeed()
 
     @asynccontextmanager
     async def _write(self, *, committed: Callable[[], None] | None = None) -> AsyncGenerator[AsyncSession]:
         async with self.session_factory() as session:
+            tracked: dict[str, _TrackedOperation] = {}
+            session.info["operation_changes"] = tracked
             async with session.begin():
                 if session.get_bind().dialect.name == "sqlite":
                     await session.execute(text("BEGIN IMMEDIATE"))
                 yield session
+                notifications = tuple(
+                    _record(row) for row, previous in tracked.values()
+                    if previous != _refresh_signature(row)
+                )
+            for record in notifications:
+                try:
+                    self.changes.publish(record)
+                except Exception as error:  # noqa: BLE001 - notification failure cannot undo committed business work
+                    self.changes.track_state(record)
+                    self.changes.reset()
+                    log_safe_error(error, "Operation refresh notification failed")
             if committed is not None:
                 committed()
 
@@ -147,7 +172,20 @@ class OperationJournal:
         row = await session.get(OperationJournalEntry, operation_id)
         if row is None:
             raise KeyError(operation_id)
+        tracked = cast(dict[str, _TrackedOperation], session.info["operation_changes"])
+        tracked.setdefault(operation_id, (row, _refresh_signature(row)))
         return row
+
+    @_complete_write
+    async def initialize_changes(self) -> None:
+        query = select(OperationJournalEntry.operation_id).where(
+            OperationJournalEntry.state.not_in([state.value for state in TERMINAL_STATES]),
+        ).limit(self.limits.max_records + 1)
+        async with self.session_factory() as session:
+            operation_ids = (await session.scalars(query)).all()
+            if len(operation_ids) > self.limits.max_records:
+                raise JournalCapacityError()
+            self.changes.initialize_active(operation_ids)
 
     def _active(self, row: OperationJournalEntry) -> None:
         if OperationState(row.state) in TERMINAL_STATES:
@@ -197,6 +235,7 @@ class OperationJournal:
                 cache_degraded=False, resolved_by=None, resolved_at=None,
             )
             session.add(row)
+            cast(dict[str, _TrackedOperation], session.info["operation_changes"])[row.operation_id] = (row, None)
             await session.flush()
             accepted = _record(row)
             return accepted

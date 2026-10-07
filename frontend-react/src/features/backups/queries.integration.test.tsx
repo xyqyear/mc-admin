@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { focusManager, onlineManager } from '@tanstack/react-query'
 import { api, queryKeys } from '@/shared/http/api'
+import { createOperationFeed } from '@/test/operations'
 import { OperationObserver } from '@/app/operations/OperationObserver'
 import type { Operation } from '@/shared/operations/contracts'
 import { createTestClient, deferred } from '@/test/http'
@@ -278,26 +279,29 @@ it('refreshes running restoration history on entry and invalidation without peri
 it('refreshes recovery discovery and history when an operation completes on another page', async () => {
   let body = active
   let historyReads = 0
+  const feed = createOperationFeed(1)
   let operation: Operation = {
-    operation_id: 'restore-task', kind: 'snapshot_restore', state: 'running', legacy_id: 'restore-task',
-    failure_code: null, data_changed: false, updated_at: '2026-10-07T00:00:00Z', ended_at: null,
+    operation_id: 'restore-task', kind: 'snapshot_restore', state: 'running',
+    data_changed: false, updated_at: '2026-10-07T00:00:00Z', ended_at: null,
     resources: [{ kind: 'files', server_id: 'alpha', generation: 1, path: 'plugins' }],
   }
   server.use(
     http.get('*/api/snapshots/restorations/active', () => HttpResponse.json(body)),
     http.get('*/api/snapshots/restorations', () => { historyReads++; return HttpResponse.json(active) }),
-    http.get('*/api/operations', () => HttpResponse.json([operation])),
+    feed.handler,
   )
   const operationWrapper = ({ children }: { children: React.ReactNode }) => <TestProviders client={client}><OperationObserver sessionId="owner" />{children}</TestProviders>
   const view = renderHook(() => ({ discovery: useActiveRestorations('alpha'), history: useRestorationHistory('alpha') }), { wrapper: operationWrapper })
   await waitFor(() => expect(view.result.current.discovery.data).toEqual(active))
   await waitFor(() => expect(view.result.current.history.isSuccess).toBe(true))
-  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('owner'))).toEqual([operation]))
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('owner'))).toEqual({ cursor: '1:0', active_count: 1 }))
+  await waitFor(() => expect(view.result.current.history.isFetching).toBe(false))
+  const initialReads = historyReads
   body = empty
-  operation = { ...operation, state: 'succeeded', data_changed: true, ended_at: '2026-10-07T00:00:01Z' }
+  operation = { ...operation, state: 'succeeded', data_changed: true, ended_at: '2026-10-07T00:00:01Z' }; feed.publish(operation)
   await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.operations.all }) })
   await waitFor(() => expect(view.result.current.discovery.data).toEqual(empty))
-  await waitFor(() => expect(historyReads).toBe(2))
+  await waitFor(() => expect(historyReads).toBe(initialReads + 1))
   await advance(60000)
-  expect(historyReads).toBe(2)
+  expect(historyReads).toBe(initialReads + 1)
 })

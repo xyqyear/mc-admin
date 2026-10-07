@@ -56,6 +56,7 @@ export const useCancelTask = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: taskApi.cancelTask,
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: queryKeys.operations.all }) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
     },

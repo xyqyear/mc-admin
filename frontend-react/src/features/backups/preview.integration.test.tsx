@@ -2,7 +2,10 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-li
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { createTestClient } from '@/test/http'
+import { createTestClient, deferred } from '@/test/http'
+import { createOperationFeed } from '@/test/operations'
+import { queryKeys } from '@/shared/http/api'
+import { OperationObserver } from '@/app/operations/OperationObserver'
 import { TestProviders } from '@/test/TestProviders'
 import { useSnapshotPreview } from './commands'
 import type { SnapshotPreviewRequest } from './contracts'
@@ -16,6 +19,29 @@ beforeEach(() => { client = createTestClient() })
 afterEach(() => { client.clear(); server.resetHandlers(); vi.restoreAllMocks() })
 const wrapper = ({ children }: { children: React.ReactNode }) => <TestProviders client={client}>{children}</TestProviders>
 const request: SnapshotPreviewRequest = { source_snapshot_id: 'source', scope: { kind: 'paths', server_id: 'alpha', paths: ['plugins'] } }
+
+it('discovers preview acceptance after its submitting view has unmounted', async () => {
+  const feed = createOperationFeed()
+  const submitted = deferred<void>(), release = deferred<void>()
+  let reads = 0
+  server.use(feed.handler,
+    http.post('*/api/snapshots/previews', async () => {
+      submitted.resolve(); await release.promise
+      feed.publish({ operation_id: 'preview', kind: 'snapshot_preview', state: 'queued', data_changed: false, updated_at: '2026-10-07T00:00:00Z', ended_at: null, resources: [] })
+      feed.setActiveCount(1)
+      return HttpResponse.json({ task_id: 'preview' }, { status: 202 })
+    }),
+    http.get('*/api/tasks/preview', () => { reads++; return HttpResponse.json({ task_id: 'preview', status: 'running' }) }),
+  )
+  render(<TestProviders client={client}><OperationObserver sessionId="owner" /></TestProviders>)
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('owner'))).toBeTruthy())
+  const view = renderHook(() => useSnapshotPreview(request), { wrapper })
+  await submitted.promise
+  view.unmount()
+  await act(async () => { release.resolve() })
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.checkpoint('owner'))).toEqual({ cursor: '1:1', active_count: 1 }))
+  expect(reads).toBe(0)
+})
 
 it('keeps accepted preparation active through progress and disconnection without cancelling on unmount', async () => {
   let cancellations = 0

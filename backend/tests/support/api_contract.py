@@ -11,6 +11,7 @@ REPRESENTATIVE_PATHS = {
     "/user/me",
     "/tasks",
     "/tasks/{task_id}",
+    "/operations/changes",
     "/archive/upload/init",
     "/archive/upload/{upload_id}",
     "/archive/upload/{upload_id}/verify",

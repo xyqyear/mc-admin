@@ -77,5 +77,6 @@ describe('ordinary file upload lifecycle', () => {
     expect(mocks.uploadFileBatch).toHaveBeenCalledTimes(1)
     expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.files.lists('server') })
     expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.snapshots.rules('server') })
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.operations.all })
   })
 })

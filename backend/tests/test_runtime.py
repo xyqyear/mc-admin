@@ -94,6 +94,14 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
         await asyncio.gather(*(started.wait() for started in writers_started))
         assert first.task_manager.get_task(task_ids[1]) is None
         assert second.task_manager.get_task(task_ids[0]) is None
+        assert first.journal is not None and second.journal is not None
+        assert first.journal.changes is not second.journal.changes
+        first_changes = first.journal.changes.read()
+        assert second.journal.changes.read(first_changes.next_cursor).reset_required
+        first_cursor = first_changes.next_cursor
+        await first.journal.phase(task_ids[0], "changed", changed=True)
+        assert [item.operation_id for item in first.journal.changes.read(first_cursor).items] == [task_ids[0]]
+        assert second.journal.changes.read().active_count == 1
         subscriptions = [runtime.event_bus.subscribe() for runtime in (first, second)]
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=apps[0]), base_url="http://first") as a, httpx.AsyncClient(transport=httpx.ASGITransport(app=apps[1]), base_url="http://second") as b:
             responses = await asyncio.gather(a.get("/api/runtime-probe"), b.get("/api/runtime-probe"))

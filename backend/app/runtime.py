@@ -491,6 +491,10 @@ class Runtime:
             return
         await resource.close()
 
+    async def _close_operation_changes(self) -> None:
+        if self.journal is not None:
+            self.journal.changes.close()
+
     async def _close_event_bus(self) -> None:
         resource = self._event_bus
         if isinstance(resource, _Uninitialized) or resource is None:
@@ -629,6 +633,7 @@ class Runtime:
                     shutdown.push_async_callback(self._close_app_logger)
                     shutdown.push_async_callback(self._close_audit_logger)
                     shutdown.push_async_callback(self._close_database)
+                    shutdown.push_async_callback(self._close_operation_changes)
                     shutdown.push_async_callback(self._close_event_bus)
                     shutdown.push_async_callback(self._close_login_code_manager)
                     shutdown.push_async_callback(self._close_dns_manager)
