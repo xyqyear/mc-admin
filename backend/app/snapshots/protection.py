@@ -28,15 +28,18 @@ class SnapshotProtection:
         return not is_ignored(path, self.excluded)
 
     def execution_path(self, path: Path) -> Path:
-        for candidate in (path, *path.parents):
+        mapping = self._mapping_index.get(path)
+        if mapping is not None:
+            return mapping.execution
+        for candidate in path.parents:
             mapping = self._mapping_index.get(candidate)
             if mapping is not None:
                 return mapping.execution_path(path)
         return path
 
     def has_mapping(self, path: Path) -> bool:
-        return any(
-            candidate in self._mapping_index for candidate in (path, *path.parents)
+        return path in self._mapping_index or any(
+            candidate in self._mapping_index for candidate in path.parents
         )
 
     @cached_property

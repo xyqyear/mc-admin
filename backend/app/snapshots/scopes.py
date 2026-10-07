@@ -212,11 +212,10 @@ async def resolve_scope(
             else reference.data_path
         )
         paths = disjoint_paths(targets)
+        execution_paths = await async_fs.resolve_many(paths, base=base)
         mappings = tuple(
-            [
-                SnapshotPathMapping(path, await async_fs.resolve_inside(base, path))
-                for path in paths
-            ]
+            SnapshotPathMapping(path, execution)
+            for path, execution in zip(paths, execution_paths, strict=True)
         )
     except async_fs.PathOutsideBaseError as error:
         raise HTTPException(status_code=400, detail="目标超出服务器数据目录") from error

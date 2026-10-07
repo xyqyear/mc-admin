@@ -50,6 +50,12 @@ mappings, lexical and canonical file claims. `SnapshotProtection` freezes
 logical current exclusions together with source and retained-chain protection.
 Execution rechecks exclusions and mappings, rejecting configuration,
 `LEVEL_NAME` or accepted link-target drift before invoking Restic.
+Bulk scope resolution runs every candidate's complete `Path.resolve` and
+containment check in one worker-thread call with a shared resolved base.
+Source checks and execution rebinding likewise batch complete resolutions;
+they do not infer a file target from its parent. Preparation memoizes repeated
+parent existence reads only within that preparation, and safety/absence
+existence reads are batched before their authoritative execution checks.
 
 Repository readers can coexist. Manual tasks hold repository references from acceptance through queued work and subprocess cleanup; ready file and map previews retain
 their source through close/expiry and outstanding tile reads. Forget/prune and

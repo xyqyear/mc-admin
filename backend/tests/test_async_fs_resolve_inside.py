@@ -1,5 +1,4 @@
-"""Unit tests for async_fs.resolve_inside containment checks."""
-
+"""Filesystem read contracts and containment checks."""
 
 import pytest
 
@@ -73,3 +72,67 @@ async def test_base_through_symlink_normalized(tmp_path):
 
 def test_error_is_value_error():
     assert issubclass(PathOutsideBaseError, ValueError)
+
+
+async def test_batch_resolution_preserves_order_duplicates_and_missing_link_targets(
+    tmp_path,
+):
+    root = tmp_path / "data"
+    real = root / "real"
+    real.mkdir(parents=True)
+    (real / "value").write_text("untouched")
+    (root / "alias").symlink_to(real, target_is_directory=True)
+    (root / "dangling").symlink_to(root / "missing", target_is_directory=True)
+    base = tmp_path / "data-link"
+    base.symlink_to(root, target_is_directory=True)
+    paths = [
+        base / "alias" / "value",
+        base / "new",
+        base / "dangling" / "child",
+        base / "alias" / "value",
+    ]
+    assert await async_fs.resolve_many(paths, base=base) == (
+        real / "value",
+        root / "new",
+        root / "missing" / "child",
+        real / "value",
+    )
+    assert (real / "value").read_text() == "untouched"
+    assert (root / "dangling").is_symlink()
+    assert not (root / "missing").exists()
+
+
+@pytest.mark.parametrize(
+    "escape", ["../outside/value", "shortcut/value", "../data-other/value"]
+)
+async def test_batch_resolution_checks_every_candidate_for_escape(tmp_path, escape):
+    base = tmp_path / "data"
+    base.mkdir()
+    inside = base / "value"
+    inside.write_text("inside")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "value").write_text("outside")
+    (tmp_path / "data-other").mkdir()
+    (base / "shortcut").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(PathOutsideBaseError):
+        await async_fs.resolve_many([inside, base / "new", base / escape], base=base)
+    assert inside.read_text() == "inside"
+    assert (outside / "value").read_text() == "outside"
+
+
+async def test_batch_existence_reads_keep_dangling_links_and_input_order(tmp_path):
+    target = tmp_path / "value"
+    target.write_text("value")
+    missing = tmp_path / "missing"
+    link = tmp_path / "dangling"
+    link.symlink_to(missing)
+    assert await async_fs.lexists_many([missing, link, target, missing, link]) == (
+        False,
+        True,
+        True,
+        False,
+        True,
+    )
+    assert link.is_symlink()
+    assert not missing.exists()

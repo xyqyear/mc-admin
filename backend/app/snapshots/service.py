@@ -92,14 +92,19 @@ class SnapshotService:
         if selection is not None:
             excluded.extend(selection.excluded)
             source_roots = {Path(value) for value in source.paths}
-            selected_roots = {
-                parent
-                for item in protection.mappings
-                for parent in (item.logical, *item.logical.parents)
-                if parent in source_roots
-            }
-            for root in selected_roots:
-                if await async_fs.resolve(root) != root:
+            selected_roots: set[Path] = set()
+            checked: set[Path] = set()
+            for item in protection.mappings:
+                parent = item.logical
+                while parent not in checked:
+                    checked.add(parent)
+                    if parent in source_roots:
+                        selected_roots.add(parent)
+                    parent = parent.parent
+            roots = tuple(sorted(selected_roots))
+            executions = await async_fs.resolve_many(roots)
+            for root, execution in zip(roots, executions, strict=True):
+                if execution != root:
                     raise HTTPException(
                         status_code=409,
                         detail="源快照对应的链接目标已变化，请重新选择范围",
@@ -131,8 +136,8 @@ class SnapshotService:
         self, paths: Sequence[Path], protection: SnapshotProtection
     ) -> SnapshotProtection:
         mappings = {item.logical: item for item in protection.mappings}
-        for path in paths:
-            actual = await async_fs.resolve(path)
+        execution_paths = await async_fs.resolve_many(paths)
+        for path, actual in zip(paths, execution_paths, strict=True):
             existing = protection.has_mapping(path)
             expected = protection.execution_path(path) if existing else actual
             if actual != expected:
@@ -222,10 +227,15 @@ class SnapshotService:
                     raise
 
         async def apply() -> None:
-            for path in paths:
-                if protection.permits(path):
+            permitted = [path for path in paths if protection.permits(path)]
+            executions = [protection.execution_path(path) for path in permitted]
+            existing = await async_fs.lexists_many(executions)
+            for path, execution, exists in zip(
+                permitted, executions, existing, strict=True
+            ):
+                if exists:
                     await remove(
-                        protection.execution_path(path),
+                        execution,
                         self._execution_excludes(path, protection),
                     )
 

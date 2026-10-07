@@ -131,6 +131,14 @@ async def lexists(path: Path) -> bool:
     return await asyncio.to_thread(os.path.lexists, path)
 
 
+async def lexists_many(paths: Sequence[Path]) -> tuple[bool, ...]:
+    return await asyncio.to_thread(_lexists_many_sync, tuple(paths))
+
+
+def _lexists_many_sync(paths: Sequence[Path]) -> tuple[bool, ...]:
+    return tuple(os.path.lexists(path) for path in paths)
+
+
 def _iterdir_sync(path: Path) -> list[Path]:
     return list(path.iterdir())
 
@@ -142,6 +150,27 @@ async def resolve(path: Path, *, strict: bool = False) -> Path:
 
 class PathOutsideBaseError(ValueError):
     """A user-supplied path resolved outside its required base directory."""
+
+
+async def resolve_many(
+    paths: Sequence[Path], *, base: Path | None = None
+) -> tuple[Path, ...]:
+    return await asyncio.to_thread(_resolve_many_sync, tuple(paths), base)
+
+
+def _resolve_many_sync(
+    paths: Sequence[Path], base: Path | None
+) -> tuple[Path, ...]:
+    boundary = base.resolve() if base is not None else None
+    resolved = []
+    for path in paths:
+        actual = path.resolve()
+        if boundary is not None and not actual.is_relative_to(boundary):
+            raise PathOutsideBaseError(
+                f"Path {path} resolves to {actual}, outside {boundary}"
+            )
+        resolved.append(actual)
+    return tuple(resolved)
 
 
 async def resolve_inside(base: Path, candidate: Path) -> Path:

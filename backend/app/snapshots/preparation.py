@@ -95,11 +95,14 @@ class SnapshotPlanner:
         )
         claims = set(resolved.claims)
         missing_parents: set[Path] = set()
+        existing_parents: dict[Path, bool] = {}
         for path in resolved.execution_paths:
             for parent in path.parents:
-                if not parent.is_relative_to(self._root) or await async_fs.lexists(
-                    parent
-                ):
+                if not parent.is_relative_to(self._root):
+                    break
+                if parent not in existing_parents:
+                    existing_parents[parent] = await async_fs.lexists(parent)
+                if existing_parents[parent]:
                     break
                 missing_parents.add(parent)
         for ref in resolved.servers:

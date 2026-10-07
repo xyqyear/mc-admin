@@ -627,12 +627,12 @@ class SnapshotCommands:
             )
             await record_phase("safety_snapshot")
             present, missing = [], []
-            for path in prepared.paths:
-                (
-                    present
-                    if await async_fs.lexists(prepared.protection.execution_path(path))
-                    else missing
-                ).append(path)
+            paths = prepared.paths
+            existing = await async_fs.lexists_many(
+                [prepared.protection.execution_path(path) for path in paths]
+            )
+            for path, exists in zip(paths, existing, strict=True):
+                (present if exists else missing).append(path)
             if present:
                 safety = await self.snapshots.create_snapshot(
                     present, protection=prepared.protection

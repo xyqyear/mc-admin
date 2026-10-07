@@ -29,7 +29,11 @@ class SnapshotSelection:
         return {item.logical: item for item in self.mappings}
 
     def mapping_for(self, path: Path) -> SnapshotPathMapping | None:
-        for parent in (path, *path.parents):
+        if not self.mappings:
+            return None
+        if path in self.mapping_index:
+            return self.mapping_index[path]
+        for parent in path.parents:
             if parent in self.mapping_index:
                 return self.mapping_index[parent]
         return None
@@ -99,7 +103,7 @@ def snapshot_source_path(
     mapping = selection.mapping_for(logical)
     if mapping is not None:
         mapped = mapping.execution_path(logical)
-        if any(parent in roots for parent in (mapped, *mapped.parents)):
+        if mapped in roots or any(parent in roots for parent in mapped.parents):
             return mapped
     if logical in roots:
         return logical

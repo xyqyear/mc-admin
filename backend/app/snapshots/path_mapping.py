@@ -9,9 +9,13 @@ class SnapshotPathMapping:
     execution: Path
 
     def execution_path(self, path: Path) -> Path:
+        if path == self.logical:
+            return self.execution
         return self.execution / path.relative_to(self.logical)
 
     def logical_path(self, path: Path) -> Path:
+        if path == self.execution:
+            return self.logical
         return self.logical / path.relative_to(self.execution)
 
 
