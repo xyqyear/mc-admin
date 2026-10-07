@@ -644,6 +644,15 @@ export const versionUpdates: VersionUpdate[] = [
       '下载文件夹和压缩包使用服务器名与浏览器本地时间命名',
     ],
   },
+  {
+    version: '6.1.0',
+    date: '2026-10-07',
+    title: '重启计划兼容修复',
+    description: '重启计划按服务器名识别，保留原有计划和执行历史。',
+    fixes: [
+      '重启计划按服务器名识别，修复旧数据库升级后部分计划不可用的问题',
+    ],
+  },
 ]
 
 function parseVersion(version: string) {
