@@ -37,7 +37,7 @@ export function useSnapshotOperation(scope: SnapshotScope | null, options: {
   const task = useTask(taskId)
   const terminal = task.data && ['completed', 'failed', 'cancelled'].includes(task.data.status)
   useEffect(() => { if (terminal) submittingRef.current = false }, [terminal])
-  const checking = enabled && (!discovery.isFetchedAfterMount || discovery.isError)
+  const checking = discovery.checking
   const state: RestoreProgressState = {
     active: submitting || (!!taskId && !terminal),
     percent: task.data?.progress ?? null,

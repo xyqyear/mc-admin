@@ -1,9 +1,11 @@
 import { queryOptions } from '@tanstack/react-query';
 import { getErrorStatus, shouldRetryQuery } from '@/shared/http/api';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from 'react';
 import { snapshotApi } from "@/features/backups/api";
 import { queryKeys } from "@/shared/http/api";
 import type { RestorationFilters, SnapshotScope } from './contracts';
+import { activeRestorationsQueryOptions, retainActiveRestorationPolling } from './activeRestorationPolling';
 
 export function useSnapshotTarget(scope: SnapshotScope | null) {
   return useQuery({
@@ -15,13 +17,30 @@ export function useSnapshotTarget(scope: SnapshotScope | null) {
 }
 
 export function useActiveRestorations(serverId?: string, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.snapshots.active(serverId),
-    queryFn: () => snapshotApi.active(serverId),
+  const client = useQueryClient();
+  const options = activeRestorationsQueryOptions(serverId);
+  const updates = () => client.getQueryState(options.queryKey)?.dataUpdateCount ?? 0;
+  const [entry, setEntry] = useState(() => ({ serverId, enabled, dataUpdateCount: updates() }));
+  if (entry.serverId !== serverId || entry.enabled !== enabled) {
+    setEntry({ serverId, enabled, dataUpdateCount: updates() });
+  }
+  const query = useQuery({
+    ...options,
     enabled,
-    refetchInterval: 2000,
-    staleTime: 0,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchInterval: false,
   });
+  useEffect(() => {
+    if (!enabled) return;
+    const polling = retainActiveRestorationPolling(client, serverId);
+    void polling.refresh();
+    return polling.release;
+  }, [client, serverId, enabled]);
+  const checked = entry.serverId === serverId && entry.enabled === enabled && updates() > entry.dataUpdateCount;
+  return { ...query, checking: enabled && (!checked || !query.isSuccess) };
 }
 
 export function useEligibleSnapshots(scope: SnapshotScope | null) {
@@ -38,7 +57,9 @@ export function useRestorationHistory(serverId?: string, offset = 0, enabled = t
     queryKey: queryKeys.snapshots.history(serverId, offset, filters),
     queryFn: () => snapshotApi.history(serverId, offset, filters),
     enabled,
-    refetchInterval: query => query.state.data?.restorations.some(row => row.status === 'pending' || row.status === 'running') ? 2000 : false,
+    refetchInterval: false,
+    refetchOnMount: 'always',
+    staleTime: 0,
   });
 }
 export const useGlobalSnapshots = (options?: Partial<Omit<ReturnType<typeof globalSnapshotsQueryOptions>, 'queryKey' | 'queryFn'>>) => {

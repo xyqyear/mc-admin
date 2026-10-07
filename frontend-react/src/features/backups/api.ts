@@ -7,12 +7,13 @@ import type { ActiveRestorations, RestorationFilters, SnapshotTargetCheck } from
 export const snapshotApi = {
   checkTarget: async (scope: SnapshotScope) =>
     (await api.post<SnapshotTargetCheck>('/snapshots/targets/check', { scope })).data,
-  active: async (serverId?: string): Promise<ActiveRestorations> => {
+  active: async (serverId?: string, signal?: AbortSignal): Promise<ActiveRestorations> => {
     const restorations: ActiveRestorations['restorations'] = [];
     let page: ActiveRestorations;
     do {
       page = (await api.get<ActiveRestorations>('/snapshots/restorations/active', {
         params: { server_id: serverId, offset: restorations.length, limit: 200 },
+        signal,
       })).data;
       restorations.push(...page.restorations);
     } while (page.restorations.length && restorations.length < page.total);

@@ -151,7 +151,7 @@ DNS integration tests exercise degraded/unknown and empty desired states, update
 File controls submit explicit data-path scopes through `features/backups/commands`.
 Creation stays busy until the task finishes. Recovery uses the common progress card;
 HTTP acceptance does not unlock it, status read errors show reconnecting, and
-navigation only stops observation. Database-only active restoration discovery resumes observation on remount.
+navigation only stops observation. Database-only active restoration discovery resumes observation on entry and re-enabling. One feature-owned polling observer per QueryClient/server scope serves all file, world and history consumers: empty results poll every 30 seconds, active/unknown/failed results every two seconds. Fresh entry checks and errors retain admission guards; history lists refresh on entry, actions and invalidation instead of periodic repository reads. The last consumer detaching stops its polling.
 The server toolbar opens paginated recovery history, including safety availability
 and parent rollback links. A confirmed rollback replaces later changes in the
 selected scope, first saving a new safety snapshot so that rollback is reversible.
