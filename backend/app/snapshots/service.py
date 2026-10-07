@@ -606,7 +606,9 @@ class SnapshotService:
             await self._project_notes(snapshots)
             return snapshots
 
-        protection = await self._bind_paths([path_filter], await self.protection())
+        protection = await self._bind_paths(
+            [path_filter], SnapshotProtection.capture(())
+        )
         filtered: list[ResticSnapshot] = []
         for snapshot in snapshots:
             try:
@@ -635,7 +637,7 @@ class SnapshotService:
                 raise ValueError("Paths must be absolute")
 
         all_snapshots = await self._client.list_snapshots()
-        protection = await self._bind_paths(paths, await self.protection())
+        protection = await self._bind_paths(paths, SnapshotProtection.capture(()))
 
         matching: list[ResticSnapshot] = []
         for snapshot in all_snapshots:

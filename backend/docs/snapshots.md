@@ -66,6 +66,7 @@ Semantics:
 - **Backup** projects each logical exclusion inside a selected root to that root's frozen execution tree and passes absolute `--exclude` paths to Restic. Several selected aliases can share storage while retaining different logical protection. Data allowed through another selected alias is included; irreducible overlapping nested roots fail with `多个链接范围的排除规则重叠，请分别创建快照` before a snapshot is written.
 - **Restore** never overwrites *or deletes* protected logical paths, even though restores run with `--delete`. Current rules, the source's logical selection evidence, its recorded physical `excludes` projected through the selected roots, and retained restoration-chain exclusions combine before execution.
 - **Coverage** (`find_snapshots_covering`, path-filtered listing, self-check freshness) is exclude-aware: a snapshot whose recorded excludes contain the queried path does not count as covering it, while an exclude strictly below the queried path doesn't disqualify the snapshot (`coverage.py`).
+- Historical listing and source coverage use each snapshot's recorded protection, independent of current dynamic configuration. Current rule changes do not hide existing history; eligible-source and execution checks enforce the current rules separately.
 - Snapshotting or restoring a target that itself lies under an ignored path raises `TargetIgnoredError` (HTTP 400 before task acceptance).
 
 Application snapshots carry a bounded `mc-admin-logical-v2:` tag containing

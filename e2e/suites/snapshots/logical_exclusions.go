@@ -176,6 +176,15 @@ func logicalExclusions(ctx context.Context, t *engine.Scope) error {
 	if !slices.Equal(changed.Paths, []string{"target"}) || changed.Version == initial.Version || changed.Generation != initial.Generation {
 		return fmt.Errorf("shared rules did not reflect updated configuration: %+v", changed)
 	}
+	var history struct {
+		Snapshots []notedSnapshot `json:"snapshots"`
+	}
+	if err := client.JSON(ctx, "GET", "/api/snapshots?server_id="+url.QueryEscape(id)+"&path=target", nil, &history, 200); err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(history.Snapshots, func(source notedSnapshot) bool { return source.ID == direct.Snapshot.ID }) {
+		return fmt.Errorf("current ignore configuration hid a historical snapshot")
+	}
 	if err := checkWorld("target", false); err != nil {
 		return err
 	}

@@ -278,3 +278,21 @@ async def test_parent_source_allows_existing_internal_link_child_selection(case)
     )
     assert (target / "value").read_text() == "snapshot"
     assert (case.data / "alias").is_symlink()
+
+
+async def test_current_rules_do_not_hide_existing_snapshot_history(case):
+    target = case.data / "value"
+    target.write_text("source")
+    scope = PathsScope(server_id="survival", paths=("value",))
+    created = await complete(case, await case.commands.create(scope, 1))
+    source_id = created["snapshot"]["id"]
+    case.config.snapshots.ignored_paths = ["value"]
+    assert source_id in {
+        source.id for source in await case.snapshots.list_snapshots(path_filter=target)
+    }
+    assert source_id in {
+        source.id for source in await case.snapshots.find_snapshots_covering([target])
+    }
+    with pytest.raises(TargetIgnoredError):
+        await case.commands.restore(scope, source_id, 1)
+    assert target.read_text() == "source"
