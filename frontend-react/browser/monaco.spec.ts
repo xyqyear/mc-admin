@@ -44,6 +44,17 @@ async function pasteEditor(page: Page, value: string) {
   await page.keyboard.press('ControlOrMeta+A')
   await page.evaluate(text => navigator.clipboard.writeText(text), value)
   await page.keyboard.press('ControlOrMeta+V')
+  // Monaco cancels asynchronous paste if the selection moves before it finishes.
+  const pastedEnding = value.trim() === 'services: ]'
+    ? /^\s*services:\s*\]\s*$/
+    : /^\s*restart:\s*["']?no["']?\s*$/
+  await expect(editor.locator('.view-line').filter({ hasText: pastedEnding })).toBeVisible()
+  const unfinishedProperty = editor.locator('.view-line').filter({ hasText: /^\s*MEM\s*$/ })
+  if (value.split('\n').some(line => line.trim() === 'MEM')) {
+    await expect(unfinishedProperty).toBeVisible()
+  } else {
+    await expect(unfinishedProperty).toHaveCount(0)
+  }
   await page.keyboard.press('ControlOrMeta+Home')
 }
 
