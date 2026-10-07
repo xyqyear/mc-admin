@@ -8,6 +8,8 @@ Monaco is the code editor for compose YAML, server config files, file-edit dialo
 
 `main.tsx` calls `MonacoEnvironment.getWorker(_, label)` and returns the right worker URL per label. The custom YAML worker is `yaml.worker.js` (loaded via Vite's `?worker` import), which monaco-yaml uses for schema validation.
 
+`ComposeYamlEditor` passes a scoped Monaco facade to monaco-yaml. Its `editor.createWebWorker` delegates to Monaco's top-level `createWebWorker`, which forwards the YAML label and initialization data to the registered worker. The application Monaco module and other language workers retain their original APIs. This adapter is required by the current monaco-worker-manager release; remove it after upgrading to an upstream release that resolves [worker compatibility issue #3](https://github.com/remcohaszing/monaco-worker-manager/issues/3) and verifying the real YAML worker's diagnostics and completions.
+
 ```ts
 self.MonacoEnvironment = {
   getWorker(_, label) {

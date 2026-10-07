@@ -139,6 +139,7 @@ Saved cron `status` is displayed as enabled/paused/cancelled. `registration_stat
 ## Monaco editor
 
 - YAML worker at `yaml.worker.js` (registered in `main.tsx`).
+- `ComposeYamlEditor` supplies monaco-yaml a scoped worker compatibility facade; remove it after an upstream fix and real-worker verification. See `docs/monaco-editor.md`.
 - `snbtLanguage.ts` registers a custom Monaco language for Minecraft NBT files.
 - Docker Compose schema with docker-minecraft-server hints lives at `public/static/mc-server-compose-schema.json`.
 

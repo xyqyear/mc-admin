@@ -26,6 +26,23 @@
 - **WHEN** 用户确认创建缺失的重启计划
 - **THEN** 创建绑定当前服务器身份的受管计划，卡片显示该计划，管理入口打开对应任务详情
 
+### Requirement: Compose 编辑辅助功能保持可用
+
+系统必须（SHALL）在服务器 Compose 和模板 YAML 编辑器中提供语法诊断及 Compose Schema 补全。已打包的编辑器必须（SHALL）能够启动实际 YAML 语言服务，不得（SHALL NOT）因语言服务通信错误悄然失去辅助功能；离开页面后再次进入必须（SHALL）保持这些功能可用。
+
+#### Scenario: 编辑服务器或模板时输入无效 YAML
+- **WHEN** 用户在服务器 Compose 或模板编辑界面输入无效的 YAML 结构
+- **THEN** 编辑器显示对应语法错误，修正后移除该错误
+- **AND** 语言服务不会产生缺失请求处理方法的浏览器异常
+
+#### Scenario: 使用 Compose 属性补全
+- **WHEN** 用户在服务器 Compose 或模板编辑界面请求服务属性的补全建议
+- **THEN** 编辑器提供来自 Compose Schema 的属性建议
+
+#### Scenario: 再次打开编辑器
+- **WHEN** 用户离开 Compose 或模板编辑页面后重新打开编辑器
+- **THEN** YAML 诊断和 Compose Schema 补全继续可用
+
 ### Requirement: Existing administration contracts remain usable
 
 **现有管理契约保持可用**

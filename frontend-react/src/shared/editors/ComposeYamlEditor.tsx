@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react'
-import Editor from '@monaco-editor/react'
+import Editor, { type OnMount } from '@monaco-editor/react'
 import { configureMonacoYaml } from 'monaco-yaml'
-import { type IDisposable } from 'monaco-editor'
+import { createWebWorker, type IDisposable } from 'monaco-editor'
 import { useMonacoTheme } from '@/shared/theme-provider'
 
 export interface ComposeYamlEditorProps {
@@ -42,11 +42,21 @@ const ComposeYamlEditor: React.FC<ComposeYamlEditorProps> = ({
     }
   }, [])
 
-  const handleEditorMount = (editor: any, monaco: any) => {
+  const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
 
     try {
-      yamlDisposableRef.current = configureMonacoYaml(monaco, {
+      const yamlMonaco = {
+        ...monaco,
+        editor: {
+          ...monaco.editor,
+          // monaco-worker-manager's legacy options require Monaco's top-level worker adapter.
+          // Remove after upgrading to a fixed upstream version and verifying YAML workers:
+          // https://github.com/remcohaszing/monaco-worker-manager/issues/3
+          createWebWorker,
+        },
+      }
+      yamlDisposableRef.current = configureMonacoYaml(yamlMonaco, {
         enableSchemaRequest: true,
         hover: true,
         completion: true,
