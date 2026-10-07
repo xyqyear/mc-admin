@@ -7,6 +7,7 @@ import { queryKeys } from '@/shared/http/api'
 import { useDownloadManager } from '@/features/tasks/downloads'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { formatLocalFilenameTimestamp } from '@/shared/utils/formatUtils'
 const getParentPath = (path: string) => {
   if (!path || path === '/') return '/'
   const normalized = path.endsWith('/') ? path.slice(0, -1) : path
@@ -50,7 +51,7 @@ export const useCreateArchive = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (request: CreateArchiveRequest) =>
-      archiveApi.createArchive(request),
+      archiveApi.createArchive({ ...request, client_timestamp: request.client_timestamp ?? formatLocalFilenameTimestamp() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
     },

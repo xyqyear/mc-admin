@@ -12,9 +12,11 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
 beforeEach(() => { client = createTestClient() })
-afterEach(() => { client.clear(); server.resetHandlers() })
+afterEach(() => { client.clear(); server.resetHandlers(); vi.useRealTimers() })
 
 it('keeps packing blocked between acceptance and the first confirmed task observation', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(2026, 9, 7, 15, 42, 3, 123))
   const observed = deferred<void>()
   let requests = 0
   let taskReads = 0
@@ -22,7 +24,7 @@ it('keeps packing blocked between acceptance and the first confirmed task observ
     http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, skipped_count: 0 })),
     http.post('*/api/archive/compress', async ({ request }) => {
       requests++
-      expect(await request.json()).toEqual({ server_id: 'alpha', paths: ['/config/a.txt', '/plugins'] })
+      expect(await request.json()).toEqual({ server_id: 'alpha', paths: ['/config/a.txt', '/plugins'], client_timestamp: '20261007_154203_123' })
       return HttpResponse.json({ task_id: 'pack' }, { status: 202 })
     }),
     http.get('*/api/tasks/pack', async () => { taskReads++; await observed.promise; return HttpResponse.json({ task_id: 'pack', status: 'completed', result: { filename: 'selection.7z' } }) }),

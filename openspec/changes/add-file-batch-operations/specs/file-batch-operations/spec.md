@@ -66,3 +66,14 @@ The file browser and advanced-search results SHALL retain stable batch-control s
 #### Scenario: Selection does not insert a new control row
 - **WHEN** an administrator selects the first result or clears the last selection
 - **THEN** batch controls become available or hidden inside their retained layout area without displacing the file list
+
+### Requirement: Export names use the server and browser-local time
+Packed archives and local export folders created through the browser SHALL use the filesystem-safe server name and a browser-local timestamp, without hashes, random identifiers or selected-path fragments. Archive names SHALL retain their format extension. Existing outputs SHALL remain intact on collisions; a numeric collision suffix MAY distinguish an additional output. Legacy archive requests without a client timestamp SHALL remain supported.
+
+#### Scenario: Browser timezone differs from the server
+- **WHEN** an administrator creates an archive or exports a local folder with a browser timezone different from the backend timezone
+- **THEN** the final name reflects the browser-local calendar date and clock time rather than a UTC ISO string or the backend clock
+
+#### Scenario: Repeated timestamp preserves earlier output
+- **WHEN** another export uses the same server name and timestamp as an existing output
+- **THEN** the new output receives a distinct name and the earlier output retains its original content

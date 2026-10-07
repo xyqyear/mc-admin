@@ -14,7 +14,7 @@
 
 ## 浏览器目录导出
 
-`useDirectoryDownload` 检查安全上下文、`showDirectoryPicker` 和 `FileSystemFileHandle.createWritable`。支持的浏览器通过用户点击同步发起目录选择；授权后在所选位置建立唯一的 `MC导出-*` 子目录。按钮在不支持的浏览器中保留并禁用，悬浮显示“当前浏览器不支持直接下载到文件夹，仅支持 Chrome 和 Edge。”；能力受 HTTP 环境限制时提示使用 HTTPS 或 localhost。打包功能独立可用。
+`useDirectoryDownload` 检查安全上下文、`showDirectoryPicker` 和 `FileSystemFileHandle.createWritable`。支持的浏览器通过用户点击同步发起目录选择；授权后在所选位置建立独立子目录。导出目录和压缩包均使用文件系统安全的服务器名与浏览器本地时间 `YYYYMMDD_HHmmss_SSS`，例如 `dev_20261007_154200_123`；压缩包添加 `.7z` 扩展名。名称不含路径片段或随机标识，存在同名时增加 ` (2)` 等序号并保留已有内容。压缩命令通过 `client_timestamp` 传递本地时间，不使用 UTC ISO 字符串或后端时区。按钮在不支持的浏览器中保留并禁用，悬浮显示“当前浏览器不支持直接下载到文件夹，仅支持 Chrome 和 Edge。”；能力受 HTTP 环境限制时提示使用 HTTPS 或 localhost。打包功能独立可用。
 
 原路径布局以列表当前目录或捕获的搜索根为基准，保留相对目录和空目录。平铺只保留文件；同名文件、大小写冲突、Windows 保留名、非法字符和过长文件名映射为安全名称，任务中心展示映射提示。导出目录独立于已有内容，不覆盖已有文件。
 

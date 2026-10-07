@@ -51,6 +51,11 @@ export function formatDateTime(timeString: string): string {
   });
 }
 
+export function formatLocalFilenameTimestamp(date = new Date()): string {
+  const pad = (value: number, length = 2) => String(value).padStart(length, '0');
+  return `${pad(date.getFullYear(), 4)}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}_${pad(date.getMilliseconds(), 3)}`;
+}
+
 // Reused across many sorts; the Collator constructor is comparatively expensive.
 const naturalCollator = new Intl.Collator(undefined, {
   numeric: true,
@@ -70,4 +75,3 @@ export function formatUUID(uuid: string): string {
 
   return `${uuid.substring(0, 8)}-${uuid.substring(8, 12)}-${uuid.substring(12, 16)}-${uuid.substring(16, 20)}-${uuid.substring(20, 32)}`;
 }
-

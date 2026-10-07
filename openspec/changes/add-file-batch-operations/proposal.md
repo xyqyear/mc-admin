@@ -12,6 +12,7 @@ Issue #175 asks administrators to inspect online players without leaving the ser
 - Preserve existing task acceptance, safety snapshots, restoration history, exclusion protection and truthful partial outcomes.
 - Share activity-aware restoration discovery across file, world and history consumers, preserving fresh admission checks while reducing idle polling and repeated repository reads.
 - Keep batch controls and ignore-rule explanations from changing the file-list layout during selection and asynchronous checks.
+- Name packed archives and local export folders with the server name and browser-local timestamp, without random identifiers or selected-path fragments, while preserving existing output on name collisions.
 - Player-specific complete rollback and its research are outside this change.
 
 ## Capabilities

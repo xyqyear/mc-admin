@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"regexp"
 
 	"mc-admin/e2e/internal/engine"
 	"mc-admin/e2e/internal/fixtures"
@@ -28,6 +29,7 @@ func subpathCompression(ctx context.Context, t *engine.Scope) error {
 		}
 	}
 	backend := fixtures.BackendOf(t.Env)
+	archiveName := regexp.MustCompile("^" + regexp.QuoteMeta(id) + `_[0-9]{8}_[0-9]{6}_[0-9]{3}( \([0-9]+\))?[.]7z$`)
 	const inspectArchive = `import base64,json,subprocess,sys
 archive,member=sys.argv[1:]
 listing=subprocess.check_output(['7z','l','-slt',archive],text=True).split('----------\n',1)[1]
@@ -46,8 +48,8 @@ print(json.dumps({'members':paths,'content':base64.b64encode(content).decode()})
 			return "", nil, err
 		}
 		filename, ok := task.Result["filename"].(string)
-		if !ok || filename == "" {
-			return "", nil, fmt.Errorf("selected compression has no output filename")
+		if !ok || !archiveName.MatchString(filename) {
+			return "", nil, fmt.Errorf("legacy compression filename %q must contain only the server name and timestamp", filename)
 		}
 		response, err := c.Do(ctx, "GET", "/api/archive/download?path="+url.QueryEscape("/"+filename), nil, nil)
 		if err != nil {

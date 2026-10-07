@@ -35,4 +35,10 @@
 - [x] 6.3 Keep batch control geometry stable across selection and ignore-check states in browsing and advanced search, retaining reasons in button tooltips and browser layout coverage.
 - [x] 6.4 Update current-state observation/file documentation, validate specifications, run affected tests and required frontend checks, and prepare issue-linked commits on the follow-up branch.
 
+## 7. Browser-local export names
+
+- [x] 7.1 Use one filesystem-safe browser-local timestamp format for archive commands and export folders, retaining existing directory collision protection and covering exact output names.
+- [x] 7.2 Accept validated client timestamps for archive naming, omit path and random identifiers, preserve independent outputs and prevent publication from overwriting a late collision.
+- [x] 7.3 Cover non-UTC browser naming and repeated archive timestamps through real browser/API scenarios, update contracts and current-state documentation, and complete affected verification and issue-linked commits.
+
 Delivery requires pushing the development branch and qualifying its latest SHA with `publish=false`, then verifying every required gate and coverage/cleanup audit under the root AGENTS.md workflow. This external gate remains required after the versioned implementation checklist is complete.

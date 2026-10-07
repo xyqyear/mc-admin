@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from ..background_tasks import TaskProgress, TaskType, get_task_manager
 from ..background_tasks.api_models import TaskAccepted
 from ..config import get_settings
+from ..errors import PublicOperationError
 from ..files import base
 from ..files.paths import (
     normalize_selected_paths,
@@ -36,7 +37,11 @@ from ..operations.coordinator import (
 from ..operations.execution import operation_scope, settle_before_release
 from ..operations.finalization import finalize
 from ..utils import async_fs
-from ..utils.compression import create_server_archive_stream, generate_archive_filename
+from ..utils.compression import (
+    available_archive_path,
+    create_server_archive_stream,
+    generate_archive_filename,
+)
 
 STAGE_PREFIX = ".mc-admin-archive-"
 
@@ -116,7 +121,10 @@ class CompressionPlan:
     sources: tuple[Path, ...] = ()
 
 
-async def prepare_compression(instance: MCInstance, relative_path: str | None, *, paths: Sequence[str] | None = None) -> CompressionPlan:
+async def prepare_compression(
+    instance: MCInstance, relative_path: str | None, *,
+    paths: Sequence[str] | None = None, client_timestamp: str | None = None,
+) -> CompressionPlan:
     settings = get_settings()
     if paths is not None:
         for path in paths:
@@ -131,7 +139,9 @@ async def prepare_compression(instance: MCInstance, relative_path: str | None, *
     archive_root = await async_fs.resolve(settings.archive_path)
     token = uuid4().hex
     stage = archive_root / f"{STAGE_PREFIX}{token}.tmp"
-    output = archive_root / generate_archive_filename(instance.get_name(), relative_path)
+    output = await available_archive_path(
+        archive_root, generate_archive_filename(instance.get_name(), client_timestamp),
+    )
     claims = (*await path_claims(instance.get_project_path(), sources, server_id=instance.get_name()), *await archive_claims(archive_root, [output, stage]))
     return CompressionPlan(instance, relative_path, sources[0], output, stage, token, claims, roots, sources)
 
@@ -148,7 +158,10 @@ async def compress(plan: CompressionPlan) -> AsyncGenerator[TaskProgress]:
                     if event.result is None:
                         yield event
             await record_phase("publishing_archive", changed=True)
-            await finalize(aioos.replace(plan.stage, plan.output))
+            try:
+                await finalize(aioos.link(plan.stage, plan.output))
+            except FileExistsError as error:
+                raise PublicOperationError("同名压缩包已存在，请重新创建压缩包") from error
             size = (await aioos.stat(plan.output)).st_size
         finally:
             async def cleanup() -> None:

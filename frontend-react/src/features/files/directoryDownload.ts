@@ -2,6 +2,7 @@ import type { FileDownloadManifestEntry } from '@/features/files/contracts'
 import { fileApi } from '@/features/files/api'
 import type { ManagedDownloadProgress, ManagedDownloadResult } from '@/features/tasks/downloads'
 import { getErrorMessage } from '@/shared/http/api'
+import { formatLocalFilenameTimestamp } from '@/shared/utils/formatUtils'
 
 export type DirectoryDownloadLayout = 'flat' | 'original'
 
@@ -124,9 +125,10 @@ const isMissing = (error: unknown): boolean => error instanceof DOMException && 
 
 export const createExportDirectory = async (
   selected: FileSystemDirectoryHandle,
+  serverName: string,
   signal: AbortSignal,
 ): Promise<FileSystemDirectoryHandle> => {
-  const name = `MC导出-${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomUUID().slice(0, 8)}`
+  const name = `${localName(serverName.replace(/ /g, '_'))}_${formatLocalFilenameTimestamp()}`
   for (let number = 1; ; number += 1) {
     signal.throwIfAborted()
     const candidate = number === 1 ? name : `${name} (${number})`
@@ -158,7 +160,7 @@ export const executeDirectoryDownload = async (
   signal: AbortSignal,
 ): Promise<ManagedDownloadResult> => {
   const started = Date.now()
-  const output = await createExportDirectory(selected, signal).catch((error: unknown) => {
+  const output = await createExportDirectory(selected, serverId, signal).catch((error: unknown) => {
     if (signal.aborted) throw error
     throw new Error(getLocalDownloadError(error), { cause: error })
   })

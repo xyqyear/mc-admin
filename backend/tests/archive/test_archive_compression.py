@@ -2,6 +2,7 @@ from tests.support.runtime import patch_settings
 
 """Archive compression tests, including the background-task pipeline."""
 import asyncio
+import re
 import sys
 import tempfile
 from contextlib import aclosing
@@ -44,19 +45,18 @@ class TestFilenameGeneration:
 
     def test_generate_filename_server_only(self):
         filename = generate_archive_filename("test_server")
-        assert filename.startswith("test_server_")
-        assert filename.endswith(".7z")
+        assert re.fullmatch(r"test_server_[0-9]{8}_[0-9]{6}_[0-9]{3}\.7z", filename)
 
-    def test_generate_filename_with_path(self):
-        filename = generate_archive_filename("test_server", "/plugins/config")
-        assert "test_server" in filename
-        assert "plugins_config" in filename
-        assert filename.endswith(".7z")
+    def test_generate_filename_keeps_browser_local_timestamp(self):
+        assert generate_archive_filename("test_server", "20261007_154200_123") == "test_server_20261007_154200_123.7z"
 
-    def test_generate_filename_with_root_path(self):
-        filename = generate_archive_filename("test_server", "/")
-        assert "test_server" in filename
-        assert filename.endswith(".7z")
+    def test_generate_filename_uses_backend_local_time_for_legacy_clients(self):
+        from datetime import datetime, timedelta, timezone
+
+        local = datetime(2026, 10, 7, 15, 42, 0, 123000, tzinfo=timezone(timedelta(hours=8)))
+        with patch("app.utils.compression.datetime") as clock:
+            clock.now.return_value.astimezone.return_value = local
+            assert generate_archive_filename("test_server") == "test_server_20261007_154200_123.7z"
 
     def test_generate_filename_sanitizes_server_name(self):
         filename = generate_archive_filename("test server:2024")
@@ -142,13 +142,13 @@ class TestCreateServerArchiveStream:
 
             result = None
             async for progress in create_server_archive_stream(
-                mock_instance, "/plugins"
+                mock_instance, "/plugins", client_timestamp="20261007_154200_123",
             ):
                 if progress.result:
                     result = progress.result
 
             assert result is not None
-            assert "plugins" in result["filename"]
+            assert result["filename"] == "test_server_20261007_154200_123.7z"
             archive = archive_dir / result["filename"]
             destination = archive_dir / "extracted-plugins"
             process = await asyncio.create_subprocess_exec(
@@ -184,6 +184,8 @@ class TestCreateServerArchiveStream:
                 if len(results) == 1:
                     original = (archive_dir / results[0]["filename"]).read_bytes()
         assert results[0]["filename"] != results[1]["filename"]
+        assert re.fullmatch(r"test_server_[0-9]{8}_[0-9]{6}_[0-9]{3}\.7z", results[0]["filename"])
+        assert results[1]["filename"] == results[0]["filename"].removesuffix(".7z") + " (2).7z"
         assert (archive_dir / results[0]["filename"]).read_bytes() == original
         assert (archive_dir / results[1]["filename"]).stat().st_size == results[1]["size"]
         for index, expected in enumerate((b"first", b"second contents")):

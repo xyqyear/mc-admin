@@ -1,6 +1,6 @@
 {
-  "base_commit": "3537e7da23811b56a68dcd417c6e404f93c60a7a",
-  "source": "Reviewed working tree for add-file-batch-operations",
+  "base_commit": "3661d2e3f747fe6662ef5154218d89267fa2d242",
+  "source": "Reviewed working tree for browser-local export names in add-file-batch-operations",
   "captured_on": "2026-10-07",
-  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including non-snapshot task acceptance, file batch deletion, paginated download manifests, generation-bound downloads, multi-path compression and snapshot notes; public event and task payload schemas"
+  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including non-snapshot task acceptance, file batch deletion, paginated download manifests, generation-bound downloads, multi-path compression with validated browser-local timestamps and snapshot notes; public event and task payload schemas"
 }

@@ -3,6 +3,8 @@ import path from 'node:path'
 import { test, expect, login } from './fixtures'
 import { withCleanup } from './cleanup'
 
+test.use({ timezoneId: 'Asia/Shanghai' })
+
 test('multiple checked files share snapshot recovery, packing and deletion while unselected bytes stay intact', { annotation: { type: 'shard_isolation', description: 'independent' } }, async ({ page, api, owned }) => {
   const root = 'browser-batch-files'
   let created = false
@@ -41,12 +43,16 @@ test('multiple checked files share snapshot recovery, packing and deletion while
     expect((await api.file(root + '/a.txt')).content).toBe('a.txt snapshot bytes\n')
     expect((await api.file(root + '/b.txt')).content).toBe('b.txt snapshot bytes\n')
     expect((await api.file(root + '/keep.txt')).content).toBe('unselected keep\n')
+    const namingTime = new Date('2026-10-06T16:42:00.123Z')
+    await page.clock.setFixedTime(namingTime)
     const packResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/archive/compress')
     await page.getByRole('button', { name: '打包所选', exact: true }).click()
     await page.getByRole('button', { name: '开始压缩', exact: true }).click()
     const packed = await packResponse
-    expect(packed.request().postDataJSON()).toEqual({ server_id: owned.server_id, paths: [`/${root}/a.txt`, `/${root}/b.txt`] })
+    await page.clock.setSystemTime(namingTime)
+    expect(packed.request().postDataJSON()).toEqual({ server_id: owned.server_id, paths: [`/${root}/a.txt`, `/${root}/b.txt`], client_timestamp: '20261007_004200_123' })
     archive = (await api.task((await packed.json()).task_id)).result?.filename as string
+    expect(archive).toBe(`${owned.server_id}_20261007_004200_123.7z`)
     await expect(page.getByRole('dialog', { name: '压缩完成' }).getByText(archive, { exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
     const deletionResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/files/delete-batch'))

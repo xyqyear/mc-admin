@@ -27,6 +27,7 @@ export interface CreateArchiveRequest {
   server_id: string
   path?: string | null
   paths?: string[]
+  client_timestamp?: string
 }
 
 export interface CreateArchiveResponse {

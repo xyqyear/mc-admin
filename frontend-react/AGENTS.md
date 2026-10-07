@@ -53,7 +53,7 @@ HTTP consumers use the normalized `ApiError` (`Error.message`, `status`, `code`,
 
 `features/configuration/` owns the existing-server Compose/template-parameter/conversion workflow: typed API contracts, query options, version-required commands, baseline/draft/remote edit sessions, conflict comparisons, and UI. `pages/server/servers/ServerCompose.tsx` is its route adapter. Global template CRUD and default variables belong to `features/templates/`.
 
-`shared/utils/formatUtils.ts` owns byte-size and duration display helpers; callers retain their zero-value, precision, unit-range and day/hour policies. Server creation and restart request DTOs belong to `features/servers/contracts.ts`; lifecycle results and filesystem-sync DTOs belong to `lifecycleContracts.ts`.
+`shared/utils/formatUtils.ts` owns byte-size and duration display helpers and filesystem-safe browser-local timestamps; callers retain their zero-value, precision, unit-range and day/hour policies. Archive commands transmit browser-local `client_timestamp`; archive and directory-export names contain the server and timestamp without random identifiers. Server creation and restart request DTOs belong to `features/servers/contracts.ts`; lifecycle results and filesystem-sync DTOs belong to `lifecycleContracts.ts`.
 
 `shared/hooks/useEditorDraft.ts` owns local text/JSON drafts for other resource editors. Remote updates replace pristine content, preserve authored changes, and never establish an empty draft from a failed initial read. Explicit reload resets the draft after a successful read. See `docs/data-architecture.md` for editor and integration-test boundaries.
 

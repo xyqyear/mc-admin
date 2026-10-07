@@ -2228,6 +2228,18 @@
         },
         "CreateArchiveRequest": {
           "properties": {
+            "client_timestamp": {
+              "anyOf": [
+                {
+                  "pattern": "^[0-9]{8}_[0-9]{6}_[0-9]{3}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Client Timestamp"
+            },
             "path": {
               "anyOf": [
                 {

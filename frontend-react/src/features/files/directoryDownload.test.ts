@@ -65,7 +65,7 @@ beforeEach(() => {
   useDownloadStore.setState({ tasks: [] })
 })
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('directory download layout', () => {
   it('maps flat duplicate and case-insensitive names without overwriting either content', () => {
@@ -93,6 +93,26 @@ describe('directory download layout', () => {
 })
 
 describe('streaming directory download', () => {
+  it('names exports with the server and local time while preserving same-name files and directories', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 7, 15, 42, 3, 123))
+    const local = new LocalDirectory('chosen')
+    const name = '生存服_20261007_154203_123'
+    const existing = new LocalFile()
+    existing.bytes = new TextEncoder().encode('previous export')
+    local.files.set(name, existing)
+    local.directories.set(`${name} (2)`, new LocalDirectory(`${name} (2)`))
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(page(['file.txt']))
+    vi.spyOn(fileApi, 'downloadFileStream').mockResolvedValue(response('new'))
+    const result = await executeDirectoryDownload('生存服', local.asHandle(), {
+      paths: ['file.txt'], basePath: '/', layout: 'original',
+    }, vi.fn(), new AbortController().signal)
+    expect(result.destination).toBe(`chosen/${name} (3)`)
+    expect(local.directories.get(`${name} (3)`)!.files.get('file.txt')!.text).toBe('new')
+    expect(existing.text).toBe('previous export')
+    expect(local.directories.get(`${name} (2)`)!.files.size).toBe(0)
+  })
+
   it('streams pages into one separate directory and preserves hierarchy and empty folders', async () => {
     const local = new LocalDirectory('chosen')
     const existing = new LocalFile()

@@ -99,9 +99,17 @@ than reading external target contents. Source argument batches remain below a
 bounded byte budget, so large selections do not depend on a single command-line
 argument limit. Each sequential addition writes the same private stage.
 
+Archive names contain the filesystem-safe server name and `YYYYMMDD_HHmmss_SSS`
+timestamp, without selected-path fragments or random identifiers. Browser commands
+send the validated local calendar time through optional `client_timestamp`; legacy
+API callers use the backend's local clock. Existing destinations receive numeric
+suffixes such as ` (2)`. Internal stages keep independent ownership identifiers.
+
 Compression reserves all sources, its independent output and its owned stage.
-Only the completed stage is atomically published. Cancellation drains registered
-7z processes and removes the owned partial stage before releasing resources;
+Only the completed stage is atomically published without replacing an existing
+destination; a late collision fails while preserving the earlier archive.
+Cancellation drains registered 7z processes and removes the owned partial stage
+before releasing resources;
 unknown writers retain their stage and recovery evidence. Packing remains
 independent from direct directory export and uses the durable task center.
 

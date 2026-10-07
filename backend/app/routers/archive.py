@@ -212,7 +212,10 @@ async def create_server_archive_endpoint(
 
     if request.paths is not None:
         task_name += f"（{len(request.paths)} 项）"
-    plan = await prepare_compression(instance, request.path, paths=request.paths)
+    plan = await prepare_compression(
+        instance, request.path, paths=request.paths,
+        client_timestamp=request.client_timestamp,
+    )
     result = await get_task_manager().submit_durable(
         task_type=TaskType.ARCHIVE_CREATE,
         name=task_name,

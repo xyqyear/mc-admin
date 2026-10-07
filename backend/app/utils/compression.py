@@ -14,6 +14,7 @@ from app.minecraft.instance import MCInstance
 from ..background_tasks.types import TaskProgress
 from ..config import get_settings
 from ..errors import PublicOperationError
+from ..operations.finalization import finalize
 from . import async_fs
 from .exec import exec_command_stream
 
@@ -45,39 +46,34 @@ def _sanitize_filename_part(part: str) -> str:
 
 
 def generate_archive_filename(
-    server_name: str, relative_path: str | None = None
+    server_name: str, client_timestamp: str | None = None,
 ) -> str:
-    timestamp = datetime.now(UTC).astimezone().replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
-
+    timestamp = client_timestamp or datetime.now(UTC).astimezone().strftime("%Y%m%d_%H%M%S_%f")[:-3]
     safe_server_name = _sanitize_filename_part(server_name)
+    return f"{safe_server_name}_{timestamp}.7z"
 
-    filename_parts = [safe_server_name]
 
-    if relative_path and relative_path != "/":
-        path_parts = [part for part in relative_path.strip("/").split("/") if part]
-        if path_parts:
-            safe_path = "_".join(_sanitize_filename_part(part) for part in path_parts)
-            filename_parts.append(safe_path)
-
-    filename_parts.append(timestamp)
-    filename_parts.append(uuid4().hex)
-
-    filename = "_".join(filename_parts) + ".7z"
-
-    return filename
+async def available_archive_path(root: Path, filename: str) -> Path:
+    candidate = root / filename
+    number = 2
+    while await async_fs.lexists(candidate):
+        candidate = root / f"{Path(filename).stem} ({number}).7z"
+        number += 1
+    return candidate
 
 
 async def create_server_archive_stream(
     instance: MCInstance, relative_path: str | None = None, *, output_path: Path | None = None,
     relative_paths: Sequence[str] | None = None,
+    client_timestamp: str | None = None,
 ) -> AsyncGenerator[TaskProgress]:
     """Create a 7z archive of an instance's files, yielding ``TaskProgress`` updates."""
     settings = get_settings()
     archive_base_path = await async_fs.resolve(settings.archive_path)
     await aioos.makedirs(archive_base_path, exist_ok=True)
 
-    archive_filename = output_path.name if output_path is not None else generate_archive_filename(instance.get_name(), relative_path)
-    archive_path = output_path if output_path is not None else archive_base_path / archive_filename
+    archive_filename = generate_archive_filename(instance.get_name(), client_timestamp)
+    archive_path = output_path if output_path is not None else archive_base_path / f".mc-admin-archive-{uuid4().hex}.tmp"
 
     if relative_path is None:
         source_path = instance.get_project_path()
@@ -135,6 +131,19 @@ async def create_server_archive_stream(
 
         archive_size = (await aioos.stat(archive_path)).st_size
 
+        if output_path is None:
+            while True:
+                published = await available_archive_path(archive_base_path, archive_filename)
+                try:
+                    await finalize(aioos.link(archive_path, published))
+                    break
+                except FileExistsError:
+                    continue
+            await finalize(aioos.unlink(archive_path))
+            archive_filename = published.name
+        else:
+            archive_filename = output_path.name
+
         yield TaskProgress(
             progress=100,
             message="压缩完成",
@@ -143,7 +152,7 @@ async def create_server_archive_stream(
     except BaseException:
         if output_path is None and await aioos.path.exists(archive_path):
             try:
-                await aioos.remove(archive_path)
+                await finalize(aioos.remove(archive_path))
             except OSError:
                 pass
         raise
