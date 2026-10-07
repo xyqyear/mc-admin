@@ -19,7 +19,7 @@ export default function FileSnapshotActions({ file, serverId, path, isServerMode
   const disabled = recovery.busy || target.data?.allowed !== true || target.isError
   const notice = target.isError ? '暂时无法检查忽略规则'
     : target.isPending ? '正在检查忽略规则'
-      : target.data.reason ?? (target.data.skipped_count ? '所选范围包含忽略目录，创建与恢复会跳过这些内容' : null)
+      : target.data?.reason ?? (target.data?.skipped_count ? '所选范围包含忽略目录，创建与恢复会跳过这些内容' : null)
   return <div className="flex flex-wrap items-center gap-1">
     <Tooltip>
       <TooltipTrigger render={<span />}>

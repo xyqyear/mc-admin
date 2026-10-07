@@ -24,7 +24,11 @@ from ..snapshots.protection import SnapshotProtection
 from ..utils import async_fs
 from .events import RestoreError, SelectionResolutionError
 from .layout import discover_world_roots
-from .scope_execution import RestoreScopeExecutor, _stage_destination
+from .scope_execution import (
+    RestoreScopeExecutor,
+    _stage_destination,
+    organize_staged_region,
+)
 from .selection import (
     _find_dimension,
     _restore_dimension,
@@ -97,12 +101,22 @@ class WorldPreviewRenderer:
                         if event.percent_done is not None
                         else None,
                     )
+        if selection.type in (RestorationType.REGIONS, RestorationType.CHUNKS):
+            for path in paths:
+                if path.suffix != ".mca":
+                    continue
+                _, rx, rz, _ = path.name.split(".")
+                await organize_staged_region(
+                    session_dir / "source", data_path, path, int(rx), int(rz), protection
+                )
         if selection.type is RestorationType.REGIONS:
             for path in await resolve_paths(data_path, selection, include_mcc=True):
                 if protection.permits(path) or not await aioos.path.isfile(path):
                     continue
                 source = await async_fs.resolve_inside(data_path, path)
-                destination = await _stage_destination(session_dir / "source", path)
+                destination = await _stage_destination(
+                    session_dir / "source", path
+                )
                 await aioos.makedirs(destination.parent, exist_ok=True)
                 await async_fs.copy2(source, destination)
         if selection.type is RestorationType.CHUNKS:
@@ -152,7 +166,9 @@ class WorldPreviewRenderer:
                 if live_dir is None:
                     continue
                 live_mca = live_dir / f"r.{rx}.{rz}.mca"
-                staged_mca = await _stage_destination(session_dir / "source", live_mca)
+                staged_mca = await _stage_destination(
+                    session_dir / "source", live_mca
+                )
                 preview_subdir = await _stage_destination(preview_dir, live_dir)
                 await aioos.makedirs(preview_subdir, exist_ok=True)
                 preview_mca = preview_subdir / f"r.{rx}.{rz}.mca"

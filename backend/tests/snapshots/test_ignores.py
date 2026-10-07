@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from app.minecraft.properties import (
     DEFAULT_LEVEL_NAME,
@@ -54,6 +55,26 @@ class TestReadLevelName:
 
 
 class TestResolveServerIgnores:
+    @pytest.mark.parametrize(
+        "level_name", ["../outside", "/absolute", "foo/../bar", "foo/*", "."]
+    )
+    async def test_level_name_expansion_rejects_unsafe_paths(
+        self, tmp_path, level_name
+    ):
+        _write_properties(tmp_path, level_name)
+        with pytest.raises(HTTPException) as error:
+            await resolve_server_ignores(tmp_path, ["<LEVEL_NAME>/region"])
+        assert error.value.status_code == 400
+        assert "字面相对路径" in error.value.detail
+
+    async def test_level_name_expansion_keeps_nested_names_logical(self, tmp_path):
+        _write_properties(tmp_path, "nested/world")
+        target = tmp_path / "actual"
+        target.mkdir()
+        (tmp_path / "nested").symlink_to(target, target_is_directory=True)
+        resolved = await resolve_server_ignores(tmp_path, ["<LEVEL_NAME>/region"])
+        assert resolved == [tmp_path / "nested/world/region"]
+
     @pytest.mark.asyncio
     async def test_plain_paths(self, tmp_path):
         resolved = await resolve_server_ignores(tmp_path, [".mcmap", "logs/latest"])
@@ -90,9 +111,7 @@ class TestResolveServerIgnores:
             calls += 1
             return "once_world"
 
-        monkeypatch.setattr(
-            "app.snapshots.ignores.read_level_name", counting_read
-        )
+        monkeypatch.setattr("app.snapshots.ignores.read_level_name", counting_read)
         resolved = await resolve_server_ignores(
             tmp_path, ["<LEVEL_NAME>/a", "<LEVEL_NAME>/b", "plain"]
         )
@@ -108,9 +127,7 @@ class TestResolveServerIgnores:
         async def failing_read(data_path):
             raise AssertionError("server.properties should not be read")
 
-        monkeypatch.setattr(
-            "app.snapshots.ignores.read_level_name", failing_read
-        )
+        monkeypatch.setattr("app.snapshots.ignores.read_level_name", failing_read)
         resolved = await resolve_server_ignores(tmp_path, [".mcmap"])
         assert resolved == [tmp_path / ".mcmap"]
 
@@ -167,9 +184,7 @@ class TestIsIgnored:
         )
 
     def test_sibling_prefix_no_match(self):
-        assert not is_ignored(
-            Path("/srv/data/.mcmapx"), [Path("/srv/data/.mcmap")]
-        )
+        assert not is_ignored(Path("/srv/data/.mcmapx"), [Path("/srv/data/.mcmap")])
 
     def test_unrelated(self):
         assert not is_ignored(Path("/srv/data/world"), [Path("/srv/data/.mcmap")])
@@ -189,9 +204,7 @@ class TestSubtreeExcludes:
         assert subtree_excludes(Path("/srv/x/data"), [Path("/srv/x/data")]) == []
 
     def test_ignore_outside_root_dropped(self):
-        assert (
-            subtree_excludes(Path("/srv/x/data"), [Path("/srv/y/data/.mcmap")]) == []
-        )
+        assert subtree_excludes(Path("/srv/x/data"), [Path("/srv/y/data/.mcmap")]) == []
 
     def test_mixed(self):
         patterns = subtree_excludes(

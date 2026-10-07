@@ -13,6 +13,7 @@ import type {
 import { useDownloadManager } from "@/features/tasks/downloads";
 function invalidateFileList(queryClient: QueryClient, serverId: string | undefined) {
   queryClient.invalidateQueries({ queryKey: queryKeys.files.lists(serverId || "") });
+  if (serverId) queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.rules(serverId) });
 }
 
 export const useUpdateFile = (serverId: string | undefined) => {

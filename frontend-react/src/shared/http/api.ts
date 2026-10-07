@@ -212,6 +212,8 @@ export const queryKeys = {
     locks: () => [...queryKeys.snapshots.all, "locks"] as const,
     history: (serverId?: string, offset = 0, filters: object = {}) => [...queryKeys.snapshots.all, 'history', serverId, offset, filters] as const,
     active: (serverId?: string) => [...queryKeys.snapshots.all, 'active', serverId] as const,
+    rulesAll: () => ['snapshot-target-rules'] as const,
+    rules: (serverId: string) => [...queryKeys.snapshots.rulesAll(), serverId] as const,
     target: (scope: object | null) => [...queryKeys.snapshots.all, 'target', scope] as const,
     eligible: (scope: object | null) => [...queryKeys.snapshots.all, 'eligible', scope] as const,
     forPath: (serverId: string, path: string) =>

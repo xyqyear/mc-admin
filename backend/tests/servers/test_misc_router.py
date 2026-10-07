@@ -11,7 +11,7 @@ import pytest
 
 from app.minecraft import MCServerInfo
 from app.minecraft.compose import ServerType
-from app.routers.servers.misc import get_servers
+from app.routers.servers.misc import get_server, get_servers
 from tests.support.runtime import patch_runtime_resource
 
 
@@ -88,3 +88,21 @@ async def test_get_servers_empty_when_no_active_rows():
         result = await get_servers(db=AsyncMock(), _=MagicMock())
 
     assert result == []
+
+
+@pytest.mark.parametrize("generation", [42, None])
+async def test_server_detail_exposes_current_generation_without_hiding_unregistered_data(generation):
+    instance = MagicMock()
+    instance.exists = AsyncMock(return_value=True)
+    instance.get_server_info = AsyncMock(return_value=_info("survival"))
+    manager = MagicMock()
+    manager.get_instance.return_value = instance
+    row = MagicMock(id=generation) if generation is not None else None
+    with (
+        patch_runtime_resource("docker_mc_manager", manager),
+        patch("app.routers.servers.misc.get_active_server_by_id", AsyncMock(return_value=row)),
+    ):
+        result = await get_server("survival", db=AsyncMock(), _=MagicMock())
+    assert result.id == "survival"
+    assert result.server_generation == generation
+    assert result.gamePort == 25565

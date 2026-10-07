@@ -28,7 +28,7 @@ The restore journey and lifecycle fixture use `browser/cleanup.ts` to attempt ev
 
 `MC_ADMIN_BROWSER_CLIENT_METADATA` optionally names a JSON file with `{path,url,version,sha1,size}` for an official Minecraft client. Tests verify the official download host, SHA1 and byte count before copying it into the owned server's map cache. Production palette generation and rendering still run normally. This fixture avoids repeated external downloads; it never supplies fabricated JARs, palettes or PNGs. Without it, the application downloads its normal dependency.
 
-The file-layout cases retain actual ignore-rule responses behind a transport gate. File-list and advanced-search selections, clear actions and checking/allowed/ignored transitions preserve row and batch-toolbar geometry. Disabled snapshot controls expose their reason only through tooltips; download and packing remain available. Each case owns its source files and ignore configuration and restores both during cleanup.
+The file-layout cases retain the actual server-rule GET response behind a transport gate. File-list and advanced-search selections, clear actions and checking/allowed/ignored transitions preserve row and batch-toolbar geometry. All file controls share one rule read and submit no per-path check POST; navigating away and back refreshes a changed configuration while retaining the client cache. Disabled snapshot controls expose their reason only through tooltips; download and packing remain available. Each case owns its source files and ignore configuration and restores both during cleanup.
 
 ## Timed CI shards
 

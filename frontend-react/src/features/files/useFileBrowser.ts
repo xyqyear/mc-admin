@@ -16,10 +16,13 @@ import { searchFiles } from '@/features/files/search'
 import { useFileEditor } from '@/features/files/useFileEditor'
 import { useFileNavigation } from '@/features/files/useFileNavigation'
 import { usePageDragUpload } from '@/shared/hooks/usePageDragUpload'
+import { useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@/shared/http/api'
 
 export function useFileBrowser(id: string | undefined) {
+  const queryClient = useQueryClient()
   const { confirm, confirmDialog } = useConfirm()
-  const { data: serverInfo } = useServerInfo(id || "")
+  const { data: serverInfo, refetch: refetchServerInfo } = useServerInfo(id || "")
   const hasServerInfo = !!serverInfo
 
   const [selection, setSelection] = useState<{ identity: string; paths: string[] }>({ identity: '', paths: [] })
@@ -202,7 +205,11 @@ export function useFileBrowser(id: string | undefined) {
 
   const handleRefresh = async () => {
     try {
-      await refetch({ throwOnError: true })
+      await Promise.all([
+        refetch({ throwOnError: true }),
+        refetchServerInfo({ throwOnError: true }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.rules(id || '') }, { throwOnError: true }),
+      ])
       toast.success('刷新成功')
     } catch {
       toast.error('刷新失败')

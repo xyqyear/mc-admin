@@ -43,8 +43,20 @@ export interface CreateSnapshotRequest {
 export type SnapshotScope =
   | { kind: 'global' }
   | { kind: 'server'; server_id: string }
-  | { kind: 'paths'; server_id: string; paths: string[] }
-  | { kind: 'world'; server_id: string; selection: RestorationSelection }
+  | PathsScope
+  | WorldScope
+
+export interface PathsScope {
+  kind: 'paths'
+  server_id: string
+  paths: string[]
+}
+
+export interface WorldScope {
+  kind: 'world'
+  server_id: string
+  selection: RestorationSelection
+}
 
 export interface RestorationSelection {
   type: 'world' | 'dimension' | 'regions' | 'chunks'
@@ -113,6 +125,13 @@ export interface SnapshotTargetCheck {
   reason: string | null
   skipped_paths: string[]
   skipped_count: number
+}
+
+export interface SnapshotTargetRules {
+  server_id: string
+  server_generation: number
+  ignored_paths: string[]
+  rules_version: string
 }
 
 export interface ListSnapshotsResponse {

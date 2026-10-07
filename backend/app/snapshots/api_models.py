@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.snapshots import ResticSnapshot
 
 from .restoration_models import RestorationStatus
-from .scopes import SnapshotScope
+from .scopes import SnapshotScope, WorldScope
 
 
 class CreateSnapshotRequest(BaseModel):
@@ -39,6 +39,18 @@ class SnapshotTargetCheck(BaseModel):
     reason: str | None = None
     skipped_paths: list[str] = []
     skipped_count: int = 0
+
+
+class CheckWorldSnapshotTargetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: WorldScope
+
+
+class SnapshotTargetRules(BaseModel):
+    server_id: str
+    server_generation: int
+    ignored_paths: list[str]
+    rules_version: str
 
 
 class RestorationTarget(BaseModel):

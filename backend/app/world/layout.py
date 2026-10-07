@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 from ..config import get_settings
 from ..dynamic_config import get_config
 from ..minecraft.properties import DEFAULT_LEVEL_NAME, read_level_name_sync
+from ..utils import async_fs
 from .region_files import parse_region_filename
 
 
@@ -184,6 +185,7 @@ def _dimensions_from_region_dirs_sync(
 
 async def _discover_region_dirs_with_fd(world_root: Path) -> list[Path]:
     settings = get_settings()
+    search_root = await async_fs.resolve(world_root)
     region_dir_max_depth = get_config().world.dimension_max_depth_from_world_root + 1
     cmd = [
         str(settings.fd_binary_path),
@@ -196,7 +198,7 @@ async def _discover_region_dirs_with_fd(world_root: Path) -> list[Path]:
         "--max-depth",
         str(region_dir_max_depth),
         "^region$",
-        str(world_root),
+        str(search_root),
     ]
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -222,7 +224,9 @@ async def _discover_region_dirs_with_fd(world_root: Path) -> list[Path]:
         if not raw:
             continue
         path = Path(os.fsdecode(raw))
-        if not path.is_absolute():
+        if path.is_absolute():
+            path = world_root / path.relative_to(search_root)
+        else:
             path = world_root / path
         region_dirs.append(path)
     return region_dirs
@@ -233,6 +237,10 @@ async def discover_world_roots(data_path: Path) -> list[WorldRoot]:
     roots: list[WorldRoot] = []
 
     for candidate in candidates:
+        try:
+            await async_fs.resolve_inside(data_path, candidate.path)
+        except async_fs.PathOutsideBaseError:
+            continue
         region_dirs = await _discover_region_dirs_with_fd(candidate.path)
         dimensions = await asyncio.to_thread(
             _dimensions_from_region_dirs_sync, candidate.path, region_dirs

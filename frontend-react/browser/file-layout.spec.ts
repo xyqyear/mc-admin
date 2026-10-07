@@ -1,40 +1,39 @@
-import type { Locator, Page } from '@playwright/test'
+import type { Locator, Page, Request } from '@playwright/test'
 import { test, expect, login, type OwnedApi } from './fixtures'
 import { withCleanup } from './cleanup'
 
 const isolated = { annotation: { type: 'shard_isolation', description: 'independent' } }
 const ignoredReason = '此范围已被快照规则忽略，不能创建快照或恢复'
 
-type TargetCheck = { allowed: boolean; reason?: string }
+type TargetRules = { ignored_paths: string[] }
 
 function heldTarget() {
   let release!: () => void
-  let received!: (value: TargetCheck) => void
+  let received!: (value: TargetRules) => void
   let failed!: (reason: unknown) => void
   return {
     release: () => release(),
     held: new Promise<void>(resolve => { release = resolve }),
-    ready: new Promise<TargetCheck>((resolve, reject) => { received = resolve; failed = reject }),
-    received: (value: TargetCheck) => received(value),
+    ready: new Promise<TargetRules>((resolve, reject) => { received = resolve; failed = reject }),
+    received: (value: TargetRules) => received(value),
     failed: (reason: unknown) => failed(reason),
   }
 }
 
-async function holdTargetChecks(page: Page, paths: string[]) {
-  const targets = new Map(paths.map(path => [path, heldTarget()]))
-  await page.route('**/api/snapshots/targets/check', async route => {
-    const request = route.request()
-    const scope = request.method() === 'POST'
-      ? (request.postDataJSON() as { scope?: { kind: string; paths?: string[] } }).scope
-      : undefined
-    const target = scope?.kind === 'paths' && scope.paths?.length === 1
-      ? targets.get(scope.paths[0])
-      : undefined
-    if (!target) { await route.continue(); return }
+async function holdTargetRules(page: Page) {
+  const target = heldTarget()
+  let reads = 0
+  let posts = 0
+  const observe = (request: Request) => {
+    if (new URL(request.url()).pathname === '/api/snapshots/targets/check' && request.method() === 'POST') posts++
+  }
+  page.on('request', observe)
+  await page.route('**/api/snapshots/targets/rules?*', async route => {
+    reads++
     try {
       const response = await route.fetch()
       expect(response.status()).toBe(200)
-      target.received(await response.json() as TargetCheck)
+      target.received(await response.json() as TargetRules)
       await target.held
       await route.fulfill({ response })
     } catch (error) {
@@ -43,9 +42,13 @@ async function holdTargetChecks(page: Page, paths: string[]) {
     }
   })
   return {
-    target: (path: string) => targets.get(path)!,
+    ready: target.ready,
+    release: target.release,
+    reads: () => reads,
+    posts: () => posts,
     close: async () => {
-      for (const target of targets.values()) target.release()
+      target.release()
+      page.off('request', observe)
       await page.unrouteAll({ behavior: 'wait' })
     },
   }
@@ -86,12 +89,12 @@ test('file selection and delayed ignore feedback preserve table rows and batch t
   const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/snapshots')
   let created = false
   let rulesChanged = false
-  let checks: Awaited<ReturnType<typeof holdTargetChecks>> | undefined
+  let checks: Awaited<ReturnType<typeof holdTargetRules>> | undefined
   await withCleanup(async () => {
     await sourceFiles(api, root, () => { created = true })
     await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), root + '/ignored'] } })
     rulesChanged = true
-    checks = await holdTargetChecks(page, [root + '/allowed.txt', root + '/ignored'])
+    checks = await holdTargetRules(page)
     await login(page, owned)
     await page.goto(`/server/${owned.server_id}/files?path=${encodeURIComponent('/' + root)}`)
     const allowed = page.getByRole('checkbox', { name: `选择 /${root}/allowed.txt`, exact: true })
@@ -103,15 +106,14 @@ test('file selection and delayed ignore feedback preserve table rows and batch t
     await expect(toolbar).toBeHidden()
     const measured = [page.getByRole('row').filter({ has: allowed }), page.getByRole('row').filter({ has: ignored }), toolbar]
     const before = await geometry(measured)
-    expect(await checks.target(root + '/allowed.txt').ready).toMatchObject({ allowed: true })
-    expect(await checks.target(root + '/ignored').ready).toMatchObject({ allowed: false, reason: ignoredReason })
+    expect((await checks.ready).ignored_paths).toContain(root + '/ignored')
 
     await allowed.click()
     await expect(allowed).toBeChecked()
     await expect(toolbar).toBeVisible()
     await snapshotFeedback(page, toolbar, '正在检查忽略规则')
     expect(await geometry(measured)).toEqual(before)
-    checks.target(root + '/allowed.txt').release()
+    checks.release()
     await expect(toolbar.getByRole('button', { name: '创建快照', exact: true })).toBeEnabled()
     await expect(toolbar.getByRole('button', { name: '快照恢复', exact: true })).toBeEnabled()
     expect(await geometry(measured)).toEqual(before)
@@ -122,19 +124,26 @@ test('file selection and delayed ignore feedback preserve table rows and batch t
 
     await ignored.click()
     await expect(ignored).toBeChecked()
-    await snapshotFeedback(page, toolbar, '正在检查忽略规则')
-    expect(await geometry(measured)).toEqual(before)
-    checks.target(root + '/ignored').release()
     await snapshotFeedback(page, toolbar, ignoredReason)
     expect(await geometry(measured)).toEqual(before)
     await ignored.click()
     await expect(ignored).not.toBeChecked()
     await expect(toolbar).toBeHidden()
     expect(await geometry(measured)).toEqual(before)
+    expect(checks.reads()).toBe(1)
+    expect(checks.posts()).toBe(0)
     expect((await api.file(root + '/allowed.txt')).content).toBe('allowed layout bytes\n')
     expect((await api.file(root + '/ignored/keep.txt')).content).toBe('protected layout bytes\n')
+    await page.getByRole('button', { name: '系统自检', exact: true }).click()
+    await expect(page).toHaveURL('/')
+    await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), root + '/allowed.txt'] } })
+    await page.goBack()
+    await expect(page.getByRole('button', { name: '为 allowed.txt 创建快照', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '为 ignored 创建快照', exact: true })).toBeEnabled()
+    expect(checks.reads()).toBe(2)
+    expect(checks.posts()).toBe(0)
   },
-  { label: 'target-check transport', run: async () => { await checks?.close() } },
+  { label: 'target-rule transport', run: async () => { await checks?.close() } },
   { label: 'snapshot rules', run: async () => { if (rulesChanged) await api.json('/api/config/modules/snapshots', 'PUT', config) } },
   { label: 'file layout source', run: async () => { if (created) await api.deleteFile(root) } },
   )
@@ -145,12 +154,12 @@ test('advanced search selection and delayed ignore feedback preserve result rows
   const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/snapshots')
   let created = false
   let rulesChanged = false
-  let checks: Awaited<ReturnType<typeof holdTargetChecks>> | undefined
+  let checks: Awaited<ReturnType<typeof holdTargetRules>> | undefined
   await withCleanup(async () => {
     await sourceFiles(api, root, () => { created = true })
     await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), root + '/ignored'] } })
     rulesChanged = true
-    checks = await holdTargetChecks(page, [root + '/allowed.txt', root + '/ignored'])
+    checks = await holdTargetRules(page)
     await login(page, owned)
     await page.goto(`/server/${owned.server_id}/files?path=${encodeURIComponent('/' + root)}`)
     await page.getByRole('button', { name: '高级搜索', exact: true }).click()
@@ -166,15 +175,14 @@ test('advanced search selection and delayed ignore feedback preserve result rows
     await expect(toolbar).toBeHidden()
     const measured = [allowed.locator('..'), ignored.locator('..'), toolbar]
     const before = await geometry(measured)
-    expect(await checks.target(root + '/allowed.txt').ready).toMatchObject({ allowed: true })
-    expect(await checks.target(root + '/ignored').ready).toMatchObject({ allowed: false, reason: ignoredReason })
+    expect((await checks.ready).ignored_paths).toContain(root + '/ignored')
 
     await allowed.click()
     await expect(allowed).toBeChecked()
     await expect(toolbar).toBeVisible()
     await snapshotFeedback(page, toolbar, '正在检查忽略规则')
     expect(await geometry(measured)).toEqual(before)
-    checks.target(root + '/allowed.txt').release()
+    checks.release()
     await expect(toolbar.getByRole('button', { name: '创建快照', exact: true })).toBeEnabled()
     await expect(toolbar.getByRole('button', { name: '快照恢复', exact: true })).toBeEnabled()
     expect(await geometry(measured)).toEqual(before)
@@ -185,11 +193,10 @@ test('advanced search selection and delayed ignore feedback preserve result rows
 
     await ignored.click()
     await expect(ignored).toBeChecked()
-    await snapshotFeedback(page, toolbar, '正在检查忽略规则')
-    expect(await geometry(measured)).toEqual(before)
-    checks.target(root + '/ignored').release()
     await snapshotFeedback(page, toolbar, ignoredReason)
     expect(await geometry(measured)).toEqual(before)
+    expect(checks.reads()).toBe(1)
+    expect(checks.posts()).toBe(0)
     await search.getByRole('button', { name: '清空选择', exact: true }).click()
     await expect(ignored).not.toBeChecked()
     await expect(toolbar).toBeHidden()
@@ -197,7 +204,7 @@ test('advanced search selection and delayed ignore feedback preserve result rows
     expect((await api.file(root + '/allowed.txt')).content).toBe('allowed layout bytes\n')
     expect((await api.file(root + '/ignored/keep.txt')).content).toBe('protected layout bytes\n')
   },
-  { label: 'target-check transport', run: async () => { await checks?.close() } },
+  { label: 'target-rule transport', run: async () => { await checks?.close() } },
   { label: 'snapshot rules', run: async () => { if (rulesChanged) await api.json('/api/config/modules/snapshots', 'PUT', config) } },
   { label: 'search layout source', run: async () => { if (created) await api.deleteFile(root) } },
   )

@@ -16,6 +16,8 @@ it('retains resumed completion until the user closes it, without fetching Restic
   const client = createTestClient()
   let status = 'running'
   server.use(
+    http.get('*/api/servers/alpha', () => HttpResponse.json({ id: 'alpha', name: 'Alpha', server_generation: 1, serverType: 'VANILLA', gameVersion: '1.21', gamePort: 25565, maxMemoryBytes: 1024 ** 3, rconPort: 25575, javaVersion: 21 })),
+    http.get('*/api/snapshots/targets/rules', () => HttpResponse.json({ server_id: 'alpha', server_generation: 1, ignored_paths: [], rules_version: 'rules-1' })),
     http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: status === 'running' ? 1 : 0, restorations: status === 'running' ? [{ id: 'restore', operation_id: 'restore-task', scope: { kind: 'paths', server_id: 'alpha', paths: ['plugins'] }, status }] : [] })),
     http.get('*/api/tasks/restore-task', () => HttpResponse.json({ task_id: 'restore-task', status, message: status === 'running' ? '正在恢复所选文件' : '恢复完成', progress: null })),
   )

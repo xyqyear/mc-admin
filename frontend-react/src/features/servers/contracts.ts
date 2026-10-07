@@ -3,6 +3,7 @@ import type { RegistrationStatus } from '@/features/schedules/contracts'
 export interface ServerInfo {
   id: string;
   name: string;
+  serverGeneration?: number | null;
   path: string;
   javaVersion: number;
   maxMemoryBytes: number;

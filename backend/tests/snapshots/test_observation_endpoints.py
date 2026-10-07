@@ -94,30 +94,19 @@ async def test_active_history_observes_queued_and_running_work_without_restic(
     assert target.read_text() == "live"
 
 
-async def test_target_feedback_covers_ignored_parent_and_level_name_without_work(
-    http, world_case, monkeypatch
+@pytest.mark.parametrize("body", [
+    {"scope": {"kind": "global"}},
+    {"scope": {"kind": "server", "server_id": "survival"}},
+    {"scope": {"kind": "paths", "server_id": "survival", "paths": ["plugins"]}},
+    {"scope": {"kind": "world", "server_id": "survival", "selection": {"type": "dimension", "region_dir_relpath": "world/region"}}, "note": "创建备注不属于范围检查"},
+])
+async def test_world_target_feedback_rejects_unused_file_and_project_scopes(
+    http, world_case, body,
 ):
-    case = world_case
-    case.config.snapshots.ignored_paths = ["plugins/cache", "<LEVEL_NAME>/playerdata"]
-    monkeypatch.setattr(case.snapshots, "list_snapshots", AsyncMock(side_effect=AssertionError("target feedback must not read Restic")))
-    before = len(case.tasks.get_all_tasks())
-    for target in ("plugins/cache", "plugins/cache/missing", "world/playerdata"):
-        response = await http.post("/api/snapshots/targets/check", json={
-            "scope": {"kind": "paths", "server_id": "survival", "paths": [target]},
-        })
-        assert response.status_code == 200, response.text
-        assert response.json()["allowed"] is False
-        assert "忽略" in response.json()["reason"]
-    parent = await http.post("/api/snapshots/targets/check", json={
-        "scope": {"kind": "paths", "server_id": "survival", "paths": ["plugins"]},
-    })
-    assert parent.json()["allowed"] is True
-    assert parent.json()["skipped_count"] == 1
-    assert parent.json()["skipped_paths"] == [str(case.data / "plugins/cache")]
-    assert len(case.tasks.get_all_tasks()) == before
-    assert await case.journal.list() == []
-    assert not (case.data / "plugins").exists()
-    assert (await http.get("/api/snapshots/restorations/active", headers={"Authorization": "Bearer invalid"})).status_code == 401
+    response = await http.post("/api/snapshots/targets/check", json=body)
+    assert response.status_code == 422
+    assert world_case.tasks.get_all_tasks() == []
+    assert await world_case.journal.list() == []
 
 
 async def test_target_feedback_protects_external_chunk_payload_as_one_unit(http, world_case):

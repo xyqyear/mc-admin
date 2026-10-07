@@ -21,6 +21,7 @@ from typing import Protocol
 from ..errors import PublicOperationError
 from .ignores import is_ignored, subtree_excludes
 from .models import NodeKind
+from .path_mapping import SnapshotPathMapping
 
 
 class SnapshotTreeReader(Protocol):
@@ -62,6 +63,7 @@ RestoreStep = DirStep | FileStep | EmptyStep
 class RestorePlan:
     snapshot_id: str
     steps: tuple[RestoreStep, ...]
+    mappings: tuple[tuple[SnapshotPathMapping, ...], ...] = ()
 
     @staticmethod
     def stage_target(stage_root: Path, step: RestoreStep) -> Path:
@@ -95,9 +97,7 @@ async def build_restore_plan(
         if not target.is_absolute():
             raise ValueError(f"Restore target must be absolute: {target}")
         if is_ignored(target, ignored):
-            raise TargetIgnoredError(
-                f"目标路径在忽略列表中，无法恢复: {target}"
-            )
+            raise TargetIgnoredError(f"目标路径在忽略列表中，无法恢复: {target}")
     _check_no_nested_targets(unique_targets)
 
     by_parent: dict[Path, list[Path]] = {}
@@ -126,10 +126,18 @@ async def build_restore_plan(
             excludes=tuple(subtree_excludes(target, ignored)),
         )
         nodes = await client.ls(snapshot_id, target)
-        steps.append(EmptyStep(directory, tuple(ignored)) if nodes == {target: NodeKind.DIR} else directory)
+        steps.append(
+            EmptyStep(directory, tuple(ignored))
+            if nodes == {target: NodeKind.DIR}
+            else directory
+        )
     steps.extend(
         EmptyStep(files, tuple(ignored)) if parent in empty_parents else files
         for parent, names in sorted(file_groups.items())
-        for files in [FileStep(source_dir=parent, includes=tuple(f"/{name}" for name in sorted(names)))]
+        for files in [
+            FileStep(
+                source_dir=parent, includes=tuple(f"/{name}" for name in sorted(names))
+            )
+        ]
     )
     return RestorePlan(snapshot_id=snapshot_id, steps=tuple(steps))

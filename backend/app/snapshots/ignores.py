@@ -10,9 +10,10 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
+from fastapi import HTTPException
+
 from ..dynamic_config.configs.snapshots import LEVEL_NAME_TOKEN
 from ..minecraft.properties import read_level_name
-from ..utils import async_fs
 
 
 class ServerInstance(Protocol):
@@ -40,14 +41,33 @@ async def resolve_server_ignores(
         if LEVEL_NAME_TOKEN in parts:
             if level_name is None:
                 level_name = await read_level_name(data_path)
+                level_path = PurePosixPath(level_name)
+                if (
+                    level_path.is_absolute()
+                    or not level_path.parts
+                    or any(part in {".", ".."} for part in level_name.split("/"))
+                    or any(character in level_name for character in "\x00*?[]")
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="快照忽略规则中的世界名称必须是数据目录内的字面相对路径",
+                    )
             parts = tuple(
                 level_name if part == LEVEL_NAME_TOKEN else part for part in parts
             )
-        lexical = data_path.joinpath(*parts)
-        canonical = await async_fs.resolve(lexical)
-        for path in (lexical, canonical):
-            if path not in resolved:
-                resolved.append(path)
+        expanded = PurePosixPath(*parts)
+        if (
+            expanded.is_absolute()
+            or not expanded.parts
+            or ".." in expanded.parts
+            or any(character in str(expanded) for character in "\x00*?[]")
+        ):
+            raise HTTPException(
+                status_code=400, detail="快照忽略规则必须是数据目录内的字面相对路径"
+            )
+        lexical = data_path.joinpath(*expanded.parts)
+        if lexical not in resolved:
+            resolved.append(lexical)
     return resolved
 
 
@@ -59,9 +79,7 @@ async def resolve_all_ignores(
         return []
     ignored: list[Path] = []
     for instance in await manager.get_all_instances():
-        ignored.extend(
-            await resolve_server_ignores(instance.get_data_path(), patterns)
-        )
+        ignored.extend(await resolve_server_ignores(instance.get_data_path(), patterns))
     return ignored
 
 
@@ -83,12 +101,6 @@ def subtree_excludes(subtree_root: Path, ignored: Iterable[Path]) -> list[str]:
     return patterns
 
 
-def backup_excludes(
-    backup_paths: Sequence[Path], ignored: Iterable[Path]
-) -> list[str]:
+def backup_excludes(backup_paths: Sequence[Path], ignored: Iterable[Path]) -> list[str]:
     """Absolute ``--exclude`` patterns for ignored paths under any backup path."""
-    return [
-        str(i)
-        for i in ignored
-        if any(i.is_relative_to(p) for p in backup_paths)
-    ]
+    return [str(i) for i in ignored if any(i.is_relative_to(p) for p in backup_paths)]

@@ -1,11 +1,20 @@
 import type { BackupRepositoryUsage } from "@/features/backups/contracts";
 import { api } from "@/shared/http/api";
 import type { Snapshot, SnapshotScope, SnapshotTaskAccepted, SnapshotRestoreRequest, RestorationHistory, ListSnapshotsResponse, ListLocksResponse, SnapshotPreviewRequest, SnapshotPreviewResult, SnapshotPreviewActions } from '@/features/backups/contracts';
-import type { ActiveRestorations, RestorationFilters, SnapshotTargetCheck } from './contracts';
+import type { ActiveRestorations, RestorationFilters, SnapshotTargetCheck, SnapshotTargetRules, WorldScope } from './contracts';
 
 
 export const snapshotApi = {
-  checkTarget: async (scope: SnapshotScope) =>
+  targetRules: async (serverId: string, signal?: AbortSignal): Promise<SnapshotTargetRules> => {
+    const { data } = await api.get<SnapshotTargetRules>('/snapshots/targets/rules', { params: { server_id: serverId }, signal });
+    if (data.server_id !== serverId || !Number.isInteger(data.server_generation) || data.server_generation < 1
+      || !Array.isArray(data.ignored_paths) || !data.ignored_paths.every(path => typeof path === 'string')
+      || typeof data.rules_version !== 'string' || !data.rules_version) {
+      throw new Error('快照忽略规则与服务器不匹配，请重新读取');
+    }
+    return data;
+  },
+  checkWorldTarget: async (scope: WorldScope) =>
     (await api.post<SnapshotTargetCheck>('/snapshots/targets/check', { scope })).data,
   active: async (serverId?: string, signal?: AbortSignal): Promise<ActiveRestorations> => {
     const restorations: ActiveRestorations['restorations'] = [];

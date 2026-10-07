@@ -1,5 +1,6 @@
 """Global snapshot management endpoints using restic"""
 
+import posixpath
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -12,6 +13,7 @@ from app.auth.schemas import UserPublic
 from app.snapshots.api_models import (
     ActiveRestorationsResponse,
     BackupRepositoryUsage,
+    CheckWorldSnapshotTargetRequest,
     CreateSnapshotRequest,
     ListLocksResponse,
     ListRestorationsResponse,
@@ -19,6 +21,7 @@ from app.snapshots.api_models import (
     RestorationResponse,
     RestoreRequest,
     SnapshotTargetCheck,
+    SnapshotTargetRules,
     SnapshotTaskAccepted,
     UpdateSnapshotNoteRequest,
 )
@@ -47,6 +50,7 @@ from ..snapshots.preview_models import PreviewActions, PreviewRequest, PreviewRe
 from ..snapshots.previews import get_snapshot_previews
 from ..snapshots.queries import RestorationQueries
 from ..snapshots.restoration_models import RestorationStatus
+from ..snapshots.rules import read_target_rules
 from ..system.resources import get_disk_info
 
 router = APIRouter(
@@ -112,7 +116,10 @@ async def list_global_snapshots(
 
     if server_id:
         resolved = await _resolve_backup_paths(server_id, [path] if path else None)
-        filter_path = resolved[0]
+        filter_path = (
+            Path(posixpath.normpath(str(get_docker_mc_manager().get_instance(server_id).get_data_path() / path.lstrip("/"))))
+            if path else resolved[0]
+        )
     else:
         filter_path = None
 
@@ -141,11 +148,25 @@ async def eligible_snapshots(
         raise HTTPException(status_code=400, detail=str(error)) from error
 
 
-@router.post("/targets/check", response_model=SnapshotTargetCheck)
-async def check_snapshot_target(
-    request: CreateSnapshotRequest, _: UserPublic = Depends(get_current_user)
+@router.get("/targets/rules", response_model=SnapshotTargetRules)
+async def get_snapshot_target_rules(
+    server_id: str = Query(min_length=1),
+    _: UserPublic = Depends(get_current_user),
 ):
-    return await _commands().check_target(request.scope)
+    _commands()
+    return await read_target_rules(
+        server_id,
+        sessions=get_session_factory(),
+        root=get_settings().server_path,
+        ignored_paths=get_config().snapshots.ignored_paths,
+    )
+
+
+@router.post("/targets/check", response_model=SnapshotTargetCheck)
+async def check_world_snapshot_target(
+    request: CheckWorldSnapshotTargetRequest, _: UserPublic = Depends(get_current_user)
+):
+    return await _commands().check_world_target(request.scope)
 
 
 def _previews():

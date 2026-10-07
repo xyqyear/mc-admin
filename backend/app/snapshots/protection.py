@@ -1,12 +1,14 @@
 import hashlib
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from functools import cached_property
 from pathlib import Path
 
 from fastapi import HTTPException
 
 from .ignores import is_ignored
+from .path_mapping import SnapshotPathMapping, mapping_json
 from .planner import TargetIgnoredError
 
 
@@ -15,6 +17,7 @@ class SnapshotProtection:
     current: tuple[Path, ...]
     excluded: tuple[Path, ...]
     data_paths: tuple[Path, ...] | None = None
+    mappings: tuple[SnapshotPathMapping, ...] = ()
 
     @property
     def version(self) -> str:
@@ -23,6 +26,27 @@ class SnapshotProtection:
 
     def permits(self, path: Path) -> bool:
         return not is_ignored(path, self.excluded)
+
+    def execution_path(self, path: Path) -> Path:
+        for candidate in (path, *path.parents):
+            mapping = self._mapping_index.get(candidate)
+            if mapping is not None:
+                return mapping.execution_path(path)
+        return path
+
+    def has_mapping(self, path: Path) -> bool:
+        return any(
+            candidate in self._mapping_index for candidate in (path, *path.parents)
+        )
+
+    @cached_property
+    def _mapping_index(self) -> dict[Path, SnapshotPathMapping]:
+        return {item.logical: item for item in self.mappings}
+
+    def with_mappings(
+        self, mappings: Sequence[SnapshotPathMapping]
+    ) -> "SnapshotProtection":
+        return replace(self, mappings=tuple(mappings))
 
     def require_targets(self, paths: Sequence[Path]) -> None:
         if not paths:
@@ -54,12 +78,15 @@ class SnapshotProtection:
     def to_json(self) -> str:
         return json.dumps(
             {
+                "version_format": 2,
+                "semantics": "logical",
                 "version": self.version,
                 "current": [str(path) for path in self.current],
                 "excluded": [str(path) for path in self.excluded],
                 "data_paths": [str(path) for path in self.data_paths]
                 if self.data_paths is not None
                 else None,
+                "mappings": mapping_json(self.mappings),
             }
         )
 
@@ -70,9 +97,11 @@ class SnapshotProtection:
         retained: Sequence[Path] = (),
         *,
         data_paths: Sequence[Path] | None = None,
+        mappings: Sequence[SnapshotPathMapping] = (),
     ) -> "SnapshotProtection":
         return cls(
             tuple(sorted(set(current))),
             tuple(sorted(set(current) | set(retained))),
             tuple(sorted(set(data_paths))) if data_paths is not None else None,
+            tuple(mappings),
         )

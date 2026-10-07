@@ -12,7 +12,6 @@ from ..operations.coordinator import ResourceClaim, ResourceKind
 from ..utils import async_fs
 from ..world.scope_execution import RestoreScopeExecutor
 from ..world.selection import group_chunks_by_region
-from .coverage import covers
 from .evidence import snapshot_absence
 from .file_restore import FileRestoreAdapter
 from .models import ResticSnapshot
@@ -82,6 +81,7 @@ class SnapshotPlanner:
             retained=retained,
             data_paths=[ref.data_path for ref in resolved.servers],
         )
+        protection = protection.with_mappings(resolved.mappings)
         protection.require_targets(
             [path for path in resolved.paths if protection.permits(path)]
             if isinstance(scope, WorldScope)
@@ -91,11 +91,11 @@ class SnapshotPlanner:
             tuple(ref.server_id for ref in resolved.servers)
             if not restoring
             or isinstance(scope, (GlobalScope, ServerScope, WorldScope))
-            else tuple(await self._files.maintenance_servers(resolved.paths))
+            else tuple(await self._files.maintenance_servers(resolved.execution_paths))
         )
         claims = set(resolved.claims)
         missing_parents: set[Path] = set()
-        for path in resolved.paths:
+        for path in resolved.execution_paths:
             for parent in path.parents:
                 if not parent.is_relative_to(self._root) or await async_fs.lexists(
                     parent
@@ -171,15 +171,17 @@ class SnapshotPlanner:
             }
         )
         if selection:
-            source_paths = [Path(value) for value in source.paths]
             covered = {
                 path
                 for path in prepared.paths
                 if path.suffix != ".mcc"
                 and (
                     path in absent
-                    or any(path.is_relative_to(parent) for parent in absent_parents)
-                    or covers(path, source_paths, protection.excluded)
+                    or any(
+                        protection.execution_path(path).is_relative_to(parent)
+                        for parent in absent_parents
+                    )
+                    or self.snapshots.source_covers(source, path, protection)
                 )
             }
             if not covered:
@@ -208,6 +210,7 @@ class SnapshotPlanner:
                     protection.current,
                     [*protection.excluded, *uncovered],
                     data_paths=protection.data_paths,
+                    mappings=protection.mappings,
                 )
         prepared = replace(prepared, protection=protection)
         protection.require_targets(
@@ -219,12 +222,11 @@ class SnapshotPlanner:
                 continue
             if (
                 path not in absent
-                and not any(path.is_relative_to(parent) for parent in absent_parents)
-                and not covers(
-                    path,
-                    [Path(value) for value in source.paths],
-                    protection.excluded,
+                and not any(
+                    protection.execution_path(path).is_relative_to(parent)
+                    for parent in absent_parents
                 )
+                and not self.snapshots.source_covers(source, path, protection)
             ):
                 raise HTTPException(status_code=400, detail="源快照未覆盖所选范围")
         return prepared, absent
@@ -234,7 +236,10 @@ class SnapshotPlanner:
         resolved: ResolvedScope, protection: SnapshotProtection
     ) -> None:
         scope = resolved.scope
-        if isinstance(scope, WorldScope) and scope.selection.type is RestorationType.CHUNKS:
+        if (
+            isinstance(scope, WorldScope)
+            and scope.selection.type is RestorationType.CHUNKS
+        ):
             selection = scope.selection
             permitted_chunks = False
             for (rx, rz), chunks in group_chunks_by_region(selection.chunks).items():

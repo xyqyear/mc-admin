@@ -186,7 +186,7 @@ async def test_preview_and_maintenance_cookie_permissions_preserve_data_without_
     token, csrf = identity.create_session_token(user)
     base = f"/api/snapshots/previews/{preview_id}"
     mutations = [
-        ("POST", "/api/snapshots/targets/check", {"scope": {"kind": "global"}}),
+        ("POST", "/api/snapshots/targets/check", {"scope": {"kind": "world", "server_id": "survival", "selection": {"type": "regions", "region_dir_relpath": "world/region", "regions": [[0, 0]]}}}),
         ("POST", "/api/snapshots/previews", {"scope": {"kind": "global"}, "source_snapshot_id": source}),
         ("POST", base + "/heartbeat", None),
         ("DELETE", base, None),
@@ -209,7 +209,7 @@ async def test_preview_and_maintenance_cookie_permissions_preserve_data_without_
         assert (target / "000.txt").read_text() == "live value 0"
         assert source in {snapshot.id for snapshot in await case.snapshots.list_snapshots()}
         client.headers[CSRF_HEADER_NAME] = csrf
-        assert (await client.post("/api/snapshots/targets/check", json={"scope": {"kind": "global"}})).status_code == 200
+        assert (await client.post("/api/snapshots/targets/check", json={"scope": {"kind": "world", "server_id": "survival", "selection": {"type": "regions", "region_dir_relpath": "world/region", "regions": [[0, 0]]}}})).status_code == 200
         assert (await client.get("/api/snapshots/restorations/active")).status_code == 200
         assert (await client.post(base + "/heartbeat")).status_code == 204
         await complete(case, (await client.delete(base)).json())

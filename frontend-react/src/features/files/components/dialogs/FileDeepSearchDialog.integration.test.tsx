@@ -38,7 +38,7 @@ it.each([
 })
 
 it('creates one multi-path snapshot from checked real results using the captured search root', async () => {
-  const scopes: unknown[] = []
+  let ruleReads = 0
   const created: unknown[] = []
   server.use(
     http.post('*/api/servers/alpha/files/search', () => HttpResponse.json({ search_path: '/captured', results: [
@@ -47,7 +47,8 @@ it('creates one multi-path snapshot from checked real results using the captured
       { path: '/virtual/b.toml', name: 'b.toml', type: 'file', size: 5, modified_at: 1 },
     ], total_count: 3 })),
     http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ restorations: [], total: 0 })),
-    http.post('*/api/snapshots/targets/check', async ({ request }) => { scopes.push(await request.json()); return HttpResponse.json({ allowed: true, skipped_count: 0, skipped_paths: [] }) }),
+    http.get('*/api/servers/alpha', () => HttpResponse.json({ id: 'alpha', name: 'Alpha', serverType: 'VANILLA', server_generation: 1 })),
+    http.get('*/api/snapshots/targets/rules', () => { ruleReads++; return HttpResponse.json({ server_id: 'alpha', server_generation: 1, ignored_paths: [], rules_version: 'v1' }) }),
     http.post('*/api/snapshots', async ({ request }) => { created.push(await request.json()); return HttpResponse.json({ task_id: 'snapshot' }, { status: 202 }) }),
     http.get('*/api/tasks/snapshot', () => HttpResponse.json({ task_id: 'snapshot', status: 'completed', result: { snapshot: { id: 'a'.repeat(64), short_id: 'aaaaaaaa', note: '多选备份' }, note_warning: null } })),
   )
@@ -65,6 +66,6 @@ it('creates one multi-path snapshot from checked real results using the captured
   const dialog = screen.getByRole('dialog', { name: '确认创建快照' })
   fireEvent.click(within(dialog).getByRole('button', { name: '创建快照' }))
   await waitFor(() => expect(created).toEqual([{ scope: { kind: 'paths', server_id: 'alpha', paths: ['captured/plugins', 'captured/virtual/b.toml'] }, note: '多选备份' }]))
-  expect(scopes).toContainEqual({ scope: { kind: 'paths', server_id: 'alpha', paths: ['captured/plugins', 'captured/virtual/b.toml'] } })
+  expect(ruleReads).toBe(1)
   expect(screen.getByText('已选择 2 个条目')).toBeTruthy()
 })

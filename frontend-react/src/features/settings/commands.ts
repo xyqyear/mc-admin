@@ -38,6 +38,10 @@ export const useUpdateModuleConfig = () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.config.modules()
       })
+      if (variables.moduleName === 'snapshots') {
+        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.rulesAll() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.all })
+      }
 
       const postUpdateAction = MODULE_POST_UPDATE_ACTIONS[variables.moduleName]
       if (postUpdateAction) {
@@ -76,6 +80,10 @@ export const useResetModuleConfig = () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.config.modules()
       })
+      if (moduleName === 'snapshots') {
+        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.rulesAll() })
+        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.all })
+      }
 
       if (moduleName === 'dns') {
         queryClient.invalidateQueries({ queryKey: queryKeys.dns.enabled() })

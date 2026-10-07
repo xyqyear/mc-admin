@@ -16,6 +16,7 @@ export const serverApi = {
     const res = await api.get<{
       id: string;
       name: string;
+      server_generation?: number | null;
       serverType: string;
       gameVersion: string;
       gamePort: number;
@@ -27,6 +28,7 @@ export const serverApi = {
     return {
       id: res.data.id,
       name: res.data.name,
+      serverGeneration: res.data.server_generation,
       path: `/servers/${id}`,
       javaVersion: res.data.javaVersion,
       maxMemoryBytes: res.data.maxMemoryBytes,

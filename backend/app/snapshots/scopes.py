@@ -22,6 +22,7 @@ from ..operations.coordinator import ResourceClaim, ResourceKind
 from ..servers.models import Server, ServerStatus
 from ..servers.references import ServerRef, resolve_server_ref
 from ..utils import async_fs
+from .path_mapping import SnapshotPathMapping
 from .restoration_models import RestorationType
 from .selection_models import RestorationSelection
 
@@ -133,6 +134,11 @@ class ResolvedScope:
     paths: tuple[Path, ...]
     servers: tuple[ServerRef, ...]
     claims: tuple[ResourceClaim, ...]
+    mappings: tuple[SnapshotPathMapping, ...] = ()
+
+    @property
+    def execution_paths(self) -> tuple[Path, ...]:
+        return tuple(sorted({item.execution for item in self.mappings})) or self.paths
 
 
 async def resolve_scope(
@@ -174,6 +180,7 @@ async def resolve_scope(
             (await async_fs.resolve(root),),
             references,
             (ResourceClaim(ResourceKind.FILES),),
+            (SnapshotPathMapping(root, await async_fs.resolve(root)),),
         )
     reference = references[0]
     if isinstance(scope, ServerScope):
@@ -204,11 +211,15 @@ async def resolve_scope(
             if isinstance(scope, ServerScope)
             else reference.data_path
         )
-        paths = disjoint_paths(
-            [await async_fs.resolve_inside(base, target) for target in targets]
+        paths = disjoint_paths(targets)
+        mappings = tuple(
+            [
+                SnapshotPathMapping(path, await async_fs.resolve_inside(base, path))
+                for path in paths
+            ]
         )
     except async_fs.PathOutsideBaseError as error:
         raise HTTPException(status_code=400, detail="目标超出服务器数据目录") from error
     if not paths:
         raise HTTPException(status_code=400, detail="所选范围没有可处理的内容")
-    return ResolvedScope(scope, paths, references, claims)
+    return ResolvedScope(scope, paths, references, claims, mappings)

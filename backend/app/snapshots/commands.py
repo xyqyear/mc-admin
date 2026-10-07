@@ -38,10 +38,10 @@ from ..world.scope_execution import RestoreScopeExecutor
 from ..world.selection import confined_history_path, resolve_paths
 from .api_models import SnapshotTargetCheck
 from .application import SnapshotMaintenanceConflict
-from .coverage import covers
 from .evidence import absence_tags, snapshot_absence
 from .file_restore import FileRestoreAdapter
 from .models import ResticSnapshot, ResticSnapshotWithSummary
+from .path_mapping import execution_parent_mappings, mapping_json
 from .planner import TargetIgnoredError
 from .preparation import PreparedSnapshot, SnapshotPlanner
 from .preview_models import PreviewBinding
@@ -88,7 +88,7 @@ class SnapshotCommands:
         self._planner = SnapshotPlanner(snapshots, self._files, sessions, root)
         self._active: dict[str, ResolvedScope] = {}
 
-    async def check_target(self, scope: SnapshotScope) -> SnapshotTargetCheck:
+    async def check_world_target(self, scope: WorldScope) -> SnapshotTargetCheck:
         resolved = await resolve_scope(
             scope, root=self._root, sessions=self._sessions, include_mcc=False
         )
@@ -98,7 +98,6 @@ class SnapshotCommands:
         try:
             protection.require_targets(
                 [path for path in resolved.paths if protection.permits(path)]
-                if isinstance(scope, WorldScope) else resolved.paths
             )
             await self._planner.require_permitted_chunks(resolved, protection)
         except TargetIgnoredError:
@@ -106,18 +105,17 @@ class SnapshotCommands:
                 allowed=False, reason="此范围已被快照规则忽略，不能创建快照或恢复"
             )
         skipped = set(protection.skipped_under(resolved.paths))
-        if isinstance(scope, WorldScope):
-            selected_chunks = set(scope.selection.chunks)
-            selected_paths = set(resolved.paths)
-            for path in protection.excluded:
-                match = re.fullmatch(r"c\.(-?\d+)\.(-?\d+)\.mcc", path.name)
-                if match is None:
-                    continue
-                x, z = map(int, match.groups())
-                if selected_chunks and (x, z) not in selected_chunks:
-                    continue
-                if path.with_name(f"r.{x // 32}.{z // 32}.mca") in selected_paths:
-                    skipped.add(path)
+        selected_chunks = set(scope.selection.chunks)
+        selected_paths = set(resolved.paths)
+        for path in protection.excluded:
+            match = re.fullmatch(r"c\.(-?\d+)\.(-?\d+)\.mcc", path.name)
+            if match is None:
+                continue
+            x, z = map(int, match.groups())
+            if selected_chunks and (x, z) not in selected_chunks:
+                continue
+            if path.with_name(f"r.{x // 32}.{z // 32}.mca") in selected_paths:
+                skipped.add(path)
         return SnapshotTargetCheck(
             allowed=True,
             skipped_paths=[str(path) for path in sorted(skipped)[:100]],
@@ -189,7 +187,7 @@ class SnapshotCommands:
         with self.snapshots.repository_use.retain():
             prepared = await self._planner.prepare(scope)
             for path in prepared.paths:
-                if not await async_fs.lexists(path):
+                if not await async_fs.lexists(prepared.protection.execution_path(path)):
                     raise HTTPException(status_code=404, detail="快照目标不存在")
             snapshot = None
             async with (
@@ -228,18 +226,21 @@ class SnapshotCommands:
         prepared.protection.require_targets(paths)
         eligible = []
         for source in await self.snapshots.list_snapshots():
-            protection = await self.snapshots.with_source_protection(
-                prepared.protection, source
-            )
+            try:
+                protection = await self.snapshots.with_source_protection(
+                    prepared.protection, source
+                )
+            except HTTPException as error:
+                if error.status_code == 409:
+                    continue
+                raise
             allowed = [path for path in paths if protection.permits(path)]
             if not isinstance(scope, WorldScope) and len(allowed) != len(paths):
                 continue
             absent = snapshot_absence(source)
             if allowed and all(
                 any(path.is_relative_to(parent) for parent in absent)
-                or covers(
-                    path, [Path(value) for value in source.paths], protection.excluded
-                )
+                or self.snapshots.source_covers(source, path, protection)
                 for path in allowed
             ):
                 eligible.append(source)
@@ -270,7 +271,9 @@ class SnapshotCommands:
                 await record_phase("creating_snapshot")
                 yield TaskProgress(message="正在读取文件并创建快照")
                 paths = [
-                    path for path in prepared.paths if await async_fs.lexists(path)
+                    path
+                    for path in prepared.paths
+                    if await async_fs.lexists(prepared.protection.execution_path(path))
                 ]
                 prepared.protection.require_targets(paths)
                 missing = [path for path in prepared.paths if path not in paths]
@@ -321,17 +324,16 @@ class SnapshotCommands:
             history_paths = None
             legacy_world = False
             original = None
+            evidence: dict = {}
             if rollback_of_id is not None:
                 original = await self.store.get(rollback_of_id)
                 if original is None or original.safety_snapshot_id != source_id:
                     raise HTTPException(
                         status_code=409, detail="恢复记录或安全快照已变化"
                     )
+                recorded_protection = json.loads(original.protection_json or "{}")
                 retained = [
-                    Path(value)
-                    for value in json.loads(original.protection_json or "{}").get(
-                        "excluded", []
-                    )
+                    Path(value) for value in recorded_protection.get("excluded", [])
                 ]
                 evidence = json.loads(original.selection_json)
                 absent = tuple(Path(path) for path in evidence.get("absent_paths", []))
@@ -352,7 +354,7 @@ class SnapshotCommands:
                         legacy_world = roots is None
                         history_paths = (
                             (ref.data_path,)
-                            if legacy_world
+                            if roots is None
                             else tuple(
                                 [
                                     await confined_history_path(ref.data_path, value)
@@ -385,13 +387,18 @@ class SnapshotCommands:
                     {"server_id": ref.server_id, "generation": ref.generation}
                     for ref in prepared.resolved.servers
                 ]
+                expected_paths = [str(path) for path in prepared.resolved.paths]
                 if (
                     original.binding_issue
                     or targets != current
                     or (
                         saved.get("paths") is not None
-                        and saved["paths"]
-                        != [str(path) for path in prepared.resolved.paths]
+                        and saved["paths"] != expected_paths
+                    )
+                    or (
+                        saved.get("mappings") is not None
+                        and saved["mappings"]
+                        != mapping_json(prepared.resolved.mappings)
                     )
                 ):
                     raise HTTPException(
@@ -408,11 +415,21 @@ class SnapshotCommands:
                         )
                 for path in absent_parents:
                     if not any(
-                        target.is_relative_to(path) for target in targets
+                        target.is_relative_to(path)
+                        for target in prepared.resolved.execution_paths
                     ) or not path.is_relative_to(self._root):
                         raise HTTPException(
                             status_code=409, detail="恢复记录的缺失范围无效"
                         )
+                parent_mappings = execution_parent_mappings(
+                    absent_parents, prepared.resolved.mappings
+                )
+                if evidence.get("absent_parent_mappings") is not None and evidence[
+                    "absent_parent_mappings"
+                ] != mapping_json(parent_mappings):
+                    raise HTTPException(
+                        status_code=409, detail="恢复记录的缺失父目录映射已变化"
+                    )
                 claims = set(prepared.claims)
                 for ref in prepared.resolved.servers:
                     claims.update(
@@ -611,7 +628,11 @@ class SnapshotCommands:
             await record_phase("safety_snapshot")
             present, missing = [], []
             for path in prepared.paths:
-                (present if await async_fs.lexists(path) else missing).append(path)
+                (
+                    present
+                    if await async_fs.lexists(prepared.protection.execution_path(path))
+                    else missing
+                ).append(path)
             if present:
                 safety = await self.snapshots.create_snapshot(
                     present, protection=prepared.protection
@@ -636,6 +657,12 @@ class SnapshotCommands:
                     safety.id,
                     [str(p) for p in missing],
                     missing_parents,
+                    mapping_json(
+                        execution_parent_mappings(
+                            [Path(path) for path in missing_parents],
+                            prepared.resolved.mappings,
+                        )
+                    ),
                 )
                 await self._planner.revalidate(prepared)
                 if preview_binding is not None and self._previews is not None:
@@ -645,7 +672,9 @@ class SnapshotCommands:
                 absent = tuple(
                     set(absent)
                     | set(
-                        await self.snapshots.absent_targets(source_id, prepared.paths)
+                        await self.snapshots.absent_targets(
+                            source_id, prepared.paths, protection=prepared.protection
+                        )
                     )
                 )
                 touched: list[str] = []
@@ -676,15 +705,18 @@ class SnapshotCommands:
                             async for event in events:
                                 yield event
                         for path in absent:
+                            execution_path = protection.execution_path(path)
                             if (
                                 path.suffix == ".mca"
                                 and protection.permits(path)
-                                and await aioos.path.isfile(path)
+                                and await aioos.path.isfile(execution_path)
                             ):
-                                async with aiofiles.open(path, "rb") as stream:
+                                async with aiofiles.open(
+                                    execution_path, "rb"
+                                ) as stream:
                                     empty = await stream.read(4096) == bytes(4096)
                                 if empty:
-                                    await finalize(aioos.remove(path))
+                                    await finalize(aioos.remove(execution_path))
                     else:
                         async with aclosing(
                             self._files.apply(
@@ -701,7 +733,12 @@ class SnapshotCommands:
                     for parent in sorted(
                         absent_parents, key=lambda path: len(path.parts), reverse=True
                     ):
-                        if prepared.protection.permits(parent):
+                        parent_mappings = execution_parent_mappings(
+                            [parent], prepared.resolved.mappings
+                        )
+                        if any(
+                            protection.permits(item.logical) for item in parent_mappings
+                        ):
                             try:
                                 await finalize(aioos.rmdir(parent))
                             except OSError as error:

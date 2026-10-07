@@ -70,14 +70,19 @@ async def test_global_scope_keeps_unregistered_content_without_inventing_identit
     assert result.claims == (ResourceClaim(ResourceKind.FILES),)
 
 
-async def test_nested_paths_are_restored_once_and_alias_claims_are_retained(scope_case):
+async def test_nested_paths_collapse_without_losing_alias_identity(scope_case):
     root, data, sessions = scope_case
     (data / "alias").symlink_to(data / "plugins", target_is_directory=True)
     scope = PathsScope(
         server_id="survival", paths=("plugins/example", "plugins", "alias", "plugins")
     )
     result = await resolve_scope(scope, root=root, sessions=sessions)
-    assert result.paths == (data / "plugins",)
+    assert result.paths == (data / "alias", data / "plugins")
+    assert result.execution_paths == (data / "plugins",)
+    assert [(item.logical, item.execution) for item in result.mappings] == [
+        (data / "alias", data / "plugins"),
+        (data / "plugins", data / "plugins"),
+    ]
     assert ResourceClaim(ResourceKind.FILES, "survival", "data/alias") in result.claims
     assert (
         ResourceClaim(ResourceKind.FILES, "survival", "data/plugins") in result.claims

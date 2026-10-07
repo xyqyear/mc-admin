@@ -97,6 +97,12 @@ old references cannot act on it. History keeps its original IDs and remains
 readable. Managed restart plans persist this generation explicitly. Historical
 restoration references are not automatically reassigned by server resolution.
 
+`GET /api/servers/{server_id}` exposes `server_generation` for the current active
+record alongside the existing Compose-derived detail. An unregistered directory
+remains readable with a null generation. File snapshot feedback compares this
+identity with the authenticated target-rules response before enabling actions;
+rules reads require a registered active instance.
+
 `app.minecraft.paths` validates one literal Linux path component, preserving
 safe historical spaces, Unicode, punctuation and backslashes. It rejects empty,
 dot, dot-dot, slash-containing and NUL-containing names. The configured server

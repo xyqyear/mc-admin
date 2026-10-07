@@ -22,6 +22,7 @@ REPRESENTATIVE_PATHS = {
     "/servers/{server_id}/files/delete-batch",
     "/snapshots/eligible",
     "/snapshots/targets/check",
+    "/snapshots/targets/rules",
     "/snapshots/restorations/active",
     "/servers/{server_id}/maintenance",
     "/servers/{server_id}",

@@ -14,7 +14,7 @@ from ...players.crud.query.session_query import (
     get_online_players_grouped_by_server,
 )
 from ...servers.api_models import ServerListItem
-from ...servers.crud import get_active_servers
+from ...servers.crud import get_active_server_by_id, get_active_servers
 from ...servers.queries import get_server_list_item
 
 router = APIRouter(
@@ -121,7 +121,11 @@ async def get_servers_overview(
 
 
 @router.get("/{server_id}", response_model=ServerInfo)
-async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
+async def get_server(
+    server_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: UserPublic = Depends(get_current_user),
+):
     """Get detailed information about a specific server"""
     instance = get_docker_mc_manager().get_instance(server_id)
 
@@ -131,9 +135,11 @@ async def get_server(server_id: str, _: UserPublic = Depends(get_current_user)):
 
     # Get server info
     server_info = await instance.get_server_info()
+    record = await get_active_server_by_id(db, server_id)
 
     return ServerInfo(
         id=server_id,
+        server_generation=record.id if record is not None else None,
         name=server_info.name,
         serverType=server_info.server_type,
         gameVersion=server_info.game_version,

@@ -59,11 +59,15 @@ dimension scan for endpoints and restore flows that need the complete layout.
 
 Before any restore touches the live world, the orchestrator creates a Restic snapshot at the same scope as the planned restore (a "safety snapshot"). Its id is recorded on the `Restoration` row. Rollback simply runs the restore in reverse: the safety snapshot is the source, the same `selection` is the target.
 
-恢复记录与任务在受理时关联；安全快照引用和缺失路径证据必须持久化后，才能开始写入。当前规则、源快照排除项和恢复链保护集合共同限制 Restic、mcmap、缺失目标删除及空父目录清理。忽略的溢出文件与其 MCA 区块入口作为同一单元保留，其他允许区块仍可恢复。
+恢复记录与任务在受理时关联；安全快照引用和缺失路径证据必须持久化后，才能开始写入。当前规则、源快照排除项和恢复链保护集合共同限制 Restic、mcmap、缺失目标删除及空父目录清理。世界、维度、区域、实体/POI 和 MCC 的允许性使用所选逻辑路径；忽略一个链接名称不会排除真实目标名称，忽略真实目标名称也不会禁止未被排除的别名。忽略的溢出文件与其 MCA 区块入口作为同一单元保留，其他允许区块仍可恢复。
+
+世界布局发现保留服务器数据目录内链接根的逻辑名称，搜索实际根后将维度路径映射回该名称；数据目录外的链接根不进入布局。路径边界、资源冲突和执行前链接变化检查仍使用真实路径。Restic 暂存文件按真实路径落地，世界适配将文件级链接的 MCA/MCC 副本整理到同一逻辑区域目录，保证 mcmap 与地图预览按文件名找到对应溢出数据。
+
+区块目标的 MCA 或选中 MCC 通过文件级链接指向其它目录或名称时，先复制在线区域及溢出数据到任务拥有的工作目录，在副本中合并，再发布允许的 MCC 与 MCA 到冻结的真实目标。所有发布目标在第一次写入前一起重验，每次发布再确认当前边界；同目录临时文件经原子替换发布并有限清理，逻辑链接节点保留。合并失败不发布在线数据；发布中失败可能留下部分允许结果，安全快照与恢复记录提供回滚。未选中或被逻辑规则保护的溢出数据不发布。普通目录链接的区域直接使用真实目标目录，预览合并始终只修改会话副本。
 
 手动维度快照以 `mc-admin-absence-v1:` Restic 标签保存当时缺失的附属目录。标签是有界、版本化的路径证据。旧快照未覆盖、且没有缺失证据的附属范围保持原状，并在跳过列表中说明；覆盖某个父目录但该目录中缺少子文件则属于可确认的源缺失。
 
-历史保存服务器代次、实际路径、缺失路径/祖先、保护集合和回滚父记录。回滚使用这些证据，不要求当前世界仍有 MCA。全空目标的安全证据写在操作拥有的临时目录，不为备份修改在线世界。删除仅限允许的选中目标；空祖先使用 `rmdir`，保留新出现的兄弟文件。每次回滚都保存当前状态，因此可以再次回滚。
+历史保存服务器代次、逻辑范围及真实路径映射、缺失路径/祖先、保护集合和回滚父记录。回滚使用这些证据，不要求当前世界仍有 MCA。全空目标的安全证据写在操作拥有的临时目录，不为备份修改在线世界。删除仅限允许的选中目标；空祖先使用 `rmdir`，保留新出现的兄弟文件。每次回滚都保存当前状态，因此可以再次回滚。
 
 保留旧 `selection_json` 中的 `world_roots`、`absent_directories` 和 `absent_sidecar_dirs` 解码。旧世界记录缺少根目录时，只从安全快照中推导数据目录内的严格子路径；拒绝整个 data 根目录、外部路径或符号链接逃逸。归属不明或同名新实例不能使用旧记录写入。
 
@@ -181,7 +185,7 @@ Claims and player locations also have `/api/servers/{server_id}/claims` and `/pl
 创建、筛选、恢复和回滚使用 `/api/snapshots` 公共接口，显式传入 `{kind: "world", server_id, selection}`：
 
 - `POST /snapshots`：世界或维度创建，202 任务受理。
-- `POST /snapshots/targets/check`：仅用当前规则检查目标，返回禁用原因或跳过提示，不访问 Restic。
+- `POST /snapshots/targets/check`：只接受 `WorldScope`，按当前规则检查世界、维度、区域或区块选区，返回禁用原因或跳过提示，不访问 Restic；文件、项目、全局范围及 `note` 字段被拒绝。
 - `POST /snapshots/eligible`：筛选覆盖允许范围的快照，不要求不存在的推测 MCC 文件。
 - `POST /snapshots/restorations`：202 返回任务与历史 ID；停服/维护预检查仍返回 409/423。
 - `GET /snapshots/restorations?server_id=…&limit=…&offset=…` 及详情：统一文件与世界历史，支持 `kind`、`status`、`entry_point` 筛选。

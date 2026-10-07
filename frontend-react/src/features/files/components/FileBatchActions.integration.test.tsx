@@ -6,6 +6,7 @@ import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { SnapshotRecoveryContext } from '../snapshotRecoveryContext'
 import { FileBatchActions } from './FileBatchActions'
+import { queryKeys } from '@/shared/http/api'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -15,13 +16,14 @@ beforeEach(() => { client = createTestClient() })
 afterEach(() => { client.clear(); server.resetHandlers(); vi.useRealTimers() })
 
 it('keeps packing blocked between acceptance and the first confirmed task observation', async () => {
+  client.setQueryData(queryKeys.serverInfos.detail('alpha'), { id: 'alpha', serverGeneration: 1 })
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(2026, 9, 7, 15, 42, 3, 123))
   const observed = deferred<void>()
   let requests = 0
   let taskReads = 0
   server.use(
-    http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, skipped_count: 0 })),
+    http.get('*/api/snapshots/targets/rules', () => HttpResponse.json({ server_id: 'alpha', server_generation: 1, ignored_paths: [], rules_version: 'v1' })),
     http.post('*/api/archive/compress', async ({ request }) => {
       requests++
       expect(await request.json()).toEqual({ server_id: 'alpha', paths: ['/config/a.txt', '/plugins'], client_timestamp: '20261007_154203_123' })

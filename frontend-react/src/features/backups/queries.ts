@@ -1,19 +1,74 @@
 import { queryOptions } from '@tanstack/react-query';
 import { getErrorStatus, shouldRetryQuery } from '@/shared/http/api';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useServerInfo } from '@/features/servers/queries';
 import { snapshotApi } from "@/features/backups/api";
 import { queryKeys } from "@/shared/http/api";
-import type { RestorationFilters, SnapshotScope } from './contracts';
+import type { PathsScope, RestorationFilters, SnapshotScope, WorldScope } from './contracts';
 import { activeRestorationsQueryOptions, retainActiveRestorationPolling } from './activeRestorationPolling';
+import { checkLogicalSnapshotPaths } from './targetRules';
 
-export function useSnapshotTarget(scope: SnapshotScope | null) {
-  return useQuery({
-    queryKey: queryKeys.snapshots.target(scope),
-    queryFn: () => snapshotApi.checkTarget(scope!),
-    enabled: !!scope,
+export function snapshotRulesQueryOptions(serverId: string) {
+  return queryOptions({
+    queryKey: queryKeys.snapshots.rules(serverId),
+    queryFn: ({ signal }) => snapshotApi.targetRules(serverId, signal),
+    enabled: !!serverId,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: 'always',
+    refetchInterval: false,
+  });
+}
+
+export function useSnapshotRules(serverId: string, refreshOnEntry = false) {
+  const client = useQueryClient();
+  const identity = useServerInfo(serverId, { enabled: refreshOnEntry && !!serverId, refetchOnMount: false, refetchOnReconnect: refreshOnEntry ? 'always' : false });
+  const generation = identity.data?.serverGeneration;
+  const options = snapshotRulesQueryOptions(serverId);
+  const updates = () => client.getQueryState(options.queryKey)?.dataUpdateCount ?? 0;
+  const [entry, setEntry] = useState(() => ({ serverId, dataUpdateCount: updates() }));
+  if (entry.serverId !== serverId) setEntry({ serverId, dataUpdateCount: updates() });
+  const query = useQuery(options);
+  const refetch = query.refetch;
+  const refetchIdentity = identity.refetch;
+  useEffect(() => {
+    if (refreshOnEntry && serverId) {
+      void refetchIdentity({ cancelRefetch: false });
+      void refetch({ cancelRefetch: false });
+    }
+  }, [refreshOnEntry, serverId, refetch, refetchIdentity]);
+  const previousGeneration = useRef({ serverId, generation });
+  useEffect(() => {
+    const previous = previousGeneration.current;
+    previousGeneration.current = { serverId, generation };
+    if (refreshOnEntry && previous.serverId === serverId && previous.generation != null && generation != null && previous.generation !== generation) {
+      void refetch({ cancelRefetch: false });
+    }
+  }, [refreshOnEntry, serverId, generation, refetch]);
+  const checked = !refreshOnEntry || (entry.serverId === serverId && updates() > entry.dataUpdateCount);
+  const bound = generation != null && identity.data?.id === serverId && query.data?.server_id === serverId && query.data.server_generation === generation;
+  return { ...query, isError: query.isError || identity.isError, checking: !checked || query.isFetching || !query.isSuccess || !bound || identity.isError };
+}
+
+export function useSnapshotTarget(scope: PathsScope | WorldScope | null) {
+  const paths = scope?.kind === 'paths' ? scope : null;
+  const world = scope?.kind === 'world' ? scope : null;
+  const rules = useSnapshotRules(paths?.server_id ?? '');
+  const target = useQuery({
+    queryKey: queryKeys.snapshots.target(world),
+    queryFn: () => snapshotApi.checkWorldTarget(world!),
+    enabled: !!world,
     staleTime: 5000,
   });
+  if (!paths) return target;
+  return {
+    ...rules,
+    data: rules.checking || !rules.data ? undefined : checkLogicalSnapshotPaths(paths.paths, rules.data.ignored_paths),
+    isPending: rules.checking && !rules.isError,
+    isLoading: rules.checking && !rules.isError,
+  };
 }
 
 export function useActiveRestorations(serverId?: string, enabled = true) {

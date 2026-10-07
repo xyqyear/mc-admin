@@ -5,7 +5,7 @@ import type { CreateSnapshotResponse, DeleteSnapshotResponse, UnlockResponse } f
 import { queryKeys } from "@/shared/http/api";
 import { toast } from "sonner";
 import { waitForTaskResult } from '@/features/tasks/commands';
-import type { CreateSnapshotRequest, SnapshotScope } from './contracts';
+import type { CreateSnapshotRequest, PathsScope, SnapshotScope } from './contracts';
 import { useState } from 'react';
 import type { BackgroundTask } from '@/features/tasks/contracts';
 
@@ -41,10 +41,8 @@ export function useUpdateSnapshotNote() {
   });
 }
 
-export function fileSnapshotScope(serverId: string, paths?: string[]): SnapshotScope {
-  return paths?.length
-    ? { kind: 'paths', server_id: serverId, paths: paths.map(path => path.replace(/^\/+/, '') || '.') }
-    : { kind: 'server', server_id: serverId };
+export function fileSnapshotScope(serverId: string, paths: string[]): PathsScope {
+  return { kind: 'paths', server_id: serverId, paths: paths.map(path => path.replace(/^\/+/, '') || '.') };
 }
 export const useDeleteSnapshot = () => {
   const queryClient = useQueryClient();

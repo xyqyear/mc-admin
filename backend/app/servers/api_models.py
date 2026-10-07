@@ -44,6 +44,7 @@ class CreateServerRequest(BaseModel):
 
 class ServerInfo(BaseModel):
     id: str
+    server_generation: int | None = None
     name: str
     serverType: str
     gameVersion: str

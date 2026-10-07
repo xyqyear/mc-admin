@@ -12,6 +12,7 @@ from app.snapshots.restoration_models import Restoration, RestorationStatus
 from ..operations.finalization import finalize
 from ..operations.journal_types import OperationState
 from ..servers.references import ServerRef
+from .path_mapping import mapping_json
 from .restoration_models import RestorationType
 from .scopes import GlobalScope, ResolvedScope, WorldScope
 
@@ -95,9 +96,10 @@ class RestorationStore:
                         source_snapshot_id=source_snapshot_id,
                         scope_json=json.dumps(
                             {
-                                "version": 1,
+                                "version": 2,
                                 "scope": scope.model_dump(mode="json"),
                                 "paths": [str(path) for path in resolved.paths],
+                                "mappings": mapping_json(resolved.mappings),
                             }
                         ),
                         targets_json=json.dumps(
@@ -143,9 +145,10 @@ class RestorationStore:
                     .values(
                         scope_json=json.dumps(
                             {
-                                "version": 1,
+                                "version": 2,
                                 "scope": resolved.scope.model_dump(mode="json"),
                                 "paths": [str(path) for path in resolved.paths],
+                                "mappings": mapping_json(resolved.mappings),
                             }
                         )
                     )
@@ -160,6 +163,7 @@ class RestorationStore:
         snapshot_id: str,
         absent_paths: list[str],
         absent_parents: list[str],
+        absent_parent_mappings: list[dict[str, str]] | None = None,
     ) -> None:
         async def write() -> None:
             async with self._sessions() as session:
@@ -172,6 +176,7 @@ class RestorationStore:
                             {
                                 "absent_paths": absent_paths,
                                 "absent_parents": absent_parents,
+                                "absent_parent_mappings": absent_parent_mappings or [],
                             }
                         ),
                         status=RestorationStatus.RUNNING,

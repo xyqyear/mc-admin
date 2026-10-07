@@ -72,6 +72,7 @@ Defined in `shared/http/api.ts`, with task keys owned by `features/tasks/queries
 - `queryKeys.map.status(serverId)` / `.regions(serverId, region)`
 - `queryKeys.worldRestore.layout(serverId)` / `.dimensionLabels(serverId)` / `.playerLocations(serverId)`
 - `queryKeys.snapshots.eligible(scope)` / `.active(serverId)` / `.history(serverId, offset, filters)` / `.target(scope)`
+- `queryKeys.snapshots.rulesAll()` / `.rules(serverId)` use the independent `snapshot-target-rules` prefix so read-only snapshot completion does not refresh configuration-derived rules.
 - `queryKeys.templates.detail(id)` / `.schema(id)` / `.serverConfig(serverId)` / `.defaultVariables()`
 
 Hook reads and mutation invalidations must reference the same factory path. Adding a key means adding to the factory, not to a string somewhere.

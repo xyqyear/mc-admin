@@ -1118,6 +1118,14 @@
       "path": "/api/snapshots/targets/check"
     },
     {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/snapshots/targets/rules"
+    },
+    {
       "cookie_csrf": true,
       "declared_authorization": [
         "session_or_master"
@@ -2187,6 +2195,19 @@
             "password"
           ],
           "title": "Body_login_for_access_token_auth_token_post",
+          "type": "object"
+        },
+        "CheckWorldSnapshotTargetRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "scope": {
+              "$ref": "#/components/schemas/WorldScope"
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "title": "CheckWorldSnapshotTargetRequest",
           "type": "object"
         },
         "CompleteCodeLoginRequest": {
@@ -3266,6 +3287,37 @@
           "title": "SnapshotTargetCheck",
           "type": "object"
         },
+        "SnapshotTargetRules": {
+          "properties": {
+            "ignored_paths": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Ignored Paths",
+              "type": "array"
+            },
+            "rules_version": {
+              "title": "Rules Version",
+              "type": "string"
+            },
+            "server_generation": {
+              "title": "Server Generation",
+              "type": "integer"
+            },
+            "server_id": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id",
+            "server_generation",
+            "ignored_paths",
+            "rules_version"
+          ],
+          "title": "SnapshotTargetRules",
+          "type": "object"
+        },
         "SnapshotTaskAccepted": {
           "properties": {
             "restoration_id": {
@@ -3520,6 +3572,17 @@
             "serverType": {
               "title": "Servertype",
               "type": "string"
+            },
+            "server_generation": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Server Generation"
             }
           },
           "required": [
@@ -6312,7 +6375,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateSnapshotRequest"
+                  "$ref": "#/components/schemas/CheckWorldSnapshotTargetRequest"
                 }
               }
             },
@@ -6324,6 +6387,76 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SnapshotTargetCheck"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/snapshots/targets/rules": {
+        "get": {
+          "parameters": [
+            {
+              "in": "query",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "minLength": 1,
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SnapshotTargetRules"
                   }
                 }
               },

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 		{ID: "snapshots.restore-and-protection", Suite: "snapshots", Tags: []string{"smoke", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: restore},
 		{ID: "snapshots.repository-and-selection", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: repository},
 		{ID: "snapshots.notes-and-multiple-paths", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: notesAndMultiplePaths},
+		{ID: "snapshots.logical-exclusions-and-shared-rules", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: logicalExclusions},
 		{ID: "snapshots.backup-time-restriction", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: timeRestriction},
 		{ID: "snapshots.stale-lock-recovery", Suite: "snapshots", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: staleLock},
 	}
@@ -46,23 +48,16 @@ func restore(ctx context.Context, t *engine.Scope) error {
 	if err = client.JSON(ctx, "PUT", "/api/config/modules/snapshots", map[string]any{"config_data": config.Data}, nil, 200); err != nil {
 		return err
 	}
-	if err = t.Step("target feedback refuses ignored paths and explains mixed scopes without creating history", func() error {
-		for _, target := range []struct {
-			path    string
-			allowed bool
-			skipped int
-		}{{"restore/keep.txt", false, 0}, {"restore", true, 1}} {
-			var feedback struct {
-				Allowed bool   `json:"allowed"`
-				Reason  string `json:"reason"`
-				Skipped int    `json:"skipped_count"`
-			}
-			if err := client.JSON(ctx, "POST", "/api/snapshots/targets/check", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{target.path}}}, &feedback, 200); err != nil {
-				return err
-			}
-			if feedback.Allowed != target.allowed || feedback.Skipped != target.skipped || (!target.allowed && feedback.Reason == "") {
-				return fmt.Errorf("unexpected target feedback for %s: %+v", target.path, feedback)
-			}
+	if err = t.Step("shared logical rules are read without creating history and submissions protect excluded files", func() error {
+		var rules targetRules
+		if err := client.JSON(ctx, "GET", "/api/snapshots/targets/rules?server_id="+id, nil, &rules, 200); err != nil {
+			return err
+		}
+		if !slices.Equal(rules.Paths, []string{".mcmap", "restore/keep.txt"}) {
+			return fmt.Errorf("shared logical exclusions differ: %+v", rules)
+		}
+		if err := client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "paths", "server_id": id, "paths": []string{"restore/keep.txt"}}}, nil, 400); err != nil {
+			return err
 		}
 		var history struct {
 			Total int `json:"total"`
@@ -71,7 +66,7 @@ func restore(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 		if history.Total != 0 {
-			return fmt.Errorf("checking targets created restoration history")
+			return fmt.Errorf("reading rules or refusing an excluded target created restoration history")
 		}
 		return nil
 	}); err != nil {

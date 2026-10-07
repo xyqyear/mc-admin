@@ -24,6 +24,11 @@ from ..operations.finalization import finalize
 from ..runtime_resources import current_runtime
 from ..utils import async_fs
 from .coverage import covers
+from .evidence import (
+    selection_tags,
+    snapshot_selection,
+    snapshot_source_path,
+)
 from .ignores import (
     InstanceProvider,
     backup_excludes,
@@ -37,6 +42,7 @@ from .models import (
     ResticSnapshotWithSummary,
 )
 from .notes import SnapshotNotes
+from .path_mapping import SnapshotPathMapping
 from .planner import (
     DirStep,
     EmptyStep,
@@ -51,7 +57,9 @@ from .restic import ResticClient
 
 class SnapshotService:
     def __init__(
-        self, client: ResticClient, mc_manager: InstanceProvider,
+        self,
+        client: ResticClient,
+        mc_manager: InstanceProvider,
         notes: SnapshotNotes | None = None,
     ):
         self._client = client
@@ -80,10 +88,85 @@ class SnapshotService:
         self, protection: SnapshotProtection, source: ResticSnapshot
     ) -> SnapshotProtection:
         excluded = list(protection.excluded)
-        for path in source.excludes:
-            excluded.extend([Path(path), await async_fs.resolve(Path(path))])
+        selection = snapshot_selection(source)
+        if selection is not None:
+            excluded.extend(selection.excluded)
+            source_roots = {Path(value) for value in source.paths}
+            selected_roots = {
+                parent
+                for item in protection.mappings
+                for parent in (item.logical, *item.logical.parents)
+                if parent in source_roots
+            }
+            for root in selected_roots:
+                if await async_fs.resolve(root) != root:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="源快照对应的链接目标已变化，请重新选择范围",
+                    )
+        if not protection.mappings:
+            excluded.extend(Path(path) for path in source.excludes)
+        for mapping in protection.mappings:
+            source_root = snapshot_source_path(
+                source, mapping.logical, mapping.execution
+            )
+            if source_root != mapping.execution:
+                raise HTTPException(
+                    status_code=409, detail="源快照对应的链接目标已变化，请重新选择范围"
+                )
+            for value in source.excludes:
+                path = Path(value)
+                if source_root.is_relative_to(path):
+                    excluded.append(mapping.logical)
+                elif path.is_relative_to(source_root):
+                    excluded.append(mapping.logical / path.relative_to(source_root))
         return SnapshotProtection.capture(
-            protection.current, excluded, data_paths=protection.data_paths
+            protection.current,
+            excluded,
+            data_paths=protection.data_paths,
+            mappings=protection.mappings,
+        )
+
+    async def _bind_paths(
+        self, paths: Sequence[Path], protection: SnapshotProtection
+    ) -> SnapshotProtection:
+        mappings = {item.logical: item for item in protection.mappings}
+        for path in paths:
+            actual = await async_fs.resolve(path)
+            existing = protection.has_mapping(path)
+            expected = protection.execution_path(path) if existing else actual
+            if actual != expected:
+                raise HTTPException(
+                    status_code=409, detail="目标路径或链接已变化，请重新确认操作"
+                )
+            mappings[path] = SnapshotPathMapping(path, actual)
+        return protection.with_mappings(tuple(mappings.values()))
+
+    @staticmethod
+    def _execution_excludes(
+        path: Path, protection: SnapshotProtection
+    ) -> tuple[Path, ...]:
+        execution = protection.execution_path(path)
+        return tuple(
+            sorted(
+                {
+                    execution / ignored.relative_to(path)
+                    for ignored in protection.excluded
+                    if ignored.is_relative_to(path)
+                }
+            )
+        )
+
+    @staticmethod
+    def source_covers(
+        source: ResticSnapshot, path: Path, protection: SnapshotProtection
+    ) -> bool:
+        execution = protection.execution_path(path)
+        source_path = snapshot_source_path(source, path, execution)
+        return protection.permits(path) and covers(
+            source_path,
+            [Path(value) for value in source.paths],
+            [Path(value) for value in source.excludes],
         )
 
     async def revalidate_protection(self, protection: SnapshotProtection) -> None:
@@ -113,24 +196,24 @@ class SnapshotService:
         protection: SnapshotProtection | None = None,
     ) -> list[Path]:
         """Restore recorded absence without deleting configured ignored descendants."""
-        protection = protection or await self.protection(snapshot_id)
+        protection = await self._bind_paths(
+            paths, protection or await self.protection()
+        )
+        protection = await self.with_source_protection(
+            protection, await self.get_snapshot(snapshot_id)
+        )
         await self.revalidate_protection(protection)
-        ignored = protection.excluded
         removed: list[Path] = []
 
-        async def remove(path: Path) -> None:
-            if (
-                is_ignored(path, ignored)
-                or is_ignored(await async_fs.resolve(path), ignored)
-                or not await async_fs.lexists(path)
-            ):
+        async def remove(path: Path, ignored: tuple[Path, ...]) -> None:
+            if is_ignored(path, ignored) or not await async_fs.lexists(path):
                 return
             if await aioos.path.islink(path) or not await aioos.path.isdir(path):
                 await aioos.remove(path)
                 removed.append(path)
                 return
             for child in await async_fs.iterdir(path):
-                await remove(child)
+                await remove(child, ignored)
             try:
                 await aioos.rmdir(path)
                 removed.append(path)
@@ -140,21 +223,36 @@ class SnapshotService:
 
         async def apply() -> None:
             for path in paths:
-                await remove(path)
+                if protection.permits(path):
+                    await remove(
+                        protection.execution_path(path),
+                        self._execution_excludes(path, protection),
+                    )
 
         await finalize(apply())
         return removed
 
     async def absent_targets(
-        self, snapshot_id: str, paths: Sequence[Path]
+        self,
+        snapshot_id: str,
+        paths: Sequence[Path],
+        *,
+        protection: SnapshotProtection | None = None,
     ) -> tuple[Path, ...]:
+        protection = await self._bind_paths(
+            paths, protection or await self.protection()
+        )
         by_parent: dict[Path, list[Path]] = {}
         for path in paths:
-            by_parent.setdefault(path.parent, []).append(path)
+            by_parent.setdefault(protection.execution_path(path).parent, []).append(
+                path
+            )
         absent: list[Path] = []
         for parent, targets in by_parent.items():
             nodes = await self._client.ls(snapshot_id, parent)
-            absent.extend(path for path in targets if path not in nodes)
+            absent.extend(
+                path for path in targets if protection.execution_path(path) not in nodes
+            )
         return tuple(absent)
 
     async def create_snapshot(
@@ -170,11 +268,52 @@ class SnapshotService:
         under an ignored path — such a snapshot would be empty by definition.
         """
         with self.repository_use.retain():
-            protection = protection or await self.protection()
+            protection = await self._bind_paths(
+                paths, protection or await self.protection()
+            )
             await self.revalidate_protection(protection)
             protection.require_targets(paths)
+            mappings = tuple(
+                SnapshotPathMapping(path, protection.execution_path(path))
+                for path in paths
+            )
+            candidates = {
+                path
+                for item in mappings
+                for path in self._execution_excludes(item.logical, protection)
+            }
+            excluded = []
+            for candidate in candidates:
+                views = [
+                    item
+                    for item in mappings
+                    if candidate.is_relative_to(item.execution)
+                ]
+                if views and all(
+                    not protection.permits(item.logical_path(candidate))
+                    for item in views
+                ):
+                    nested = [
+                        item
+                        for item in mappings
+                        if item.execution != candidate
+                        and item.execution.is_relative_to(candidate)
+                    ]
+                    if any(protection.permits(item.logical) for item in nested):
+                        raise HTTPException(
+                            status_code=400,
+                            detail="多个链接范围的排除规则重叠，请分别创建快照",
+                        )
+                    excluded.append(candidate)
+            logical_excluded = [
+                path
+                for path in protection.excluded
+                if any(path.is_relative_to(item.logical) for item in mappings)
+            ]
             return await self._client.backup(
-                paths, backup_excludes(paths, protection.excluded), tags=tags
+                sorted({item.execution for item in mappings}),
+                backup_excludes([item.execution for item in mappings], excluded),
+                tags=[*tags, *selection_tags(mappings, logical_excluded)],
             )
 
     async def build_plan(
@@ -184,12 +323,36 @@ class SnapshotService:
         *,
         protection: SnapshotProtection | None = None,
     ) -> RestorePlan:
-        protection = protection or await self.protection(snapshot_id)
+        protection = await self._bind_paths(
+            targets, protection or await self.protection()
+        )
+        protection = await self.with_source_protection(
+            protection, await self.get_snapshot(snapshot_id)
+        )
         await self.revalidate_protection(protection)
         protection.require_targets(targets)
-        return await build_restore_plan(
-            self._client, snapshot_id, targets, protection.excluded
-        )
+        groups: dict[tuple[Path, ...], list[SnapshotPathMapping]] = {}
+        for path in targets:
+            mapping = SnapshotPathMapping(path, protection.execution_path(path))
+            groups.setdefault(self._execution_excludes(path, protection), []).append(
+                mapping
+            )
+        steps: list[RestoreStep] = []
+        step_mappings = []
+        for excluded, mappings in groups.items():
+            executions = sorted({item.execution for item in mappings})
+            execution_set = set(executions)
+            executions = [
+                path
+                for path in executions
+                if not any(parent in execution_set for parent in path.parents)
+            ]
+            plan = await build_restore_plan(
+                self._client, snapshot_id, executions, excluded
+            )
+            steps.extend(plan.steps)
+            step_mappings.extend([tuple(mappings)] * len(plan.steps))
+        return RestorePlan(snapshot_id, tuple(steps), tuple(step_mappings))
 
     async def restore(
         self,
@@ -290,6 +453,22 @@ class SnapshotService:
                             ) / total_steps
                         yield event
                     elif event.kind == "file":
+                        if event.item and plan.mappings:
+                            item = Path(event.item)
+                            matching = [
+                                mapping
+                                for mapping in plan.mappings[index]
+                                if item.is_relative_to(mapping.execution)
+                            ]
+                            if matching:
+                                event.item = str(
+                                    max(
+                                        matching,
+                                        key=lambda mapping: len(
+                                            mapping.execution.parts
+                                        ),
+                                    ).logical_path(item)
+                                )
                         yield event
                     else:
                         _accumulate_summary(summary, event)
@@ -351,8 +530,7 @@ class SnapshotService:
                 info = await aioos.stat(path, follow_symlinks=False)
             except FileNotFoundError:
                 return False
-            resolved = await async_fs.resolve(path)
-            if is_ignored(path, step.ignored) or is_ignored(resolved, step.ignored):
+            if is_ignored(path, step.ignored):
                 return True
             await async_fs.resolve_inside(scope, path)
             directory = stat.S_ISDIR(info.st_mode)
@@ -403,7 +581,9 @@ class SnapshotService:
             raise HTTPException(status_code=503, detail="快照备注服务不可用")
         with self.repository_use.retain([snapshot_id]):
             snapshot = await self._client.get_snapshot(snapshot_id)
-            await self._notes.save(await self._client.repository_id(), snapshot.id, note)
+            await self._notes.save(
+                await self._client.repository_id(), snapshot.id, note
+            )
             snapshot.note = note
             return snapshot
 
@@ -426,11 +606,16 @@ class SnapshotService:
             await self._project_notes(snapshots)
             return snapshots
 
-        resolved_filter = await async_fs.resolve(path_filter)
+        protection = await self._bind_paths([path_filter], await self.protection())
         filtered: list[ResticSnapshot] = []
         for snapshot in snapshots:
-            paths, excludes = await self._resolved_coverage_paths(snapshot)
-            if covers(resolved_filter, paths, excludes):
+            try:
+                protected = await self.with_source_protection(protection, snapshot)
+            except HTTPException as error:
+                if error.status_code == 409:
+                    continue
+                raise
+            if self.source_covers(snapshot, path_filter, protected):
                 filtered.append(snapshot)
         await self._project_notes(filtered)
         return filtered
@@ -450,14 +635,17 @@ class SnapshotService:
                 raise ValueError("Paths must be absolute")
 
         all_snapshots = await self._client.list_snapshots()
-        resolved_targets = [await async_fs.resolve(p) for p in paths]
+        protection = await self._bind_paths(paths, await self.protection())
 
         matching: list[ResticSnapshot] = []
         for snapshot in all_snapshots:
-            snap_paths, snap_excludes = await self._resolved_coverage_paths(snapshot)
-            if all(
-                covers(target, snap_paths, snap_excludes) for target in resolved_targets
-            ):
+            try:
+                protected = await self.with_source_protection(protection, snapshot)
+            except HTTPException as error:
+                if error.status_code == 409:
+                    continue
+                raise
+            if all(self.source_covers(snapshot, target, protected) for target in paths):
                 matching.append(snapshot)
         matching.sort(key=lambda s: s.time, reverse=True)
         await self._project_notes(matching)
@@ -467,11 +655,13 @@ class SnapshotService:
     async def _resolved_coverage_paths(
         snapshot: ResticSnapshot,
     ) -> tuple[list[Path], list[Path]]:
-        paths = [await async_fs.resolve(Path(p)) for p in snapshot.paths]
-        excludes = [await async_fs.resolve(Path(e)) for e in snapshot.excludes]
+        paths = [Path(p) for p in snapshot.paths]
+        excludes = [Path(e) for e in snapshot.excludes]
         return paths, excludes
 
-    async def forget_id(self, snapshot_id: str, prune: bool = True, *, reservation: object | None = None) -> str:
+    async def forget_id(
+        self, snapshot_id: str, prune: bool = True, *, reservation: object | None = None
+    ) -> str:
         with self.repository_use.maintain(reservation):
             await self._require_stopped_repository_writers()
             return await self._client.forget_id(snapshot_id, prune=prune)

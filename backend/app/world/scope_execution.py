@@ -1,15 +1,17 @@
+import secrets
 from collections.abc import AsyncGenerator
 from contextlib import AbstractAsyncContextManager, aclosing
 from pathlib import Path
 from typing import TypeVar
 
+import aiofiles
 import aiofiles.os as aioos
 from pydantic import TypeAdapter
 
 from app.snapshots.selection_models import RestorationSelection
 
 from ..background_tasks import TaskProgress
-from ..files.utils import makedirs_with_ownership
+from ..files.utils import makedirs_with_ownership, set_file_ownership
 from ..mcmap import runner as mcmap_runner
 from ..mcmap.events import (
     MCMAP_REMOVE_CHUNKS_EVENT_ADAPTER,
@@ -21,6 +23,7 @@ from ..mcmap.events import (
     MCMapReplaceChunksResultEvent,
 )
 from ..mcmap.types import MCMapError
+from ..operations.finalization import finalize
 from ..snapshots import SnapshotService
 from ..snapshots.protection import SnapshotProtection
 from ..utils import async_fs
@@ -36,11 +39,67 @@ from .selection import (
 ChunkEvent = TypeVar("ChunkEvent", MCMapReplaceChunksEvent, MCMapRemoveChunksEvent)
 
 
-async def _stage_destination(stage_dir: Path, live_path: Path) -> Path:
-    """Where ``live_path`` will land under ``stage_dir`` after a staged restore."""
-    return SnapshotService.stage_destination(
-        stage_dir, await async_fs.resolve(live_path)
+async def _stage_destination(
+    stage_dir: Path,
+    live_path: Path,
+) -> Path:
+    """Locate an organized world file or directory beneath staging."""
+    path = (
+        await async_fs.resolve(live_path.parent) / live_path.name
+        if live_path.suffix in {".mca", ".mcc"}
+        else await async_fs.resolve(live_path)
     )
+    return SnapshotService.stage_destination(stage_dir, path)
+
+
+async def organize_staged_region(
+    stage_dir: Path,
+    data_path: Path,
+    mca: Path,
+    rx: int,
+    rz: int,
+    protection: SnapshotProtection,
+) -> Path:
+    directory = await async_fs.resolve_inside(data_path, mca.parent)
+    destination = SnapshotService.stage_destination(stage_dir, directory)
+    mappings = {item.logical: item.execution for item in protection.mappings}
+    for path in [mca, *_mcc_paths_for_region(mca.parent, rx, rz)]:
+        if not protection.permits(path):
+            continue
+        execution = mappings.get(path)
+        source = SnapshotService.stage_destination(
+            stage_dir,
+            execution if execution is not None else protection.execution_path(path),
+        )
+        target = destination / path.name
+        if source != target and await aioos.path.isfile(source):
+            await aioos.makedirs(destination, exist_ok=True)
+            await async_fs.copy2(source, target)
+    return destination / mca.name
+
+
+async def _publish_chunk_file(
+    source: Path, target: Path, data_path: Path,
+) -> None:
+    if not await aioos.path.isfile(source):
+        try:
+            await aioos.unlink(target)
+        except FileNotFoundError:
+            pass
+        return
+    await makedirs_with_ownership(target.parent, data_path)
+    temporary = target.parent / f".mc-admin-chunk-{secrets.token_hex(16)}"
+    try:
+        async with aiofiles.open(temporary, "xb"):
+            pass
+        await async_fs.copy2(source, temporary)
+        await set_file_ownership(temporary, data_path)
+        await aioos.replace(temporary, target)
+    finally:
+        try:
+            await aioos.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 class RestoreScopeExecutor:
@@ -121,28 +180,99 @@ class RestoreScopeExecutor:
                     if not allowed:
                         done += 1
                         continue
-                    staged_mca = await _stage_destination(stage_root, live_mca)
-                    if await aioos.path.exists(staged_mca):
-                        await self.replace_selected_chunks(
-                            source_mca=staged_mca,
-                            target_mca=live_mca,
-                            chunks=allowed,
-                            owned_by=data_path,
-                        )
-                    else:
-                        if not await aioos.path.exists(live_mca):
-                            done += 1
-                            continue
-                        await self.remove_selected_chunks(
-                            target_mca=live_mca,
-                            chunks=allowed,
-                            owned_by=data_path,
-                        )
+                    staged_mca = await organize_staged_region(
+                        stage_root, data_path, live_mca, rx, rz, protection
+                    )
+                    if not await aioos.path.exists(staged_mca) and not await aioos.path.exists(live_mca):
+                        done += 1
+                        continue
+                    await self._apply_chunks(
+                        data_path=data_path,
+                        live_mca=live_mca,
+                        source_mca=staged_mca,
+                        rx=rx,
+                        rz=rz,
+                        chunks=allowed,
+                        protection=protection,
+                        work_dir=stage_root / "work" / sub / f"{rx}.{rz}",
+                    )
                     done += 1
                     yield TaskProgress(
                         message=f"正在合并 {sub} 区域 ({rx}, {rz})",
                         progress=(done / total_jobs) * 100.0 if total_jobs else 100.0,
                     )
+
+    async def _apply_chunks(
+        self,
+        *,
+        data_path: Path,
+        live_mca: Path,
+        source_mca: Path,
+        rx: int,
+        rz: int,
+        chunks: list[tuple[int, int]],
+        protection: SnapshotProtection,
+        work_dir: Path,
+    ) -> None:
+        directory = await async_fs.resolve_inside(data_path, live_mca.parent)
+        sidecars = [
+            live_mca.parent / f"c.{rx * 32 + x}.{rz * 32 + z}.mcc"
+            for x, z in chunks
+        ]
+        for path in [live_mca, *sidecars]:
+            actual = await async_fs.resolve_inside(data_path, path)
+            if actual != protection.execution_path(path):
+                raise SelectionResolutionError("世界文件路径已变化，请重新确认操作")
+        isolated = any(
+            protection.execution_path(path) != directory / path.name
+            for path in [live_mca, *sidecars]
+        )
+        target_mca = protection.execution_path(live_mca)
+        if isolated:
+            await aioos.makedirs(work_dir, exist_ok=True)
+            if await aioos.path.isfile(live_mca):
+                await async_fs.copy2(
+                    await async_fs.resolve_inside(data_path, live_mca),
+                    work_dir / live_mca.name,
+                )
+            if await aioos.path.isdir(live_mca.parent):
+                related = set(_mcc_paths_for_region(live_mca.parent, rx, rz))
+                for sidecar in await async_fs.iterdir(live_mca.parent):
+                    if sidecar not in related:
+                        continue
+                    if await aioos.path.isfile(sidecar):
+                        await async_fs.copy2(
+                            await async_fs.resolve_inside(data_path, sidecar),
+                            work_dir / sidecar.name,
+                        )
+            target_mca = work_dir / live_mca.name
+        if await aioos.path.exists(source_mca):
+            await self.replace_selected_chunks(
+                source_mca=source_mca,
+                target_mca=target_mca,
+                chunks=chunks,
+                owned_by=data_path,
+            )
+        else:
+            await self.remove_selected_chunks(
+                target_mca=target_mca,
+                chunks=chunks,
+                owned_by=data_path,
+            )
+        if isolated:
+            async def publish() -> None:
+                targets = []
+                for path in [*sidecars, live_mca]:
+                    target = await async_fs.resolve_inside(data_path, path)
+                    if target != protection.execution_path(path):
+                        raise SelectionResolutionError("世界文件路径已变化，请重新确认操作")
+                    targets.append((path, target))
+                for path, target in targets:
+                    if await async_fs.resolve_inside(data_path, path) != target:
+                        raise SelectionResolutionError("世界文件路径已变化，请重新确认操作")
+                    await _publish_chunk_file(work_dir / path.name, target, data_path)
+
+            await finalize(publish())
 
     @staticmethod
     async def allowed_chunks(
@@ -153,16 +283,15 @@ class RestoreScopeExecutor:
         chunks: list[tuple[int, int]],
         protection: SnapshotProtection,
     ) -> list[tuple[int, int]]:
-        if not protection.permits(mca) or not protection.permits(
-            await async_fs.resolve_inside(data_path, mca)
-        ):
+        await async_fs.resolve_inside(data_path, mca)
+        if not protection.permits(mca):
             return []
         allowed = []
         for x, z in chunks:
             sidecar = mca.parent / f"c.{rx * 32 + x}.{rz * 32 + z}.mcc"
-            canonical = await async_fs.resolve_inside(data_path, sidecar)
+            await async_fs.resolve_inside(data_path, sidecar)
             # An external chunk's MCA entry and MCC payload form one writable unit.
-            if protection.permits(sidecar) and protection.permits(canonical):
+            if protection.permits(sidecar):
                 allowed.append((x, z))
         return allowed
 

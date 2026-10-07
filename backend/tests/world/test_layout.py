@@ -18,6 +18,35 @@ from app.world.layout import (
 pytestmark = [pytest.mark.binary('fd')]
 
 
+async def test_internal_world_alias_retains_its_logical_dimension_paths(tmp_path):
+    data = tmp_path / "data"
+    region = data / "world" / "region"
+    region.mkdir(parents=True)
+    (region.parent / "level.dat").write_bytes(b"metadata")
+    (region / "r.0.0.mca").write_bytes(b"terrain")
+    (data / "world_alias").symlink_to(region.parent, target_is_directory=True)
+
+    roots = {root.name: root for root in await discover_world_roots(data)}
+
+    assert set(roots) == {"world", "world_alias"}
+    assert roots["world_alias"].path == data / "world_alias"
+    assert roots["world_alias"].dimensions[0].region_dir == data / "world_alias" / "region"
+
+
+async def test_world_layout_omits_aliases_outside_the_managed_data(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    outside = tmp_path / "outside"
+    region = outside / "region"
+    region.mkdir(parents=True)
+    (outside / "level.dat").write_bytes(b"unmanaged metadata")
+    (region / "r.0.0.mca").write_bytes(b"unmanaged terrain")
+    (data / "world_alias").symlink_to(outside, target_is_directory=True)
+
+    assert await discover_world_roots(data) == []
+    assert (region / "r.0.0.mca").read_bytes() == b"unmanaged terrain"
+
+
 def _touch(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"")

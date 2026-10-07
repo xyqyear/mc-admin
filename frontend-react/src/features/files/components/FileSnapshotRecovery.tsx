@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { fileSnapshotScope, useCreateSnapshot, useSnapshotOperation } from '@/features/backups/commands'
 import type { SnapshotPreviewRequest, SnapshotScope } from '@/features/backups/contracts'
-import { useSnapshotTarget, useEligibleSnapshots } from '@/features/backups/queries';
+import { useSnapshotTarget, useEligibleSnapshots, useSnapshotRules } from '@/features/backups/queries';
 import { SnapshotPreviewDialog } from '@/features/backups/ui/SnapshotPreviewDialog'
 import { RestorationHistoryDialog } from '@/features/backups/ui/RestorationHistoryDialog'
 import { SnapshotCreateDialog } from '@/features/backups/ui/SnapshotCreateDialog'
@@ -9,6 +9,7 @@ import { SnapshotRecoveryContext } from '../snapshotRecoveryContext'
 import { SnapshotSelectionDialog } from './SnapshotSelectionDialog'
 
 export function FileSnapshotRecovery({ serverId, children }: { serverId: string; children: ReactNode }) {
+  const rules = useSnapshotRules(serverId, true)
   const [selection, setSelection] = useState<{ paths: string[]; label: string } | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [preview, setPreview] = useState<SnapshotPreviewRequest | null>(null)
@@ -19,7 +20,7 @@ export function FileSnapshotRecovery({ serverId, children }: { serverId: string;
   const creation = useCreateSnapshot()
   const [createRequest, setCreateRequest] = useState<{ scope: SnapshotScope; label: string } | null>(null)
   const close = () => { if (!operation.state.active) { operation.reset(); setSelection(null) } }
-  const busy = operation.busy || creation.isPending
+  const busy = operation.busy || creation.isPending || rules.checking
 
   return <SnapshotRecoveryContext.Provider value={{
     busy,

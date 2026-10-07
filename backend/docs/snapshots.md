@@ -15,6 +15,9 @@ app/snapshots/
 ├── notes.py     # bounded note reads and SQLite upserts
 ├── restic.py    # ResticClient — stateless CLI wrapper, one method per restic command
 ├── ignores.py   # ignore-path resolution (<LEVEL_NAME> expansion) and pattern translation
+├── path_mapping.py # logical selection identities and frozen execution projections
+├── evidence.py  # bounded logical selection and absence tags on snapshots
+├── rules.py     # generation-bound logical rules for shared frontend decisions
 ├── coverage.py  # exclude-aware "does this snapshot cover this path" predicate
 ├── planner.py   # build_restore_plan(): targets + ignores → one restic invocation per step
 ├── application.py # confined listing/cron path resolution and maintenance conflict type
@@ -42,10 +45,11 @@ app/snapshots/
 
 The explicit scope contract distinguishes the servers root, an entire server
 project, paths relative to `data`, and world selections. It collapses duplicate
-targets while retaining lexical and canonical file claims. `SnapshotProtection`
-freezes expanded current exclusions together with source and retained-chain
-protection. Execution rechecks current exclusions and rejects configuration or
-`LEVEL_NAME` drift before invoking Restic.
+or nested logical targets and retains their separate logical-to-execution
+mappings, lexical and canonical file claims. `SnapshotProtection` freezes
+logical current exclusions together with source and retained-chain protection.
+Execution rechecks exclusions and mappings, rejecting configuration,
+`LEVEL_NAME` or accepted link-target drift before invoking Restic.
 
 Repository readers can coexist. Manual tasks hold repository references from acceptance through queued work and subprocess cleanup; ready file and map previews retain
 their source through close/expiry and outstanding tile reads. Forget/prune and
@@ -54,14 +58,26 @@ permanently prevent retention. References are bounded per runtime.
 
 ## Ignored paths
 
-`dynamic_config.snapshots.ignored_paths` holds literal paths **relative to each server's data directory** (default `[".mcmap"]`, keeping tile caches out of the repo). A `<LEVEL_NAME>` segment expands per-server to the `level-name` from `server.properties` (`app.minecraft.properties.read_level_name`). Globs are rejected at the schema level — restore-time protection needs literal containment math.
+`dynamic_config.snapshots.ignored_paths` holds literal paths **relative to each server's data directory** (default `[".mcmap"]`, keeping tile caches out of the repo). A `<LEVEL_NAME>` segment expands per-server to the `level-name` from `server.properties` (`app.minecraft.properties.read_level_name`). Configured and expanded paths must remain relative literal paths; absolute names, traversal and globs are rejected. Ignore matching uses logical names without following symbolic links.
 
 Semantics:
 
-- **Backup** passes each ignored path under a backup root as an absolute `--exclude`. Restic records these in the snapshot metadata (`excludes`).
-- **Restore** never overwrites *or deletes* ignored paths, even though restores run with `--delete`. The effective ignore set is the union of current config and the snapshot's recorded `excludes`, so snapshots taken under an older ignore config stay protected after config changes — in both directions.
+- If `B` links to `A`, ignoring `A` protects `A` and its logical descendants while direct selection through `B` remains allowed; ignoring `B` protects `B` and leaves direct selection of `A` allowed. Parent traversal backs up the link node and does not traverse its target.
+- **Backup** projects each logical exclusion inside a selected root to that root's frozen execution tree and passes absolute `--exclude` paths to Restic. Several selected aliases can share storage while retaining different logical protection. Data allowed through another selected alias is included; irreducible overlapping nested roots fail with `多个链接范围的排除规则重叠，请分别创建快照` before a snapshot is written.
+- **Restore** never overwrites *or deletes* protected logical paths, even though restores run with `--delete`. Current rules, the source's logical selection evidence, its recorded physical `excludes` projected through the selected roots, and retained restoration-chain exclusions combine before execution.
 - **Coverage** (`find_snapshots_covering`, path-filtered listing, self-check freshness) is exclude-aware: a snapshot whose recorded excludes contain the queried path does not count as covering it, while an exclude strictly below the queried path doesn't disqualify the snapshot (`coverage.py`).
 - Snapshotting or restoring a target that itself lies under an ignored path raises `TargetIgnoredError` (HTTP 400 before task acceptance).
+
+Application snapshots carry a bounded `mc-admin-logical-v2:` tag containing
+logical exclusions and compressed non-identity path mappings. Exact stored
+roots also bind identity selections without one tag entry per speculative MCC.
+A changed source root link target omits that source from eligible candidates,
+including when the request selects a child of an identity root;
+an explicit restore fails during source validation before safety backup or
+writes. Sources taken over a parent directory retain ordinary subtree coverage.
+Historical snapshots and ordinary history without links keep their recorded
+paths and exclusions; historical symbolic-link path reinterpretation is outside
+the supported compatibility boundary.
 
 ## Restore planning
 
@@ -76,7 +92,7 @@ It splits the request into Restic steps and explicit empty-selection cleanup:
 
 Targets whose parent directory is absent from the snapshot are skipped — restic can neither restore them nor traverse-delete there. (Known restic limitation, unchanged from the previous architecture: deletion-by-include cannot reach through directories the snapshot lacks; the chunks restore scope compensates with `mcmap remove-chunks`.)
 
-`SnapshotService` executes plans in two modes: **in-place** (`restore`, `--delete` on, target = source dir) and **staged** (`stage`, no delete, full absolute path mirrored under a stage root — `SnapshotService.stage_destination` maps live paths to staged ones). `restore(dry_run=True)` executes the same plan without writing. Status percents are rescaled across steps into one monotonic progress stream, and per-step summaries are merged into a single final `summary` event.
+`SnapshotService` groups selected logical roots by their projected execution exclusions before building Restic steps. It executes plans in two modes: **in-place** (`restore`, `--delete` on, target = source dir) and **staged** (`stage`, no delete, full absolute execution path mirrored under a stage root — callers use `SnapshotProtection.execution_path` before `SnapshotService.stage_destination`). `restore(dry_run=True)` executes the same plan without writing. Status percents are rescaled across steps into one monotonic progress stream, and per-step summaries are merged into a single final `summary` event.
 
 Empty-selection cleanup first checks its complete removal list against the owned
 server and selected scope, rejects escaping symlinks and never traverses symlink
@@ -87,7 +103,7 @@ including when a caller supplies a populated staging destination.
 
 ## Event normalization
 
-Restore events arrive as NDJSON (`status` / `verbose_status` / `summary`). Restic reports restored/updated items relative to the restore subtree but deleted items as absolute on-disk paths; `ResticClient.restore` normalizes everything to absolute on-disk paths before yielding, so consumers (task workers, previews, PNG-tile invalidation) see one path space. Stderr is drained concurrently to avoid a pipe-buffer deadlock during long restores.
+Restore events arrive as NDJSON (`status` / `verbose_status` / `summary`). Restic reports restored/updated items relative to the restore subtree but deleted items as absolute on-disk paths. `ResticClient.restore` normalizes events to absolute execution paths; `SnapshotService` translates file events into the selected logical path space for previews. File restoration translates those items back to execution paths for PNG-tile invalidation. Stderr is drained concurrently to avoid a pipe-buffer deadlock during long restores.
 
 ## Subprocess pattern
 
@@ -132,6 +148,11 @@ the original restore. Missing targets use an owned temporary absence marker when
 no live target exists; a rollback removes only allowed selected paths and empty
 ancestors that were absent, preserving protected descendants and later siblings.
 Source, current and retained-chain exclusions apply to safety creation and writes.
+Versioned history retains selected logical paths, frozen execution mappings and
+missing execution ancestors with their logical projections. A dangling internal
+directory link can therefore restore its missing real directory; rollback removes
+newly created empty real ancestors and preserves the link node. Accepted target
+claims cover these ancestors, and scope/mapping evidence is checked after restart.
 
 Every restore owns its target file scope. Whole-server/data targets and paths
 intersecting known world roots additionally require stopped servers and maintenance
@@ -195,7 +216,15 @@ directories retain the existing protected-descendant skip behavior.
 
 ## Observation and target feedback
 
-`POST /snapshots/targets/check` checks current scope confinement and protection without running Restic or creating history. Fully ignored scopes are unavailable; mixed scopes report a bounded skip list and total. World chunk checks include protected MCC logical counterparts. This is advisory UI feedback: acceptance and execution repeat the authoritative checks, including source and rollback-chain protection.
+`GET /snapshots/targets/rules?server_id=...` returns the current server generation,
+rule version and expanded logical relative paths without running Restic or
+scanning the file tree. File, search and ordinary snapshot controls share this
+result and match literal path ancestry locally. `POST /snapshots/targets/check`
+accepts only a world scope and checks confinement and protection without running
+Restic or creating history. Fully ignored world scopes are unavailable; mixed
+scopes report a bounded skip list and total, including protected MCC logical
+counterparts. Both forms provide advisory UI feedback: acceptance and execution
+repeat authoritative checks, including source and rollback-chain protection.
 
 `GET /snapshots/restorations/active?server_id=...` reads only the journal and restoration tables. It includes queued, running, cancelling and finalizing work, including global restores targeting the selected server. Offset/limit pagination is bounded to 200 rows per request. History supports `kind`, `status`, `entry_point` and server filters before pagination, and projects all captured server generations. A failed history repository check does not prevent active task observation.
 

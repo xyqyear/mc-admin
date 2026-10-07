@@ -138,7 +138,7 @@ class FileRestoreAdapter:
                     and event.action in {"updated", "restored", "deleted"}
                     and event.item
                 ):
-                    touched.append(event.item)
+                    touched.append(str(protection.execution_path(Path(event.item))))
                 elif event.kind == "status":
                     yield TaskProgress(
                         progress=(event.percent_done or 0) * 100,
