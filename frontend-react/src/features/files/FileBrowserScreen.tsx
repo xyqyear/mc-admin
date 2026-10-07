@@ -24,6 +24,7 @@ import {
 import { useFileBrowser } from '@/features/files/useFileBrowser'
 import FileTable from '@/features/files/components/FileTable'
 import FileToolbar from '@/features/files/components/FileToolbar'
+import { FileBatchActions } from '@/features/files/components/FileBatchActions'
 import FileBreadcrumb from '@/features/files/components/FileBreadcrumb'
 import FileSearchBox from '@/features/files/components/FileSearchBox'
 import { DirectoryDownloadDialog } from '@/features/files/components/dialogs/DirectoryDownloadDialog'
@@ -152,7 +153,6 @@ const ServerFiles: React.FC = () => {
         actions={
           <FileToolbar
             currentPath={currentPath}
-            selectedFiles={selectedFiles}
             serverId={id || ''}
             isLoadingFiles={isFetchingFiles}
             createArchiveMutation={createArchiveMutation}
@@ -167,7 +167,6 @@ const ServerFiles: React.FC = () => {
             onRefresh={handleRefresh}
             onUpload={() => setIsMultiFileUploadDialogOpen(true)}
             onCreateFile={() => setIsCreateDialogOpen(true)}
-            onDeleted={handleBatchDeleted}
             onCompressServer={handleCompressServer}
             onReplaceServerFiles={handleReplaceServerFiles}
             onRestoreOwnership={handleRestoreOwnership}
@@ -176,7 +175,7 @@ const ServerFiles: React.FC = () => {
       />
 
       <Card>
-        <CardContent className="space-y-4">
+        <CardContent className="flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <FileBreadcrumb
               currentPath={currentPath}
@@ -224,6 +223,15 @@ const ServerFiles: React.FC = () => {
             onFileCompress={handleCompress}
             createArchiveMutation={createArchiveMutation}
           />
+          <div className={selectedFiles.length ? '' : 'hidden'} aria-hidden={!selectedFiles.length} inert={!selectedFiles.length}>
+            <FileBatchActions
+              key={JSON.stringify([id || '', currentPath])}
+              serverId={id || ''}
+              paths={selectedFiles}
+              basePath={currentPath}
+              onDeleted={handleBatchDeleted}
+            />
+          </div>
         </CardContent>
       </Card>
 

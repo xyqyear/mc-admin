@@ -29,8 +29,9 @@ keep their separate interactions: upload rows expand, conflict arrows expand
 without changing overwrite selection, and search rows navigate while expanding
 directories. Search results and changed highlight patterns expand the result
 tree automatically. Deep-search navigation combines the selected path with the
-captured search root; file selections use literal filenames, and virtual directory
-selections preserve the search expression. File icons require only name and
+captured search root; file-name clicks use literal filenames, and virtual directory
+name clicks preserve the search expression. Checkboxes select actual matches;
+group checkboxes aggregate matching descendants without navigating. File icons require only name and
 type, so tree rows do not invent timestamps or other file metadata.
 
 Game-port self-check remediation links to `/server/<encoded-server-id>/files?path=%2F&q=server.properties&regex=false`. `/` is the server data root. The search input and results follow URL changes, including browser back/forward; literal search keeps the dot from acting as a regex wildcard. Users open the file through the normal editor, which retains its Compose-override reminder. The route uses the existing session guard and server/file error handling.

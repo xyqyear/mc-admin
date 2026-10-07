@@ -32,16 +32,20 @@ const TreeNodeRow: React.FC<{
   level: number
   expandedKeys: Set<string>
   resultsByPath: ReadonlyMap<string, SearchFileItem>
+  resultPathsByNode: ReadonlyMap<string, readonly string[]>
   currentRegex: string
   onToggle: (key: string) => void
   onSelect: (key: string) => void
   selectedPaths: string[]
+  selectedSet: ReadonlySet<string>
   onSelectionChange?: (paths: string[]) => void
-}> = ({ node, level, expandedKeys, resultsByPath, currentRegex, onToggle, onSelect, selectedPaths, onSelectionChange }) => {
+}> = ({ node, level, expandedKeys, resultsByPath, resultPathsByNode, currentRegex, onToggle, onSelect, selectedPaths, selectedSet, onSelectionChange }) => {
   const isExpanded = expandedKeys.has(node.key)
   const hasChildren = !!node.children?.length
 
   const nodeItem = resultsByPath.get(node.key)
+  const selectionPaths = nodeItem ? [node.key] : resultPathsByNode.get(node.key) ?? []
+  const selectedCount = selectionPaths.reduce((count, path) => count + Number(selectedSet.has(path)), 0)
   const iconFile = nodeItem ?? { name: node.name, type: hasChildren ? 'directory' as const : 'file' as const }
   const matchResult = currentRegex ? matchRegex(node.name, currentRegex) : undefined
   const size = nodeItem?.type === 'file' ? nodeItem.size : undefined
@@ -59,10 +63,18 @@ const TreeNodeRow: React.FC<{
         ) : (
           <span className="w-3.5" />
         )}
-        {onSelectionChange && nodeItem && <Checkbox
+        {onSelectionChange && selectionPaths.length > 0 && <Checkbox
           aria-label={`选择搜索结果 ${node.key}`}
-          checked={selectedPaths.includes(node.key)}
-          onCheckedChange={checked => onSelectionChange(checked === true ? [...selectedPaths, node.key] : selectedPaths.filter(path => path !== node.key))}
+          checked={selectedCount === selectionPaths.length}
+          indeterminate={selectedCount > 0 && selectedCount < selectionPaths.length}
+          onCheckedChange={checked => {
+            if (checked === true) {
+              onSelectionChange([...new Set([...selectedPaths, ...selectionPaths])])
+            } else {
+              const removedPaths = new Set(selectionPaths)
+              onSelectionChange(selectedPaths.filter(path => !removedPaths.has(path)))
+            }
+          }}
         />}
         <span className="shrink-0">
           <FileIcon file={iconFile} />
@@ -84,10 +96,12 @@ const TreeNodeRow: React.FC<{
           level={level + 1}
           expandedKeys={expandedKeys}
           resultsByPath={resultsByPath}
+          resultPathsByNode={resultPathsByNode}
           currentRegex={currentRegex}
           onToggle={onToggle}
           onSelect={onSelect}
           selectedPaths={selectedPaths}
+          selectedSet={selectedSet}
           onSelectionChange={onSelectionChange}
         />
       ))}
@@ -110,6 +124,20 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
     for (const result of searchResults) if (!results.has(result.path)) results.set(result.path, result)
     return results
   }, [searchResults])
+  const resultPathsByNode = useMemo(() => {
+    const pathsByNode = new Map<string, readonly string[]>()
+    const collectPaths = (node: TreeNode): string[] => {
+      const paths = [
+        ...(resultsByPath.has(node.key) ? [node.key] : []),
+        ...(node.children ?? []).flatMap(collectPaths),
+      ]
+      pathsByNode.set(node.key, paths)
+      return paths
+    }
+    treeData.forEach(collectPaths)
+    return pathsByNode
+  }, [treeData, resultsByPath])
+  const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths])
 
   useEffect(() => {
     if (searchResults.length > 0) {
@@ -163,10 +191,12 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
             level={0}
             expandedKeys={expandedKeys}
             resultsByPath={resultsByPath}
+            resultPathsByNode={resultPathsByNode}
             currentRegex={currentRegex}
             onToggle={handleToggle}
             onSelect={handleSelect}
             selectedPaths={selectedPaths}
+            selectedSet={selectedSet}
             onSelectionChange={onSelectionChange}
           />
         ))}

@@ -11,11 +11,9 @@ import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
 import { RefreshButton } from '@/shared/components/RefreshButton'
 import FileSnapshotActions from '@/features/files/components/FileSnapshotActions'
-import { FileBatchActions } from '@/features/files/components/FileBatchActions'
 
 interface FileToolbarProps {
   currentPath: string
-  selectedFiles: string[]
   serverId: string
   isLoadingFiles: boolean
   createArchiveMutation: { isPending: boolean }
@@ -25,7 +23,6 @@ interface FileToolbarProps {
   onRefresh: () => void
   onUpload: () => void
   onCreateFile: () => void
-  onDeleted: (paths: string[]) => void
   onCompressServer: () => void
   onReplaceServerFiles: () => void
   onRestoreOwnership: () => void
@@ -33,7 +30,6 @@ interface FileToolbarProps {
 
 const FileToolbar: React.FC<FileToolbarProps> = ({
   currentPath,
-  selectedFiles,
   serverId,
   isLoadingFiles,
   createArchiveMutation,
@@ -43,7 +39,6 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   onRefresh,
   onUpload,
   onCreateFile,
-  onDeleted,
   onCompressServer,
   onReplaceServerFiles,
   onRestoreOwnership,
@@ -109,10 +104,6 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
         新建文件/文件夹
       </Button>
       <RefreshButton onClick={onRefresh} isRefreshing={isLoadingFiles} />
-
-      <div className={`basis-full ${selectedFiles.length ? '' : 'invisible'}`} aria-hidden={!selectedFiles.length} inert={!selectedFiles.length}>
-        <FileBatchActions key={JSON.stringify([serverId, currentPath])} serverId={serverId} paths={selectedFiles} basePath={currentPath} onDeleted={onDeleted} />
-      </div>
     </>
   )
 }

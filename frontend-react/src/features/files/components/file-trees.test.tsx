@@ -50,12 +50,16 @@ it('selects actual directory matches independently from descendants and virtual 
     return <><output>{JSON.stringify(paths)}</output><FileSearchResultTree searchResults={[entry('/plugins', 'directory'), entry('/plugins/config/a.toml', 'file'), entry('/virtual/b.toml', 'file')]} currentRegex="" onSelect={select} selectedPaths={paths} onSelectionChange={setPaths} /></>
   }
   render(<Selection />)
-  expect(screen.queryByRole('checkbox', { name: '选择搜索结果 /virtual' })).toBeNull()
-  expect(screen.queryByRole('checkbox', { name: '选择搜索结果 /plugins/config' })).toBeNull()
   fireEvent.click(screen.getByRole('checkbox', { name: '选择搜索结果 /plugins' }))
   expect(screen.getByRole('status').textContent).toBe('["/plugins"]')
   expect((screen.getByRole('checkbox', { name: '选择搜索结果 /plugins/config/a.toml' }) as HTMLInputElement).getAttribute('aria-checked')).not.toBe('true')
   expect(select).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('checkbox', { name: '选择搜索结果 /virtual' }))
+  expect(screen.getByRole('status').textContent).toBe('["/plugins","/virtual/b.toml"]')
+  fireEvent.click(screen.getByRole('checkbox', { name: '选择搜索结果 /plugins/config' }))
+  expect(screen.getByRole('status').textContent).toBe('["/plugins","/virtual/b.toml","/plugins/config/a.toml"]')
+  fireEvent.click(screen.getByRole('checkbox', { name: '选择搜索结果 /plugins/config' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: '选择搜索结果 /virtual' }))
   fireEvent.click(screen.getByRole('button', { name: '收起 /plugins' }))
   expect(select).not.toHaveBeenCalled()
   expect(screen.getByRole('status').textContent).toBe('["/plugins"]')

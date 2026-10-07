@@ -5,11 +5,11 @@ Let administrators operate on precisely selected server files from both director
 ## ADDED Requirements
 
 ### Requirement: Selection identifies actual targets
-The system SHALL identify selected entries by their complete server data-relative paths. Sorting and pagination SHALL preserve selection. A changed server, directory or executed search SHALL reset selection. Synthetic search-tree ancestors SHALL NOT become recursive operation targets. Requests SHALL freeze their selected scope when confirmed.
+The system SHALL identify selected entries by their complete server data-relative paths. Sorting and pagination SHALL preserve selection. A changed server, directory or executed search SHALL reset selection. Synthetic search-tree ancestors SHALL expose aggregate selection of their actual matching descendants with full and partial states, but SHALL NOT become recursive operation targets. Clearing a group SHALL retain selections outside that group. Requests SHALL freeze their selected scope when confirmed.
 
 #### Scenario: Search grouping does not expand an operation
-- **WHEN** search results contain files under a synthetic parent that was not itself matched
-- **THEN** only real selected matches are submitted and unrelated siblings remain untouched
+- **WHEN** an administrator selects a synthetic parent that was not itself matched
+- **THEN** only its real matching descendants join the selection, only real selected matches are submitted, and unrelated siblings remain untouched
 
 #### Scenario: Pagination preserves identity
 - **WHEN** a user selects same-named files on different pages and sorts the list
@@ -57,15 +57,15 @@ Advanced search SHALL offer flat and original-path layouts. Original paths SHALL
 - **THEN** their hierarchy is relative to that captured root regardless of later navigation
 
 ### Requirement: Batch controls preserve list geometry
-The file browser and advanced-search results SHALL retain stable batch-control space across selection changes and asynchronous snapshot eligibility checks. Checking, rejected and partially ignored scope explanations SHALL be available from the snapshot action controls without adding or removing a flow row above or below the file list.
+The file browser SHALL place selected counts and batch controls below its file table and pagination, and advanced search SHALL place them below its result tree. These areas SHALL be visible only while items are selected; empty selections SHALL NOT reserve batch-control layout space. Selection, clearing and asynchronous snapshot eligibility checks SHALL NOT move selectable file rows. While items are selected, eligibility checks SHALL retain stable batch-control geometry. Checking, rejected and partially ignored scope explanations SHALL be available from the snapshot action controls without adding or removing a flow row above or below the file list.
 
 #### Scenario: Eligibility response does not move selectable rows
 - **WHEN** a selected scope changes from checking to allowed or ignored
 - **THEN** snapshot controls reflect the current eligibility and explain it on hover while selectable rows and the batch-control area retain their positions
 
-#### Scenario: Selection does not insert a new control row
+#### Scenario: Empty selection does not reserve a control row
 - **WHEN** an administrator selects the first result or clears the last selection
-- **THEN** batch controls become available or hidden inside their retained layout area without displacing the file list
+- **THEN** selected counts and batch controls appear or disappear below the list without moving file rows, with no empty row retained after the last selection is cleared
 
 ### Requirement: Export names use the server and browser-local time
 Packed archives and local export folders created through the browser SHALL use the filesystem-safe server name and a browser-local timestamp, without hashes, random identifiers or selected-path fragments. Archive names SHALL retain their format extension. Existing outputs SHALL remain intact on collisions; a numeric collision suffix MAY distinguish an additional output. Legacy archive requests without a client timestamp SHALL remain supported.

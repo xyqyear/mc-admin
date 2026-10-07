@@ -157,9 +157,9 @@ test('advanced search flat export keeps both same-name files and excludes synthe
     await search.getByLabel('搜索模式', { exact: true }).fill('^same[.]txt$')
     await search.getByRole('button', { name: '搜索', exact: true }).click()
     await expect(search.getByRole('checkbox', { name: '选择搜索结果 /a/same.txt', exact: true })).toBeVisible()
-    await expect(search.getByRole('checkbox', { name: '选择搜索结果 /a', exact: true })).toHaveCount(0)
-    await search.getByRole('checkbox', { name: '选择搜索结果 /a/same.txt', exact: true }).click()
+    await expect(search.getByRole('checkbox', { name: '选择搜索结果 /a', exact: true })).toBeVisible()
     await search.getByRole('checkbox', { name: '选择搜索结果 /b/same.txt', exact: true }).click()
+    await search.getByRole('checkbox', { name: '选择搜索结果 /a', exact: true }).click()
     const snapshotPosts: string[] = []
     page.on('request', request => {
       if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/snapshots') snapshotPosts.push(request.url())

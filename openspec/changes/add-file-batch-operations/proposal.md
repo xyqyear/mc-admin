@@ -5,13 +5,13 @@ Issue #175 asks administrators to inspect online players without leaving the ser
 ## What Changes
 
 - Open the existing player detail dialog from the server overview in place.
-- Share path-based batch selection and snapshot creation/recovery, compression and deletion between the file list and advanced search.
+- Share path-based batch selection and snapshot creation/recovery, compression and deletion between the file list and advanced search; search-folder groups aggregate only their actual matching entries.
 - Save selected files and recursive folders directly into a user-authorized local directory on capable browsers, with flat or original-path layouts and retained packing controls.
 - Keep direct-download controls visible when unavailable, with Chinese capability/environment tooltips and no browser version text.
 - Store editable snapshot notes without changing snapshot identity.
 - Preserve existing task acceptance, safety snapshots, restoration history, exclusion protection and truthful partial outcomes.
 - Share activity-aware restoration discovery across file, world and history consumers, preserving fresh admission checks while reducing idle polling and repeated repository reads.
-- Keep batch controls and ignore-rule explanations from changing the file-list layout during selection and asynchronous checks.
+- Place selected counts and batch controls below file lists and advanced-search results without empty-selection space, keeping file rows stable through selection, clearing and asynchronous checks.
 - Name packed archives and local export folders with the server name and browser-local timestamp, without random identifiers or selected-path fragments, while preserving existing output on name collisions.
 - Player-specific complete rollback and its research are outside this change.
 

@@ -18,7 +18,7 @@
 ## 4. Feature entrypoints
 
 - [x] 4.1 Open existing player details in place from overview cards, independently of online-list updates, with interaction coverage.
-- [x] 4.2 Add shared batch actions, identity-safe selection and advanced-search real-result checkboxes with correct captured path roots.
+- [x] 4.2 Add shared batch actions, identity-safe selection, advanced-search real-result checkboxes and group checkboxes aggregating only matching descendants, with correct captured path roots.
 - [x] 4.3 Connect multi-path snapshot/recovery, batch deletion, packing and file/folder direct download; show unavailable controls and version-free tooltips; cover navigation and partial results.
 
 ## 5. Verification and delivery
@@ -32,7 +32,7 @@
 
 - [x] 6.1 Share one adaptive active-restoration polling observer per client/server across file, world and history views, with fresh entry/re-enable checks and truthful recovery guards.
 - [x] 6.2 Refresh restoration history on entry, actions and invalidation without periodic Restic reads; verify idle, active, errors, lifecycle and multi-consumer behavior with focused tests.
-- [x] 6.3 Keep batch control geometry stable across selection and ignore-check states in browsing and advanced search, retaining reasons in button tooltips and browser layout coverage.
+- [x] 6.3 Place selected counts and batch controls below file lists and search results without empty-selection space; keep file rows stable through selection, clearing and ignore checks, retaining reasons in button tooltips and existing browser layout coverage.
 - [x] 6.4 Update current-state observation/file documentation, validate specifications, run affected tests and required frontend checks, and prepare issue-linked commits on the follow-up branch.
 
 ## 7. Browser-local export names

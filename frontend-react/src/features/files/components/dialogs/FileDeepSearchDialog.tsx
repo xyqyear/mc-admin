@@ -200,7 +200,7 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleCancel()}>
-      <DialogContent className="sm:max-w-200">
+      <DialogContent className="top-4 max-h-[calc(100dvh-2rem)] translate-y-0 overflow-y-auto [scrollbar-gutter:stable] sm:max-w-200">
         <DialogHeader>
           <DialogTitle>高级搜索</DialogTitle>
         </DialogHeader>
@@ -349,21 +349,6 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
                 <CardTitle className="text-sm">搜索结果 ({totalCount} 个文件)</CardTitle>
               </CardHeader>
               <CardContent>
-                {searchResults.length > 0 && <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setSelectedPaths(searchResults.map(result => result.path))}>选择全部结果</Button>
-                  <Button variant="ghost" size="sm" disabled={!selectedPaths.length} onClick={() => setSelectedPaths([])}>清空选择</Button>
-                </div>}
-                <div className={`mb-3 ${selectedPaths.length ? '' : 'invisible'}`} aria-hidden={!selectedPaths.length} inert={!selectedPaths.length}><FileBatchActions
-                  serverId={serverId}
-                  paths={selectedPaths.map(path => searchResultPath(searchPath, path))}
-                  basePath={searchPath}
-                  onDeleted={deleted => {
-                    const retained = searchResults.filter(result => !deleted.some(root => includesFilePath(root, searchResultPath(searchPath, result.path))))
-                    setSearchResults(retained)
-                    setTotalCount(retained.length)
-                    setSelectedPaths(previous => previous.filter(path => !deleted.some(root => includesFilePath(root, searchResultPath(searchPath, path)))))
-                  }}
-                /></div>
                 {searchFilesMutation.isPending ? (
                   <div className="flex justify-center py-8">
                     <Spinner className="size-8" />
@@ -381,6 +366,23 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
                     没有找到匹配的文件
                   </div>
                 )}
+                {searchResults.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedPaths(searchResults.map(result => result.path))}>选择全部结果</Button>
+                  <Button variant="ghost" size="sm" disabled={!selectedPaths.length} onClick={() => setSelectedPaths([])}>清空选择</Button>
+                </div>}
+                <div className={`mt-3 ${selectedPaths.length ? '' : 'hidden'}`} aria-hidden={!selectedPaths.length} inert={!selectedPaths.length}>
+                  <FileBatchActions
+                    serverId={serverId}
+                    paths={selectedPaths.map(path => searchResultPath(searchPath, path))}
+                    basePath={searchPath}
+                    onDeleted={deleted => {
+                      const retained = searchResults.filter(result => !deleted.some(root => includesFilePath(root, searchResultPath(searchPath, result.path))))
+                      setSearchResults(retained)
+                      setTotalCount(retained.length)
+                      setSelectedPaths(previous => previous.filter(path => !deleted.some(root => includesFilePath(root, searchResultPath(searchPath, path)))))
+                    }}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}
