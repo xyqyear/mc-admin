@@ -6,6 +6,7 @@ import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import FileDeepSearchDialog from './FileDeepSearchDialog'
 import { FileSnapshotRecovery } from '../FileSnapshotRecovery'
+import { SnapshotRecoveryContext } from '../../snapshotRecoveryContext'
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -26,7 +27,7 @@ it.each([
     searches.push({ path: new URL(request.url).searchParams.get('path'), body: await request.json() })
     return HttpResponse.json({ results: [{ path: resultPath, name: resultType === 'file' ? 'a.toml' : 'config', type: resultType, size: 5, modified_at: 1 }], total_count: 1 })
   }))
-  render(<TestProviders client={client}><FileDeepSearchDialog open serverId="alpha" currentPath={currentPath} onCancel={() => {}} onNavigate={navigate} /></TestProviders>)
+  render(<TestProviders client={client}><SnapshotRecoveryContext.Provider value={{ busy: false, create: vi.fn(), restore: vi.fn(), history: vi.fn() }}><FileDeepSearchDialog open serverId="alpha" currentPath={currentPath} onCancel={() => {}} onNavigate={navigate} /></SnapshotRecoveryContext.Provider></TestProviders>)
   fireEvent.change(screen.getByLabelText('搜索模式'), { target: { value: 'config|toml' } })
   fireEvent.click(screen.getByRole('button', { name: '搜索' }))
   await screen.findByText('搜索结果 (1 个文件)')

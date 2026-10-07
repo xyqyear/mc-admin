@@ -55,3 +55,14 @@ Advanced search SHALL offer flat and original-path layouts. Original paths SHALL
 #### Scenario: Original-path layout
 - **WHEN** selected matches below a non-root search directory are exported with original paths
 - **THEN** their hierarchy is relative to that captured root regardless of later navigation
+
+### Requirement: Batch controls preserve list geometry
+The file browser and advanced-search results SHALL retain stable batch-control space across selection changes and asynchronous snapshot eligibility checks. Checking, rejected and partially ignored scope explanations SHALL be available from the snapshot action controls without adding or removing a flow row above or below the file list.
+
+#### Scenario: Eligibility response does not move selectable rows
+- **WHEN** a selected scope changes from checking to allowed or ignored
+- **THEN** snapshot controls reflect the current eligibility and explain it on hover while selectable rows and the batch-control area retain their positions
+
+#### Scenario: Selection does not insert a new control row
+- **WHEN** an administrator selects the first result or clears the last selection
+- **THEN** batch controls become available or hidden inside their retained layout area without displacing the file list

@@ -110,9 +110,9 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
       </Button>
       <RefreshButton onClick={onRefresh} isRefreshing={isLoadingFiles} />
 
-      {selectedFiles.length > 0 && (
+      <div className={`basis-full ${selectedFiles.length ? '' : 'invisible'}`} aria-hidden={!selectedFiles.length} inert={!selectedFiles.length}>
         <FileBatchActions key={JSON.stringify([serverId, currentPath])} serverId={serverId} paths={selectedFiles} basePath={currentPath} onDeleted={onDeleted} />
-      )}
+      </div>
     </>
   )
 }

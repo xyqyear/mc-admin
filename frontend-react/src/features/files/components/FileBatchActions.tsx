@@ -58,7 +58,7 @@ export function FileBatchActions({ serverId, paths, basePath, onDeleted }: {
       {restore ? <History className="mr-2 size-4" /> : <Database className="mr-2 size-4" />}{restore ? '快照恢复' : '创建快照'}
     </Button></TooltipTrigger><TooltipContent>{snapshotNotice ?? (restore ? '从快照恢复所选条目' : '为所选条目创建一个快照')}</TooltipContent>
   </Tooltip>
-  return <div className="space-y-2">
+  return <div role="toolbar" aria-label="所选文件操作" className="space-y-2">
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-sm text-muted-foreground">已选择 {paths.length} 个条目</span>
       {snapshotButton(false)}{snapshotButton(true)}
@@ -75,7 +75,6 @@ export function FileBatchActions({ serverId, paths, basePath, onDeleted }: {
         } })
       }}><Trash2 className="mr-2 size-4" />批量删除</Button>
     </div>
-    {snapshotNotice && <p className="text-xs text-muted-foreground">{snapshotNotice}</p>}
     {failures.length > 0 && <ul role="status" className="text-sm text-destructive">{failures.map(item => <li key={item.path}>{item.path}：{item.message}</li>)}</ul>}
     <DirectoryDownloadDialog key={downloadRequest?.paths.join('\0') ?? 'closed'} serverId={serverId} request={downloadRequest} onClose={() => setDownloadRequest(null)} />
     <CompressionConfirmDialog open={!!packPaths} onCancel={() => setPackPaths(null)} onOk={async () => {

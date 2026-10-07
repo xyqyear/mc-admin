@@ -353,7 +353,7 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
                   <Button variant="outline" size="sm" onClick={() => setSelectedPaths(searchResults.map(result => result.path))}>选择全部结果</Button>
                   <Button variant="ghost" size="sm" disabled={!selectedPaths.length} onClick={() => setSelectedPaths([])}>清空选择</Button>
                 </div>}
-                {selectedPaths.length > 0 && <div className="mb-3"><FileBatchActions
+                <div className={`mb-3 ${selectedPaths.length ? '' : 'invisible'}`} aria-hidden={!selectedPaths.length} inert={!selectedPaths.length}><FileBatchActions
                   serverId={serverId}
                   paths={selectedPaths.map(path => searchResultPath(searchPath, path))}
                   basePath={searchPath}
@@ -363,7 +363,7 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
                     setTotalCount(retained.length)
                     setSelectedPaths(previous => previous.filter(path => !deleted.some(root => includesFilePath(root, searchResultPath(searchPath, path)))))
                   }}
-                /></div>}
+                /></div>
                 {searchFilesMutation.isPending ? (
                   <div className="flex justify-center py-8">
                     <Spinner className="size-8" />

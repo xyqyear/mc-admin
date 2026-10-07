@@ -28,6 +28,8 @@ The restore journey and lifecycle fixture use `browser/cleanup.ts` to attempt ev
 
 `MC_ADMIN_BROWSER_CLIENT_METADATA` optionally names a JSON file with `{path,url,version,sha1,size}` for an official Minecraft client. Tests verify the official download host, SHA1 and byte count before copying it into the owned server's map cache. Production palette generation and rendering still run normally. This fixture avoids repeated external downloads; it never supplies fabricated JARs, palettes or PNGs. Without it, the application downloads its normal dependency.
 
+The file-layout cases retain actual ignore-rule responses behind a transport gate. File-list and advanced-search selections, clear actions and checking/allowed/ignored transitions preserve row and batch-toolbar geometry. Disabled snapshot controls expose their reason only through tooltips; download and packing remain available. Each case owns its source files and ignore configuration and restores both during cleanup.
+
 ## Timed CI shards
 
 The browser workflow collects every current Playwright case before planning, without launching Chromium or creating a world. `browser/shardReporter.ts` records project, file relative to Playwright's `rootDir`, and the full title path. The loop-declared journeys share a source line, so line numbers cannot select them independently. Frozen `--test-list` entries use these complete identities. The separate Node reporter tests are excluded from Playwright collection.

@@ -10,6 +10,8 @@ Issue #175 asks administrators to inspect online players without leaving the ser
 - Keep direct-download controls visible when unavailable, with Chinese capability/environment tooltips and no browser version text.
 - Store editable snapshot notes without changing snapshot identity.
 - Preserve existing task acceptance, safety snapshots, restoration history, exclusion protection and truthful partial outcomes.
+- Share activity-aware restoration discovery across file, world and history consumers, preserving fresh admission checks while reducing idle polling and repeated repository reads.
+- Keep batch controls and ignore-rule explanations from changing the file-list layout during selection and asynchronous checks.
 - Player-specific complete rollback and its research are outside this change.
 
 ## Capabilities

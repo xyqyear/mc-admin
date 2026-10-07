@@ -28,4 +28,11 @@
 - [x] 5.3 Run directly affected local tests plus required frontend/backend/Go static checks and frontend build.
 - [x] 5.4 Prepare the reviewable implementation on the development branch with conventional issue-linked commit contents.
 
+## 6. Restoration observation and stable file controls
+
+- [x] 6.1 Share one adaptive active-restoration polling observer per client/server across file, world and history views, with fresh entry/re-enable checks and truthful recovery guards.
+- [x] 6.2 Refresh restoration history on entry, actions and invalidation without periodic Restic reads; verify idle, active, errors, lifecycle and multi-consumer behavior with focused tests.
+- [x] 6.3 Keep batch control geometry stable across selection and ignore-check states in browsing and advanced search, retaining reasons in button tooltips and browser layout coverage.
+- [x] 6.4 Update current-state observation/file documentation, validate specifications, run affected tests and required frontend checks, and prepare issue-linked commits on the follow-up branch.
+
 Delivery requires pushing the development branch and qualifying its latest SHA with `publish=false`, then verifying every required gate and coverage/cleanup audit under the root AGENTS.md workflow. This external gate remains required after the versioned implementation checklist is complete.
