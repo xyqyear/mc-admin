@@ -39,11 +39,11 @@ describe('version update notifications', () => {
     expect(screen.getAllByRole('heading', { level: 5 }).map(heading => heading.textContent)).toEqual(['第二个测试版'])
   })
 
-  it('shows the bundled beta.2 notes once when upgrading from beta.1', () => {
+  it('shows the bundled final release notes once when upgrading from beta.1', () => {
     render(<VersionUpdateDialog open onClose={vi.fn()} onRemindLater={vi.fn()}
-      fromVersion="6.0.0-beta.1" toVersion="6.0.0-beta.2" />)
+      fromVersion="6.0.0-beta.1" toVersion="6.0.0" />)
     expect(screen.getAllByRole('heading', { level: 5 }).map(heading => heading.textContent)).toEqual([
-      '统一恢复与任务进度',
+      '文件批量操作与恢复升级',
     ])
   })
 
