@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+from app.background_tasks.types import TaskStatus
 from app.minecraft import MCServerStatus
 from app.runtime_resources import current_runtime
 from app.snapshots.planner import TargetIgnoredError
@@ -90,7 +91,7 @@ async def test_uncovered_allowed_root_is_not_silently_skipped(case):
     assert len(await case.snapshots.list_snapshots()) == 1
 
 
-async def test_all_protected_selections_reject_before_task_acceptance(case):
+async def test_all_protected_selections_never_prepare_safety_or_write(case):
     folder = case.data / "private"
     folder.mkdir()
     (folder / "value").write_text("protected")
@@ -108,12 +109,13 @@ async def test_all_protected_selections_reject_before_task_acceptance(case):
             await action()
     case.config.snapshots.ignored_paths = []
     assert await case.commands.eligible(scope) == []
-    with pytest.raises(TargetIgnoredError):
-        await case.commands.restore(scope, source.id, 1)
-    with pytest.raises(TargetIgnoredError):
-        await previews.submit(scope, source.id, 1)
+    restored = await case.commands.restore(scope, source.id, 1)
+    await complete(case, restored, success=False)
+    await complete(case, await previews.submit(scope, source.id, 1), success=False)
+    row = await case.commands.store.get(restored["restoration_id"])
+    assert row.safety_snapshot_id is None
     assert (folder / "value").read_text() == "protected"
-    assert not case.tasks.get_all_tasks()
+    assert len(await case.snapshots.list_snapshots()) == 1
 
 
 async def test_queued_restore_rejects_changed_rules_before_safety_and_write(case, monkeypatch):
@@ -139,3 +141,33 @@ async def test_queued_restore_rejects_changed_rules_before_safety_and_write(case
     row = await case.commands.store.get(accepted["restoration_id"])
     assert row.safety_snapshot_id is None
     assert len(await case.snapshots.list_snapshots()) == 1
+
+
+async def test_slow_source_lookup_keeps_preview_observable_and_cancellable(case, monkeypatch):
+    target = case.data / "config.txt"
+    target.write_text("source")
+    source = await case.snapshots.create_snapshot([target])
+    target.write_text("live")
+    entered = asyncio.Event()
+
+    async def delayed_source(_):
+        entered.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(case.snapshots, "get_snapshot", delayed_source)
+    previews = current_runtime().snapshot_previews
+    assert previews is not None
+    scope = PathsScope(server_id="survival", paths=("config.txt",))
+    accepted = await asyncio.wait_for(previews.submit(scope, source.id, 1), 5)
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        task = case.tasks.get_task(accepted["task_id"])
+        assert task.status is TaskStatus.RUNNING
+        assert task.message == "正在检查预览范围和源快照"
+        assert not list(previews.manager.base_dir.iterdir())
+    finally:
+        await case.tasks.cancel(accepted["task_id"])
+        await case.tasks.get_future(accepted["task_id"])
+    assert case.tasks.get_task(accepted["task_id"]).status is TaskStatus.CANCELLED
+    assert not list(previews.manager.base_dir.iterdir())
+    assert target.read_text() == "live"

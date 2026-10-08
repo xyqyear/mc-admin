@@ -21,6 +21,7 @@ from .restoration_models import RestorationType
 from .restoration_store import SessionFactory
 from .scopes import (
     GlobalScope,
+    PathsScope,
     ResolvedScope,
     ServerScope,
     SnapshotScope,
@@ -68,7 +69,6 @@ class SnapshotPlanner:
         history_paths: tuple[Path, ...] | None = None,
         from_history: bool = False,
         legacy_world: bool = False,
-        source: ResticSnapshot | None = None,
     ) -> PreparedSnapshot:
         resolved = await resolve_scope(
             scope,
@@ -82,8 +82,6 @@ class SnapshotPlanner:
             data_paths=[ref.data_path for ref in resolved.servers],
         )
         protection = protection.with_mappings(resolved.mappings)
-        if source is not None:
-            protection = await self.snapshots.with_source_protection(protection, source)
         paths = protection.select_targets(resolved.paths)
         executions = tuple(protection.execution_path(path) for path in paths)
         maintenance = (
@@ -135,6 +133,20 @@ class SnapshotPlanner:
             from_history,
             legacy_world,
         )
+
+    async def file_admission(
+        self, prepared: PreparedSnapshot, source_id: str
+    ) -> PreparedSnapshot:
+        if not isinstance(prepared.resolved.scope, PathsScope) or not prepared.maintenance:
+            return prepared
+        # Source exclusions can remove the world roots that require a stopped server.
+        source = await self.snapshots.get_snapshot(source_id)
+        protection = await self.snapshots.with_source_protection(prepared.protection, source)
+        paths = protection.select_targets(prepared.resolved.paths)
+        maintenance = await self._files.maintenance_servers(
+            [protection.execution_path(path) for path in paths]
+        )
+        return replace(prepared, protection=protection, maintenance=tuple(maintenance))
 
     async def revalidate(self, prepared: PreparedSnapshot) -> None:
         await revalidate_targets()

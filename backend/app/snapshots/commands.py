@@ -383,7 +383,6 @@ class SnapshotCommands:
                 history_paths=history_paths,
                 from_history=original is not None,
                 legacy_world=legacy_world,
-                source=await self.snapshots.get_snapshot(source_id),
             )
             if original is not None:
                 saved = json.loads(original.scope_json or "{}")
@@ -458,6 +457,7 @@ class SnapshotCommands:
                 )
             for reference in prepared.resolved.servers:
                 get_server_write_admission().check(reference.server_id)
+            prepared = await self._planner.file_admission(prepared, source_id)
             await self._files.check_available(list(prepared.maintenance))
             await get_operation_coordinator().check_available(prepared.claims)
             self._retain(stack, task_id, prepared.resolved)

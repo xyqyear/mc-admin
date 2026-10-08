@@ -97,9 +97,7 @@ class SnapshotPreviews:
         preparation = PreviewPreparation()
         with ExitStack() as stack:
             stack.enter_context(self._snapshots.repository_use.retain([source_id]))
-            prepared = await self._planner.prepare(
-                scope, source=await self._snapshots.get_snapshot(source_id)
-            )
+            prepared = await self._planner.prepare(scope)
             admission = get_server_write_admission()
             stack.enter_context(
                 admission.write_global()

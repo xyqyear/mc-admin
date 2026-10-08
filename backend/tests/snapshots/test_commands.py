@@ -16,7 +16,6 @@ from app.operations.journal_types import (
     ResourceReference,
 )
 from app.runtime_resources import current_runtime
-from app.snapshots.planner import TargetIgnoredError
 from app.snapshots.queries import RestorationQueries
 from app.snapshots.restoration_models import Restoration, RestorationStatus
 from app.snapshots.scopes import GlobalScope, PathsScope
@@ -403,7 +402,7 @@ async def test_global_restore_preserves_project_and_unregistered_content_scope(c
     assert (case.data / "value").read_text() == "server later"
 
 
-async def test_all_source_protected_targets_reject_before_acceptance_after_rule_removal(
+async def test_all_source_protected_targets_fail_before_safety_after_rule_removal(
     case,
 ):
     target = case.data / "ignored"
@@ -411,15 +410,15 @@ async def test_all_source_protected_targets_reject_before_acceptance_after_rule_
     case.config.snapshots.ignored_paths = ["ignored"]
     source = await case.snapshots.create_snapshot([case.data])
     case.config.snapshots.ignored_paths = []
-    with pytest.raises(TargetIgnoredError, match="忽略"):
-        await case.commands.restore(
-            PathsScope(server_id="survival", paths=("ignored",)), source.id, 1
-        )
+    accepted = await case.commands.restore(
+        PathsScope(server_id="survival", paths=("ignored",)), source.id, 1
+    )
+    await complete(case, accepted, success=False)
     assert target.read_text() == "protected"
     assert len(await case.snapshots.list_snapshots()) == 1
-    assert not case.tasks.get_all_tasks()
-    async with current_runtime().database.session_factory() as session:
-        assert list(await session.scalars(select(Restoration))) == []
+    row = await case.commands.store.get(accepted["restoration_id"])
+    assert row.status is RestorationStatus.FAILED
+    assert row.safety_snapshot_id is None
 
 
 async def test_unconfirmed_cron_repository_writer_blocks_deletion_after_memory_references_release(

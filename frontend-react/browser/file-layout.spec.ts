@@ -3,7 +3,7 @@ import { test, expect, login, type OwnedApi } from './fixtures'
 import { withCleanup } from './cleanup'
 
 const isolated = { annotation: { type: 'shard_isolation', description: 'independent' } }
-const ignoredReason = '此范围已被快照规则忽略，不能创建快照或恢复'
+const ignoredReason = '所选范围均被快照规则忽略，没有可处理的内容'
 
 type TargetRules = { ignored_paths: string[] }
 

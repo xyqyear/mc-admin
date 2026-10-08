@@ -5,7 +5,7 @@ Mixed file selections currently reject the entire snapshot or restoration when o
 ## What Changes
 
 - Filter protected roots through one shared selection policy; reject only an empty effective selection.
-- Apply current, source and retained-chain protection before restoration admission and show source-specific skips.
+- Apply current, source and retained-chain protection before restoration writes and show source-specific skips.
 - Keep explicit source coverage checks for every allowed file root and retain skipped-path protection during rollback.
 - Preserve confinement, generation checks, preview freshness and queued rule-change rejection.
 - Non-goals: changing exclusion syntax, world partial-coverage semantics, Restic options or historical identity compatibility.

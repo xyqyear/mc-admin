@@ -1,7 +1,7 @@
 ## 1. Shared backend selection
 
 - [x] 1.1 Centralize allowed-root selection and derive effective maintenance and missing-parent preparation.
-- [x] 1.2 Apply source protection before restoration admission and share candidate coverage with execution.
+- [x] 1.2 Apply source protection before execution and source-aware file stop checks and share candidate coverage with execution.
 - [x] 1.3 Return source-specific skip feedback and retain rollback protection.
 
 ## 2. Frontend feedback

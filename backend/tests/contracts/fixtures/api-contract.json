@@ -2668,6 +2668,22 @@
           "title": "ListRestorationsResponse",
           "type": "object"
         },
+        "ListSnapshotSourcesResponse": {
+          "properties": {
+            "snapshots": {
+              "items": {
+                "$ref": "#/components/schemas/SnapshotRestoreSource"
+              },
+              "title": "Snapshots",
+              "type": "array"
+            }
+          },
+          "required": [
+            "snapshots"
+          ],
+          "title": "ListSnapshotSourcesResponse",
+          "type": "object"
+        },
         "ListSnapshotsResponse": {
           "properties": {
             "snapshots": {
@@ -3394,6 +3410,92 @@
             "server_id"
           ],
           "title": "ServerScope",
+          "type": "object"
+        },
+        "SnapshotRestoreSource": {
+          "properties": {
+            "excludes": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Excludes",
+              "type": "array"
+            },
+            "hostname": {
+              "title": "Hostname",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "note": {
+              "default": "",
+              "title": "Note",
+              "type": "string"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Paths",
+              "type": "array"
+            },
+            "program_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Program Version"
+            },
+            "short_id": {
+              "title": "Short Id",
+              "type": "string"
+            },
+            "skipped_count": {
+              "default": 0,
+              "title": "Skipped Count",
+              "type": "integer"
+            },
+            "skipped_paths": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Skipped Paths",
+              "type": "array"
+            },
+            "tags": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Tags",
+              "type": "array"
+            },
+            "time": {
+              "format": "date-time",
+              "title": "Time",
+              "type": "string"
+            },
+            "username": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          "required": [
+            "time",
+            "paths",
+            "hostname",
+            "username",
+            "id",
+            "short_id"
+          ],
+          "title": "SnapshotRestoreSource",
           "type": "object"
         },
         "SnapshotTargetCheck": {
@@ -6086,7 +6188,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/ListSnapshotsResponse"
+                    "$ref": "#/components/schemas/ListSnapshotSourcesResponse"
                   }
                 }
               },

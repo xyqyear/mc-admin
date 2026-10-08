@@ -73,7 +73,7 @@ Semantics:
 - **Restore** never overwrites *or deletes* protected logical paths, even though restores run with `--delete`. Current rules, the source's logical selection evidence, its recorded physical `excludes` projected through the selected roots, and retained restoration-chain exclusions combine before execution.
 - **Coverage** (`find_snapshots_covering`, path-filtered listing, self-check freshness) is exclude-aware: a snapshot whose recorded excludes contain the queried path does not count as covering it, while an exclude strictly below the queried path doesn't disqualify the snapshot (`coverage.py`).
 - Historical listing and source coverage use each snapshot's recorded protection, independent of current dynamic configuration. Current rule changes do not hide existing history; eligible-source and execution checks enforce the current rules separately.
-- Protection filters ignored selected roots and processes the remaining roots. An entirely protected selection raises `TargetIgnoredError` (HTTP 400 before task acceptance). Original roots and mappings remain identity evidence; effective roots drive execution, missing-parent preparation and ordinary-file maintenance checks. Accepted resource claims conservatively retain original scope ownership.
+- Protection filters ignored selected roots and processes the remaining roots. An entirely protected selection raises `TargetIgnoredError`; current-rule exclusion rejects admission, while source-only exclusion is rejected before safety capture or writes, in the worker unless file stop checks require source inspection during admission. Original roots and mappings remain identity evidence; effective roots drive execution, missing-parent preparation and ordinary-file maintenance checks. Accepted resource claims conservatively retain original scope ownership.
 
 Application snapshots carry a bounded `mc-admin-logical-v2:` tag containing
 logical exclusions and compressed non-identity path mappings. Exact stored
@@ -222,9 +222,12 @@ non-world root. A recorded exclusion skips a root; missing coverage without
 exclusion never silently narrows a file selection. Sources with no effective
 roots are omitted. Each source carries `skipped_paths` (at most 100) and
 `skipped_count`, independent of its ordinary snapshot metadata. Source protection
-is incorporated before restoration/preview acceptance; ordinary-file maintenance
-checks use effective execution roots, so an ignored world root cannot require
-stopping an otherwise online file restore. Queued execution revalidates the frozen
+is checked in the restoration/preview worker. File scopes requiring world
+maintenance also read source protection before admission stop checks, using
+effective execution roots so an ignored world root cannot require stopping an
+otherwise online file restore. Other requests accept durable tasks before
+repository reads; unavailable or entirely source-protected targets fail before
+safety capture, preview publication or writes. Queued execution revalidates the frozen
 rules and original mappings before safety capture or writes. Previews and task
 results expose the same skips; history retains original selection and protection
 so removing current rules cannot expand a rollback into previously skipped roots.

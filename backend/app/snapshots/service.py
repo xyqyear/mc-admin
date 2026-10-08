@@ -52,7 +52,7 @@ from .planner import (
 )
 from .protection import SnapshotProtection
 from .repository_use import RepositoryUse
-from .restic import ResticClient, SnapshotNotFoundError
+from .restic import ResticClient
 
 
 class SnapshotService:
@@ -582,10 +582,7 @@ class SnapshotService:
         yield ResticRestoreEvent(kind="summary", files_deleted=len(removed))
 
     async def get_snapshot(self, snapshot_id: str) -> ResticSnapshot:
-        try:
-            snapshot = await self._client.get_snapshot(snapshot_id)
-        except SnapshotNotFoundError as error:
-            raise HTTPException(status_code=404, detail="源快照不存在或已被删除") from error
+        snapshot = await self._client.get_snapshot(snapshot_id)
         await self._project_notes([snapshot])
         return snapshot
 

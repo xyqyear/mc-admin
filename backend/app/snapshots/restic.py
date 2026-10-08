@@ -27,10 +27,6 @@ from .models import (
 )
 
 
-class SnapshotNotFoundError(RuntimeError):
-    pass
-
-
 def _snapshot_from_json(data: dict) -> ResticSnapshot:
     return ResticSnapshot(
         time=datetime.fromisoformat(data["time"]),
@@ -205,10 +201,8 @@ class ResticClient:
             snapshots = json.loads(result)
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Could not parse snapshot info JSON: {e}")
-        if not isinstance(snapshots, list):
-            raise ResticProtocolError("Expected snapshots to be a list")
-        if not snapshots:
-            raise SnapshotNotFoundError(f"Snapshot not found: {snapshot_id}")
+        if not isinstance(snapshots, list) or not snapshots:
+            raise RuntimeError(f"Snapshot not found: {snapshot_id}")
         return _snapshot_from_json(snapshots[0])
 
     async def list_snapshots(self) -> list[ResticSnapshot]:

@@ -9,7 +9,7 @@ Use one protection-owned target selection boundary across snapshot service and a
 ## Decisions
 
 - Protection selects allowed roots and rejects an empty selection. Strict per-target rejection is replaced at this shared boundary, avoiding per-entry exceptions.
-- Prepared snapshots retain original resolved identity while exposing effective paths. Resource and maintenance preparation uses those effective paths; source protection is incorporated before restore admission. World-specific chunk coverage remains in its existing adapter.
+- Prepared snapshots retain original resolved identity while exposing effective paths. Resource and maintenance preparation uses those effective paths; source protection is incorporated in the worker; only file scopes requiring world maintenance read the source before stop checks. Other requests accept durable tasks before repository reads. World-specific chunk coverage remains in its existing adapter.
 - Eligible sources reuse source preparation and return additive per-source skip metadata. Ordinary missing coverage remains an error. Frontend renders authoritative source skips, rather than interpreting repository absolute paths or tags locally.
 - Existing protection and scope JSON retain skipped roots across rollback. Low-level restore protection and queued revalidation remain authoritative; original path confinement is never relaxed.
 
