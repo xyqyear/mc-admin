@@ -653,6 +653,15 @@ export const versionUpdates: VersionUpdate[] = [
       '重启计划按服务器名识别，修复旧数据库升级后部分计划不可用的问题',
     ],
   },
+  {
+    version: '6.2.0',
+    date: '2026-10-08',
+    title: '快照忽略路径优化',
+    description: '多选快照与恢复自动跳过忽略路径，其余内容正常处理。',
+    features: [
+      '多选快照和恢复自动跳过忽略路径，回滚仍保留这些内容',
+    ],
+  },
 ]
 
 function parseVersion(version: string) {
