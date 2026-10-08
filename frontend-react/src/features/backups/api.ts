@@ -1,7 +1,7 @@
 import type { BackupRepositoryUsage } from "@/features/backups/contracts";
 import { api } from "@/shared/http/api";
 import type { Snapshot, SnapshotScope, SnapshotTaskAccepted, SnapshotRestoreRequest, RestorationHistory, ListSnapshotsResponse, ListLocksResponse, SnapshotPreviewRequest, SnapshotPreviewResult, SnapshotPreviewActions } from '@/features/backups/contracts';
-import type { ActiveRestorations, RestorationFilters, SnapshotTargetCheck, SnapshotTargetRules, WorldScope } from './contracts';
+import type { ActiveRestorations, ListSnapshotSourcesResponse, RestorationFilters, SnapshotTargetCheck, SnapshotTargetRules, WorldScope } from './contracts';
 
 
 export const snapshotApi = {
@@ -28,7 +28,7 @@ export const snapshotApi = {
     } while (page.restorations.length && restorations.length < page.total);
     return { restorations, total: restorations.length };
   },
-  eligible: async (scope: SnapshotScope) => (await api.post<ListSnapshotsResponse>('/snapshots/eligible', { scope })).data,
+  eligible: async (scope: SnapshotScope) => (await api.post<ListSnapshotSourcesResponse>('/snapshots/eligible', { scope })).data,
   getAllSnapshots: async (params?: {
     server_id?: string;
     path?: string;

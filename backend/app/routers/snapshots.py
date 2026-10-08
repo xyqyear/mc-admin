@@ -17,6 +17,7 @@ from app.snapshots.api_models import (
     CreateSnapshotRequest,
     ListLocksResponse,
     ListRestorationsResponse,
+    ListSnapshotSourcesResponse,
     ListSnapshotsResponse,
     RestorationResponse,
     RestoreRequest,
@@ -136,12 +137,12 @@ async def update_snapshot_note(
     return await _get_snapshot_service().save_note(snapshot_id, request.note)
 
 
-@router.post("/eligible", response_model=ListSnapshotsResponse)
+@router.post("/eligible", response_model=ListSnapshotSourcesResponse)
 async def eligible_snapshots(
     request: CreateSnapshotRequest, _: UserPublic = Depends(get_current_user)
 ):
     try:
-        return ListSnapshotsResponse(
+        return ListSnapshotSourcesResponse(
             snapshots=await _commands().eligible(request.scope)
         )
     except TargetIgnoredError as error:

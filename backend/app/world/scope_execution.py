@@ -145,8 +145,7 @@ class RestoreScopeExecutor:
                 include_paths.append(live_dir / f"r.{rx}.{rz}.mca")
                 # MCC sidecars (1024 per region) are speculative; restic ignores nonexistent ones.
                 include_paths.extend(_mcc_paths_for_region(live_dir, rx, rz))
-        include_paths = [path for path in include_paths if protection.permits(path)]
-        protection.require_targets(include_paths)
+        include_paths = list(protection.select_targets(include_paths))
 
         async with restore_stage() as stage_root:
             yield TaskProgress(

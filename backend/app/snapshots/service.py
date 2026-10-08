@@ -52,7 +52,7 @@ from .planner import (
 )
 from .protection import SnapshotProtection
 from .repository_use import RepositoryUse
-from .restic import ResticClient
+from .restic import ResticClient, SnapshotNotFoundError
 
 
 class SnapshotService:
@@ -274,15 +274,15 @@ class SnapshotService:
     ) -> ResticSnapshotWithSummary:
         """Snapshot the given absolute paths, excluding configured ignores.
 
-        Raises ``TargetIgnoredError`` when a requested path itself lies
-        under an ignored path — such a snapshot would be empty by definition.
+        Protected roots are skipped; an entirely protected selection is rejected.
         """
         with self.repository_use.retain():
+            protection = protection or await self.protection()
+            paths = protection.select_targets(paths)
             protection = await self._bind_paths(
-                paths, protection or await self.protection()
+                paths, protection
             )
             await self.revalidate_protection(protection)
-            protection.require_targets(paths)
             mappings = tuple(
                 SnapshotPathMapping(path, protection.execution_path(path))
                 for path in paths
@@ -340,7 +340,7 @@ class SnapshotService:
             protection, await self.get_snapshot(snapshot_id)
         )
         await self.revalidate_protection(protection)
-        protection.require_targets(targets)
+        targets = protection.select_targets(targets)
         groups: dict[tuple[Path, ...], list[SnapshotPathMapping]] = {}
         for path in targets:
             mapping = SnapshotPathMapping(path, protection.execution_path(path))
@@ -582,7 +582,10 @@ class SnapshotService:
         yield ResticRestoreEvent(kind="summary", files_deleted=len(removed))
 
     async def get_snapshot(self, snapshot_id: str) -> ResticSnapshot:
-        snapshot = await self._client.get_snapshot(snapshot_id)
+        try:
+            snapshot = await self._client.get_snapshot(snapshot_id)
+        except SnapshotNotFoundError as error:
+            raise HTTPException(status_code=404, detail="源快照不存在或已被删除") from error
         await self._project_notes([snapshot])
         return snapshot
 

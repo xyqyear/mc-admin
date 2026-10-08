@@ -94,7 +94,7 @@ it('pages file changes and applies the same preview identity before releasing it
     http.get('*/api/tasks/preview', () => HttpResponse.json({
       task_id: 'preview', status: 'completed', result: {
         preview_id: 'ready', kind: 'files', preview_summary: '3 个文件更新',
-        skipped_count: 1, notice: '预览后在线文件仍可能变化',
+        skipped_count: 1, skipped_paths: ['plugins/private'], notice: '预览后在线文件仍可能变化',
       },
     })),
     http.get('*/api/snapshots/previews/ready/actions', ({ request }) => {
@@ -111,7 +111,8 @@ it('pages file changes and applies the same preview identity before releasing it
   )
   const view = render(<SnapshotPreviewDialog request={request} onClose={() => {}} onRestore={applied} />, { wrapper })
   await screen.findByText('plugins/first.yml')
-  expect(screen.getByText('所选范围包含忽略目录，这些内容将保持不变。')).toBeTruthy()
+  expect(screen.getByText('将跳过 1 个忽略路径，保留其当前内容。')).toBeTruthy()
+  expect(screen.getByText('plugins/private')).toBeTruthy()
   expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: '下一页' }))
   await screen.findByText('plugins/last.yml')

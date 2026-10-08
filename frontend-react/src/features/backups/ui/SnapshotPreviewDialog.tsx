@@ -9,6 +9,7 @@ import { Progress } from '@/shared/ui/progress'
 import { snapshotApi } from '../api'
 import { useSnapshotPreview } from '../useSnapshotPreview'
 import type { SnapshotPreviewRequest } from '../contracts'
+import { SnapshotSkipNotice } from './SnapshotSkipNotice'
 
 const labels = { updated: '更新', deleted: '删除', restored: '恢复' }
 
@@ -51,9 +52,7 @@ export function SnapshotPreviewDialog({ request, onClose, onRestore }: SnapshotP
           <>
             <p>{state.result.preview_summary}</p>
             <p className="text-sm text-muted-foreground">{state.result.notice}</p>
-            {state.result.skipped_count > 0 && (
-              <p className="text-sm">所选范围包含忽略目录，这些内容将保持不变。</p>
-            )}
+            <SnapshotSkipNotice paths={state.result.skipped_paths} count={state.result.skipped_count} />
             {actions.isPending && <Spinner />}
             {actions.isError && (
               <p role="alert">

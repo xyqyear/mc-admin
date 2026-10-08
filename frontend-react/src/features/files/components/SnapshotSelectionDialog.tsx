@@ -8,13 +8,14 @@ import { DataTable } from '@/shared/components/DataTable'
 import { SortableHeader } from '@/shared/components/SortableHeader'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import { formatDateTime } from '@/shared/utils/formatUtils'
-import type { Snapshot, RestoreProgressState } from '@/features/backups/contracts'
+import type { SnapshotRestoreSource, RestoreProgressState } from '@/features/backups/contracts'
+import { SnapshotSkipNotice } from '@/features/backups/ui/SnapshotSkipNotice'
 import { RestoreProgressCard } from '@/features/backups/ui/RestoreProgressCard'
 
 interface SnapshotSelectionDialogProps {
   open: boolean
   onCancel: () => void
-  snapshots: Snapshot[]
+  snapshots: SnapshotRestoreSource[]
   loading: boolean
   onRestore: (snapshotId: string) => void
   restoreLoading: boolean
@@ -27,7 +28,7 @@ interface SnapshotSelectionDialogProps {
   notice?: string | null
 }
 
-const snapshotColumns: ColumnDef<Snapshot, any>[] = [
+const snapshotColumns: ColumnDef<SnapshotRestoreSource, any>[] = [
   {
     accessorKey: 'short_id',
     header: '快照ID',
@@ -63,6 +64,13 @@ const snapshotColumns: ColumnDef<Snapshot, any>[] = [
     size: 120,
     cell: ({ row }) => <span className="text-sm">{row.original.username}</span>,
   },
+  {
+    id: 'skipped',
+    header: '跳过内容',
+    cell: ({ row }) => row.original.skipped_count
+      ? <SnapshotSkipNotice paths={row.original.skipped_paths} count={row.original.skipped_count} />
+      : <span className="text-sm text-muted-foreground">无</span>,
+  },
 ]
 
 export const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = ({
@@ -82,7 +90,7 @@ export const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = (
 }) => {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'time', desc: true }])
 
-  const actionColumn: ColumnDef<Snapshot, any> = useMemo(() => ({
+  const actionColumn: ColumnDef<SnapshotRestoreSource, any> = useMemo(() => ({
     id: 'actions',
     header: '操作',
     size: 180,
@@ -149,7 +157,7 @@ export const SnapshotSelectionDialog: React.FC<SnapshotSelectionDialogProps> = (
             选择要恢复的快照 - {isServerMode ? '服务器数据目录' : filePath}
           </DialogTitle>
           <DialogDescription>
-            以下是包含{isServerMode ? '服务器数据目录' : '该路径'}的所有快照，请选择要恢复的版本
+            请选择恢复版本。被忽略的路径会跳过，其余所选内容将恢复；各版本的跳过内容见下表。
           </DialogDescription>
         </DialogHeader>
         {notice && <p className="text-sm text-muted-foreground">{notice}</p>}

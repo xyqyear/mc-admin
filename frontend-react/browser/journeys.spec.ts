@@ -187,7 +187,7 @@ test.describe('owned administration journeys', () => {
     )
   })
 
-  journey('file snapshots preview, resume after reload and roll back while ignored paths stay disabled', async ({ page, api, owned }) => {
+  journey('mixed file snapshots skip ignored paths through preview, resumed restore and rollback', async ({ page, api, owned }) => {
     const filename = 'browser-recovery.txt'
     const ignored = 'browser-ignored'
     const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/snapshots')
@@ -203,19 +203,25 @@ test.describe('owned administration journeys', () => {
       await expect(page.getByRole('button', { name: `为 ${ignored} 创建快照`, exact: true })).toBeDisabled()
       await expect(page.getByRole('button', { name: `恢复 ${ignored}`, exact: true })).toBeDisabled()
       await expect(page.getByText('所选范围包含忽略目录，创建与恢复会跳过这些内容', { exact: true })).toBeVisible()
+      await page.getByRole('checkbox', { name: `选择 /${filename}`, exact: true }).check()
+      await page.getByRole('checkbox', { name: `选择 /${ignored}`, exact: true }).check()
+      const toolbar = page.getByRole('toolbar', { name: '所选文件操作' })
+      await expect(toolbar.getByRole('button', { name: '创建快照', exact: true })).toBeEnabled()
       const createdResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/snapshots')
-      await page.getByRole('button', { name: `为 ${filename} 创建快照`, exact: true }).click()
+      await toolbar.getByRole('button', { name: '创建快照', exact: true }).click()
       await page.getByRole('dialog', { name: '确认创建快照' }).getByRole('button', { name: '创建快照', exact: true }).click()
       const accepted = await (await createdResponse).json() as { task_id: string }
       const result = (await api.task(accepted.task_id)).result as { snapshot: { id: string; short_id: string } }
       await expect(page.getByRole('dialog', { name: '确认创建快照' })).toBeHidden()
       await api.writeFile(filename, 'before file restore\n')
-      await page.getByRole('button', { name: `恢复 ${filename}`, exact: true }).click()
+      await toolbar.getByRole('button', { name: '快照恢复', exact: true }).click()
       const picker = page.getByRole('dialog', { name: new RegExp('选择要恢复的快照') })
       const snapshotRow = picker.getByRole('row').filter({ hasText: result.snapshot.short_id })
+      await expect(snapshotRow.getByText('将跳过 1 个忽略路径，保留其当前内容。')).toBeVisible()
       await snapshotRow.getByRole('button', { name: '预览', exact: true }).click()
       const preview = page.getByRole('dialog', { name: '恢复预览' })
       await expect(preview.getByText('更新', { exact: true })).toBeVisible()
+      await expect(preview.getByText('将跳过 1 个忽略路径，保留其当前内容。')).toBeVisible()
       expect((await api.file(filename)).content).toBe('before file restore\n')
       worker = holdSnapshotBackup(owned)
       await preview.getByRole('button', { name: '按此预览恢复', exact: true }).click()
@@ -233,6 +239,8 @@ test.describe('owned administration journeys', () => {
       expect(await readFile(path.join(owned.server_path, 'data', filename), 'utf8')).toBe('file snapshot bytes\n')
       await resumed.getByRole('button', { name: '关闭', exact: true }).click()
       await api.writeFile(filename, 'later file edit\n')
+      await api.json('/api/config/modules/snapshots', 'PUT', config)
+      await api.writeFile(ignored + '/keep.txt', 'protected after rules change\n')
       await page.getByRole('button', { name: '恢复历史', exact: true }).click()
       const history = page.getByRole('dialog', { name: '恢复历史' })
       await history.getByLabel('筛选恢复范围').selectOption('paths')
@@ -244,7 +252,7 @@ test.describe('owned administration journeys', () => {
       await expect(history.getByText('恢复完成', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
       expect((await api.file(filename)).content).toBe('before file restore\n')
       expect(await readFile(path.join(owned.server_path, 'data', filename), 'utf8')).toBe('before file restore\n')
-      expect((await api.file(ignored + '/keep.txt')).content).toBe('protected bytes\n')
+      expect((await api.file(ignored + '/keep.txt')).content).toBe('protected after rules change\n')
     },
     { label: 'snapshot worker', run: async () => { await worker?.release() } },
     { label: 'snapshot rules', run: async () => { await api.json('/api/config/modules/snapshots', 'PUT', config) } },

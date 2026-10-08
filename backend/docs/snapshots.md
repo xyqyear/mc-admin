@@ -73,7 +73,7 @@ Semantics:
 - **Restore** never overwrites *or deletes* protected logical paths, even though restores run with `--delete`. Current rules, the source's logical selection evidence, its recorded physical `excludes` projected through the selected roots, and retained restoration-chain exclusions combine before execution.
 - **Coverage** (`find_snapshots_covering`, path-filtered listing, self-check freshness) is exclude-aware: a snapshot whose recorded excludes contain the queried path does not count as covering it, while an exclude strictly below the queried path doesn't disqualify the snapshot (`coverage.py`).
 - Historical listing and source coverage use each snapshot's recorded protection, independent of current dynamic configuration. Current rule changes do not hide existing history; eligible-source and execution checks enforce the current rules separately.
-- Snapshotting or restoring a target that itself lies under an ignored path raises `TargetIgnoredError` (HTTP 400 before task acceptance).
+- Protection filters ignored selected roots and processes the remaining roots. An entirely protected selection raises `TargetIgnoredError` (HTTP 400 before task acceptance). Original roots and mappings remain identity evidence; effective roots drive execution, missing-parent preparation and ordinary-file maintenance checks. Accepted resource claims conservatively retain original scope ownership.
 
 Application snapshots carry a bounded `mc-admin-logical-v2:` tag containing
 logical exclusions and compressed non-identity path mappings. Exact stored
@@ -216,10 +216,18 @@ created snapshot as a successful content result. The shared creation dialog keep
 that identity visible and offers a separate note save retry. It never resubmits
 snapshot creation to repair metadata.
 
-`POST /snapshots/eligible` requires every non-world selected root to be permitted
-by the union of current and source protection. A source entirely excluding one
-root cannot qualify by covering the others. Exclusions strictly inside selected
-directories retain the existing protected-descendant skip behavior.
+`POST /snapshots/eligible` filters roots using the union of current and source
+protection, then requires coverage or documented absence for every remaining
+non-world root. A recorded exclusion skips a root; missing coverage without
+exclusion never silently narrows a file selection. Sources with no effective
+roots are omitted. Each source carries `skipped_paths` (at most 100) and
+`skipped_count`, independent of its ordinary snapshot metadata. Source protection
+is incorporated before restoration/preview acceptance; ordinary-file maintenance
+checks use effective execution roots, so an ignored world root cannot require
+stopping an otherwise online file restore. Queued execution revalidates the frozen
+rules and original mappings before safety capture or writes. Previews and task
+results expose the same skips; history retains original selection and protection
+so removing current rules cannot expand a rollback into previously skipped roots.
 
 ## Observation and target feedback
 

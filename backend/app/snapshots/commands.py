@@ -36,11 +36,11 @@ from ..world.artifacts import restore_stage
 from ..world.locks import LockHolder, ServerOperationKind, ServerOperationLock
 from ..world.scope_execution import RestoreScopeExecutor
 from ..world.selection import confined_history_path, resolve_paths
-from .api_models import SnapshotTargetCheck
+from .api_models import SnapshotRestoreSource, SnapshotTargetCheck
 from .application import SnapshotMaintenanceConflict
 from .evidence import absence_tags, snapshot_absence
 from .file_restore import FileRestoreAdapter
-from .models import ResticSnapshot, ResticSnapshotWithSummary
+from .models import ResticSnapshotWithSummary
 from .path_mapping import execution_parent_mappings, mapping_json
 from .planner import TargetIgnoredError
 from .preparation import PreparedSnapshot, SnapshotPlanner
@@ -96,9 +96,7 @@ class SnapshotCommands:
             data_paths=[ref.data_path for ref in resolved.servers]
         )
         try:
-            protection.require_targets(
-                [path for path in resolved.paths if protection.permits(path)]
-            )
+            protection.select_targets(resolved.paths)
             await self._planner.require_permitted_chunks(resolved, protection)
         except TargetIgnoredError:
             return SnapshotTargetCheck(
@@ -159,7 +157,7 @@ class SnapshotCommands:
                 raise HTTPException(
                     status_code=400, detail="手动快照请选择整个世界或维度"
                 )
-            for path in prepared.resolved.paths:
+            for path in prepared.paths:
                 if not isinstance(scope, WorldScope) and not await async_fs.lexists(
                     path
                 ):
@@ -210,7 +208,7 @@ class SnapshotCommands:
                 return snapshot
         raise RuntimeError("快照执行结束但没有返回结果")
 
-    async def eligible(self, scope: SnapshotScope) -> list[ResticSnapshot]:
+    async def eligible(self, scope: SnapshotScope) -> list[SnapshotRestoreSource]:
         prepared = await self._planner.prepare(scope)
         paths = prepared.paths
         if isinstance(scope, WorldScope):
@@ -223,7 +221,7 @@ class SnapshotCommands:
                 )
                 if prepared.protection.permits(path)
             )
-        prepared.protection.require_targets(paths)
+        prepared.protection.select_targets(paths)
         eligible = []
         for source in await self.snapshots.list_snapshots():
             try:
@@ -234,8 +232,9 @@ class SnapshotCommands:
                 if error.status_code == 409:
                     continue
                 raise
-            allowed = [path for path in paths if protection.permits(path)]
-            if not isinstance(scope, WorldScope) and len(allowed) != len(paths):
+            try:
+                allowed = protection.select_targets(paths)
+            except TargetIgnoredError:
                 continue
             absent = snapshot_absence(source)
             if allowed and all(
@@ -243,7 +242,12 @@ class SnapshotCommands:
                 or self.snapshots.source_covers(source, path, protection)
                 for path in allowed
             ):
-                eligible.append(source)
+                skipped = protection.skipped_under(prepared.resolved.paths)
+                eligible.append(SnapshotRestoreSource(
+                    **source.model_dump(),
+                    skipped_paths=[str(path) for path in skipped[:100]],
+                    skipped_count=len(skipped),
+                ))
         return eligible
 
     async def _create(
@@ -275,7 +279,7 @@ class SnapshotCommands:
                     for path in prepared.paths
                     if await async_fs.lexists(prepared.protection.execution_path(path))
                 ]
-                prepared.protection.require_targets(paths)
+                prepared.protection.select_targets(paths)
                 missing = [path for path in prepared.paths if path not in paths]
                 snapshot = await self.snapshots.create_snapshot(
                     paths, protection=prepared.protection, tags=absence_tags(missing)
@@ -379,6 +383,7 @@ class SnapshotCommands:
                 history_paths=history_paths,
                 from_history=original is not None,
                 legacy_world=legacy_world,
+                source=await self.snapshots.get_snapshot(source_id),
             )
             if original is not None:
                 saved = json.loads(original.scope_json or "{}")

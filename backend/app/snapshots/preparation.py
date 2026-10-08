@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from functools import cached_property
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -40,11 +41,9 @@ class PreparedSnapshot:
     from_history: bool = False
     legacy_world: bool = False
 
-    @property
+    @cached_property
     def paths(self) -> tuple[Path, ...]:
-        return tuple(
-            path for path in self.resolved.paths if self.protection.permits(path)
-        )
+        return self.protection.select_targets(self.resolved.paths)
 
 
 class SnapshotPlanner:
@@ -69,6 +68,7 @@ class SnapshotPlanner:
         history_paths: tuple[Path, ...] | None = None,
         from_history: bool = False,
         legacy_world: bool = False,
+        source: ResticSnapshot | None = None,
     ) -> PreparedSnapshot:
         resolved = await resolve_scope(
             scope,
@@ -82,21 +82,20 @@ class SnapshotPlanner:
             data_paths=[ref.data_path for ref in resolved.servers],
         )
         protection = protection.with_mappings(resolved.mappings)
-        protection.require_targets(
-            [path for path in resolved.paths if protection.permits(path)]
-            if isinstance(scope, WorldScope)
-            else resolved.paths
-        )
+        if source is not None:
+            protection = await self.snapshots.with_source_protection(protection, source)
+        paths = protection.select_targets(resolved.paths)
+        executions = tuple(protection.execution_path(path) for path in paths)
         maintenance = (
             tuple(ref.server_id for ref in resolved.servers)
             if not restoring
             or isinstance(scope, (GlobalScope, ServerScope, WorldScope))
-            else tuple(await self._files.maintenance_servers(resolved.execution_paths))
+            else tuple(await self._files.maintenance_servers(executions))
         )
         claims = set(resolved.claims)
         missing_parents: set[Path] = set()
         existing_parents: dict[Path, bool] = {}
-        for path in resolved.execution_paths:
+        for path in executions:
             for parent in path.parents:
                 if not parent.is_relative_to(self._root):
                     break
@@ -216,9 +215,7 @@ class SnapshotPlanner:
                     mappings=protection.mappings,
                 )
         prepared = replace(prepared, protection=protection)
-        protection.require_targets(
-            prepared.paths if selection else prepared.resolved.paths
-        )
+        protection.select_targets(prepared.resolved.paths)
         await self.require_permitted_chunks(prepared.resolved, protection)
         for path in prepared.paths:
             if selection and path.suffix == ".mcc":
@@ -260,4 +257,4 @@ class SnapshotPlanner:
                     ):
                         permitted_chunks = True
             if not permitted_chunks:
-                protection.require_targets([])
+                protection.select_targets([])

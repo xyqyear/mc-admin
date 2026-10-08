@@ -152,7 +152,7 @@ func notesAndMultiplePaths(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	return t.Step("a historical source excluding one selected root never appears as eligible", func() error {
+	return t.Step("a historical source skipping one selected root remains eligible", func() error {
 		if err := updateConfig(ctx, client, func(config map[string]any) { config["ignored_paths"] = []string{"two.txt"} }); err != nil {
 			return err
 		}
@@ -174,15 +174,13 @@ func notesAndMultiplePaths(ctx context.Context, t *engine.Scope) error {
 		if err := client.JSON(ctx, "POST", "/api/snapshots/eligible", map[string]any{"scope": scope}, &eligible, 200); err != nil {
 			return err
 		}
-		found := false
+		found, foundExcluded := false, false
 		for _, snapshot := range eligible.Snapshots {
-			if snapshot.ID == excluded.Snapshot.ID {
-				return fmt.Errorf("source excluding one selected root was presented as eligible")
-			}
+			foundExcluded = foundExcluded || snapshot.ID == excluded.Snapshot.ID
 			found = found || snapshot.ID == created.Snapshot.ID
 		}
-		if !found {
-			return fmt.Errorf("a source covering both selected roots disappeared")
+		if !found || !foundExcluded {
+			return fmt.Errorf("eligible sources lost full coverage or historical skip semantics")
 		}
 		return nil
 	})

@@ -29,6 +29,15 @@ export interface Snapshot {
   summary?: SnapshotSummary;
 }
 
+export interface SnapshotRestoreSource extends Snapshot {
+  skipped_paths: string[];
+  skipped_count: number;
+}
+
+export interface ListSnapshotSourcesResponse {
+  snapshots: SnapshotRestoreSource[];
+}
+
 export interface CreateSnapshotResponse {
   snapshot: Snapshot;
   skipped_paths: string[];

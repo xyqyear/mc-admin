@@ -103,6 +103,15 @@ class ListSnapshotsResponse(BaseModel):
     snapshots: list[ResticSnapshot]
 
 
+class SnapshotRestoreSource(ResticSnapshot):
+    skipped_paths: list[str] = Field(default_factory=list)
+    skipped_count: int = 0
+
+
+class ListSnapshotSourcesResponse(BaseModel):
+    snapshots: list[SnapshotRestoreSource]
+
+
 class BackupRepositoryUsage(BaseModel):
     backupUsedGB: float
     backupTotalGB: float

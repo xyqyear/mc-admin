@@ -51,12 +51,11 @@ class SnapshotProtection:
     ) -> "SnapshotProtection":
         return replace(self, mappings=tuple(mappings))
 
-    def require_targets(self, paths: Sequence[Path]) -> None:
-        if not paths:
-            raise TargetIgnoredError("所选范围没有可处理的内容")
-        for path in paths:
-            if not self.permits(path):
-                raise TargetIgnoredError(f"此路径已被快照规则忽略: {path}")
+    def select_targets(self, paths: Sequence[Path]) -> tuple[Path, ...]:
+        allowed = tuple(path for path in paths if self.permits(path))
+        if not allowed:
+            raise TargetIgnoredError("所选范围均被快照规则忽略，没有可处理的内容")
+        return allowed
 
     def skipped_under(self, paths: Sequence[Path]) -> tuple[Path, ...]:
         return tuple(

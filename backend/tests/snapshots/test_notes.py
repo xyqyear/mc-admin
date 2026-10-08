@@ -57,7 +57,7 @@ async def test_note_save_failure_returns_created_snapshot_and_only_note_retry(ca
 
 
 @pytest.mark.binary("restic")
-async def test_source_excluding_one_selected_root_is_ineligible_but_child_excludes_are_allowed(case):
+async def test_source_excluding_one_selected_root_skips_it_and_allows_other_roots(case):
     folder = case.data / "config"
     folder.mkdir()
     (folder / "public.txt").write_text("source")
@@ -67,8 +67,11 @@ async def test_source_excluding_one_selected_root_is_ineligible_but_child_exclud
     case.config.snapshots.ignored_paths = ["config/private.txt"]
     source = await case.snapshots.create_snapshot([folder, other])
     case.config.snapshots.ignored_paths = []
-    forbidden = PathsScope(server_id="survival", paths=("other.txt", "config/private.txt"))
-    assert await case.commands.eligible(forbidden) == []
+    mixed = PathsScope(server_id="survival", paths=("other.txt", "config/private.txt"))
+    candidates = await case.commands.eligible(mixed)
+    assert [item.id for item in candidates] == [source.id]
+    assert candidates[0].skipped_paths == [str(folder / "private.txt")]
+    assert candidates[0].skipped_count == 1
     allowed = PathsScope(server_id="survival", paths=("config", "other.txt"))
     assert [item.id for item in await case.commands.eligible(allowed)] == [source.id]
     (folder / "public.txt").write_text("before restore")

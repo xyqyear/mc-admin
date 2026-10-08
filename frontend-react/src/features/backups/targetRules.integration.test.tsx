@@ -78,7 +78,8 @@ it('matches logical path segments and merges overlapping selected roots without 
   expect(checkLogicalSnapshotPaths(['alias/save.dat'], ['alias']).allowed).toBe(false)
   expect(checkLogicalSnapshotPaths(['world', 'world/private', 'world', './world/'], ['world/private', 'world/private'])).toEqual({ allowed: true, reason: null, skipped_paths: ['world/private'], skipped_count: 1 })
   expect(checkLogicalSnapshotPaths(['.', '/'], ['config', 'world/private'])).toEqual({ allowed: true, reason: null, skipped_paths: ['config', 'world/private'], skipped_count: 2 })
-  expect(checkLogicalSnapshotPaths(['allowed', 'config'], ['config']).allowed).toBe(false)
+  expect(checkLogicalSnapshotPaths(['allowed', 'config'], ['config'])).toEqual({ allowed: true, reason: null, skipped_paths: ['config'], skipped_count: 1 })
+  expect(checkLogicalSnapshotPaths(['config/a', 'config/b'], ['config'])).toEqual({ allowed: false, reason: '所选范围均被快照规则忽略，没有可处理的内容', skipped_paths: ['config'], skipped_count: 1 })
 })
 
 it('checks world selections through the world-only POST without loading file rules', async () => {

@@ -15,6 +15,28 @@ let client: ReturnType<typeof createTestClient>
 beforeEach(() => { client = createTestClient() })
 afterEach(() => { client.clear(); server.resetHandlers(); vi.useRealTimers() })
 
+it('allows mixed snapshot selections and submits original paths while all ignored selections stay disabled', async () => {
+  client.setQueryData(queryKeys.serverInfos.detail('alpha'), { id: 'alpha', serverGeneration: 1 })
+  let reads = 0
+  server.use(http.get('*/api/snapshots/targets/rules', () => {
+    reads++
+    return HttpResponse.json({ server_id: 'alpha', server_generation: 1, ignored_paths: ['private'], rules_version: 'v1' })
+  }))
+  const create = vi.fn()
+  const restore = vi.fn()
+  const controls = (paths: string[]) => <TestProviders client={client}><SnapshotRecoveryContext.Provider value={{ busy: false, create, restore, history: vi.fn() }}><FileBatchActions serverId="alpha" paths={paths} basePath="/" /></SnapshotRecoveryContext.Provider></TestProviders>
+  const view = render(controls(['/allowed', '/private']))
+  await waitFor(() => expect((screen.getByRole('button', { name: '创建快照' }) as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(screen.getByRole('button', { name: '创建快照' }))
+  fireEvent.click(screen.getByRole('button', { name: '快照恢复' }))
+  expect(create).toHaveBeenCalledWith(['/allowed', '/private'], '选中的 2 个条目')
+  expect(restore).toHaveBeenCalledWith(['/allowed', '/private'], '选中的 2 个条目')
+  view.rerender(controls(['/private/a', '/private/b']))
+  expect((screen.getByRole('button', { name: '创建快照' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: '快照恢复' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(reads).toBe(1)
+})
+
 it('keeps packing blocked between acceptance and the first confirmed task observation', async () => {
   client.setQueryData(queryKeys.serverInfos.detail('alpha'), { id: 'alpha', serverGeneration: 1 })
   vi.useFakeTimers({ toFake: ['Date'] })
