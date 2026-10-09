@@ -662,6 +662,15 @@ export const versionUpdates: VersionUpdate[] = [
       '多选快照和恢复自动跳过忽略路径，回滚仍保留这些内容',
     ],
   },
+  {
+    version: '6.2.1',
+    date: '2026-10-09',
+    title: '批量下载进度优化',
+    description: '改善多选和文件夹下载的进度显示。',
+    improvements: [
+      '多选和文件夹下载先完成扫描，进度显示更稳定',
+    ],
+  },
 ]
 
 function parseVersion(version: string) {
