@@ -83,11 +83,21 @@ test('recursive folder export preserves paths and empty directories while naviga
   let created = false
   let release!: () => void
   const held = new Promise<void>((resolve) => { release = resolve })
+  let releaseScan!: () => void
+  const scanHeld = new Promise<void>((resolve) => { releaseScan = resolve })
+  let manifests = 0
+  let contentRequests = 0
   await nativeDirectoryPicker(page)
   await withCleanup(async () => {
     await sourceTree(api, owned, root, () => { created = true })
     await login(page, owned)
+    await page.route('**/api/servers/*/files/download-manifest', async route => {
+      manifests += 1
+      if (manifests === 1) await scanHeld
+      await route.continue()
+    })
     await page.route('**/api/servers/*/files/download?*', async route => {
+      contentRequests += 1
       if (new URL(route.request().url()).searchParams.get('path') === `${root}/a/same.txt`) await held
       await route.continue()
     })
@@ -96,17 +106,29 @@ test('recursive folder export preserves paths and empty directories while naviga
     const dialog = page.getByRole('dialog', { name: '下载到本地文件夹' })
     await expect(dialog.getByText('保留原路径', { exact: true })).toBeVisible()
     const manifestResponse = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname.endsWith('/files/download-manifest'))
+    const scanRequest = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/files/download-manifest'))
     const contentRequest = page.waitForRequest(request => new URL(request.url()).pathname.endsWith('/files/download') && new URL(request.url()).searchParams.get('path') === `${root}/a/same.txt`)
     await page.clock.setFixedTime(namingTime)
     await dialog.getByRole('button', { name: '选择保存文件夹', exact: true }).click()
+    await scanRequest
+    await expect(dialog).not.toBeVisible()
+    await downloadsPanel(page)
+    await expect(page.getByText('正在扫描文件', { exact: true })).toBeVisible()
+    await expect(page.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
+    expect(contentRequests).toBe(0)
+    releaseScan()
     const manifest = await manifestResponse
     await page.clock.setSystemTime(namingTime)
     expect(manifest.status()).toBe(200)
-    const generation = (await manifest.json() as { server_generation: number }).server_generation
+    const payload = await manifest.json() as { server_generation: number; entries: { path: string; type: string; size: number }[] }
+    const generation = payload.server_generation
+    expect(payload.entries.filter(entry => entry.type === 'file')).toHaveLength(3)
+    expect(payload).not.toHaveProperty('next_cursor')
     const request = await contentRequest
     expect(new URL(request.url()).searchParams.get('expected_generation')).toBe(String(generation))
-    await expect(dialog).not.toBeVisible()
-    await downloadsPanel(page)
+    await expect(page.getByText('2 / 3 个文件', { exact: true })).toBeVisible()
+    await expect.poll(async () => Number(await page.getByRole('progressbar').getAttribute('aria-valuenow'))).toBeCloseTo(48 / 69 * 100, 2)
+    expect(manifests).toBe(1)
     await expect(page.getByText('正在下载 (1)', { exact: true })).toBeVisible()
     await navigate(page, `/server/${owned.server_id}`)
     await expect(page.getByText('正在下载 (1)', { exact: true })).toBeVisible()
@@ -132,13 +154,14 @@ test('recursive folder export preserves paths and empty directories while naviga
     await page.clock.setSystemTime(namingTime)
     await downloadsPanel(page)
     await expect(page.getByText('已保存 3 个文件', { exact: true })).toHaveCount(2)
+    expect(manifests).toBe(2)
     const repeatedOutput = await exportedTree(page)
     expect(repeatedOutput.exports).toEqual([exportName, `${exportName} (2)`])
     expect(repeatedOutput.trees[exportName].files).toEqual(originalFiles)
     expect(repeatedOutput.trees[`${exportName} (2)`].files).toEqual({ ...originalFiles, [`${root}/a/same.txt`]: 'new export bytes\n' })
     expect(repeatedOutput.trees[`${exportName} (2)`].directories).toContain(`${root}/a/empty`)
   },
-  { label: 'download transport', run: async () => { release(); await page.unrouteAll({ behavior: 'wait' }) } },
+  { label: 'download transport', run: async () => { releaseScan(); release(); await page.unrouteAll({ behavior: 'wait' }) } },
   { label: 'recursive download source', run: async () => { if (created) await api.deleteFile(root) } },
   { label: 'native exported directory', run: () => removeOutput(page) },
   )

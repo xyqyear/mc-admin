@@ -2457,41 +2457,6 @@
           "title": "DownloadManifestError",
           "type": "object"
         },
-        "DownloadManifestRequest": {
-          "properties": {
-            "cursor": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            },
-            "limit": {
-              "default": 200,
-              "maximum": 500.0,
-              "minimum": 1.0,
-              "title": "Limit",
-              "type": "integer"
-            },
-            "paths": {
-              "items": {
-                "type": "string"
-              },
-              "minItems": 1,
-              "title": "Paths",
-              "type": "array"
-            }
-          },
-          "required": [
-            "paths"
-          ],
-          "title": "DownloadManifestRequest",
-          "type": "object"
-        },
         "DownloadManifestResponse": {
           "properties": {
             "entries": {
@@ -2508,17 +2473,6 @@
               "title": "Errors",
               "type": "array"
             },
-            "next_cursor": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Next Cursor"
-            },
             "server_generation": {
               "title": "Server Generation",
               "type": "integer"
@@ -2527,8 +2481,7 @@
           "required": [
             "server_generation",
             "entries",
-            "errors",
-            "next_cursor"
+            "errors"
           ],
           "title": "DownloadManifestResponse",
           "type": "object"
@@ -5720,7 +5673,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DownloadManifestRequest"
+                  "$ref": "#/components/schemas/FilePathsRequest"
                 }
               }
             },

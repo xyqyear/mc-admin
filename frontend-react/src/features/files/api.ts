@@ -90,7 +90,7 @@ export const fileApi = {
     signal?: AbortSignal,
   ): Promise<FileDownloadManifestResponse> => {
     const response = await api.post<FileDownloadManifestResponse>(
-      `/servers/${serverId}/files/download-manifest`, request, { signal },
+      `/servers/${serverId}/files/download-manifest`, request, { signal, timeout: 0 },
     );
     return response.data;
   },

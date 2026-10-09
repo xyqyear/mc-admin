@@ -53,8 +53,8 @@ class LocalDirectory {
   export(): LocalDirectory { return [...this.directories.values()][0] }
 }
 
-const page = (paths: string[], cursor: string | null = null): FileDownloadManifestResponse => ({
-  server_generation: 7, entries: paths.map((path) => ({ path, type: 'file', size: 3 })), errors: [], next_cursor: cursor,
+const fileManifest = (paths: string[]): FileDownloadManifestResponse => ({
+  server_generation: 7, entries: paths.map((path) => ({ path, type: 'file', size: 3 })), errors: [],
 })
 const response = (text: string): Response => new Response(new TextEncoder().encode(text))
 
@@ -102,7 +102,7 @@ describe('streaming directory download', () => {
     existing.bytes = new TextEncoder().encode('previous export')
     local.files.set(name, existing)
     local.directories.set(`${name} (2)`, new LocalDirectory(`${name} (2)`))
-    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(page(['file.txt']))
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(fileManifest(['file.txt']))
     vi.spyOn(fileApi, 'downloadFileStream').mockResolvedValue(response('new'))
     const result = await executeDirectoryDownload('生存服', local.asHandle(), {
       paths: ['file.txt'], basePath: '/', layout: 'original',
@@ -113,22 +113,22 @@ describe('streaming directory download', () => {
     expect(local.directories.get(`${name} (2)`)!.files.size).toBe(0)
   })
 
-  it('streams pages into one separate directory and preserves hierarchy and empty folders', async () => {
+  it('downloads one complete manifest into a separate directory preserving hierarchy and empty folders', async () => {
     const local = new LocalDirectory('chosen')
     const existing = new LocalFile()
     existing.bytes = new TextEncoder().encode('existing')
     local.files.set('one.txt', existing)
-    const manifest = vi.spyOn(fileApi, 'getDownloadManifest')
-      .mockResolvedValueOnce({ ...page(['search/a/one.txt'], 'next'), entries: [
-        { path: 'search/a/empty', type: 'directory', size: 0 }, { path: 'search/a/one.txt', type: 'file', size: 3 },
-      ] })
-      .mockResolvedValueOnce(page(['search/b/two.txt']))
+    const manifest = vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue({ ...fileManifest([]), entries: [
+      { path: 'search/a/empty', type: 'directory', size: 0 },
+      { path: 'search/a/one.txt', type: 'file', size: 3 },
+      { path: 'search/b/two.txt', type: 'file', size: 3 },
+    ] })
     vi.spyOn(fileApi, 'downloadFileStream').mockImplementation(async (_, path) => response(path.endsWith('one.txt') ? 'one' : 'two'))
     const progress: ManagedDownloadProgress[] = []
     const result = await executeDirectoryDownload('s', local.asHandle(), {
       paths: ['/search/a', '/search/b/two.txt'], basePath: '/search', layout: 'original',
     }, (event) => progress.push(event), new AbortController().signal)
-    expect(manifest.mock.calls[1][1]).toMatchObject({ cursor: 'next' })
+    expect(manifest).toHaveBeenCalledExactlyOnceWith('s', { paths: ['search/a', 'search/b/two.txt'] }, expect.any(AbortSignal))
     expect(local.export().directories.get('a')!.files.get('one.txt')!.text).toBe('one')
     expect(local.export().directories.get('b')!.files.get('two.txt')!.text).toBe('two')
     expect(local.export().directories.get('a')!.directories.has('empty')).toBe(true)
@@ -139,7 +139,7 @@ describe('streaming directory download', () => {
 
   it('writes received chunks before the response ends and counts completion after local close', async () => {
     const local = new LocalDirectory('chosen')
-    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue({ server_generation: 7, entries: [{ path: 'large.dat', type: 'file', size: 6 }], errors: [], next_cursor: null })
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue({ server_generation: 7, entries: [{ path: 'large.dat', type: 'file', size: 6 }], errors: [] })
     let network!: ReadableStreamDefaultController<Uint8Array>
     vi.spyOn(fileApi, 'downloadFileStream').mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
       start(controller) { network = controller; controller.enqueue(new TextEncoder().encode('one')) },
@@ -162,9 +162,60 @@ describe('streaming directory download', () => {
     expect(file.text).toBe('onetwo')
   })
 
-  it('keeps transfer concurrency at four for a larger page', async () => {
+  it('waits for scanning and reports fixed byte progress while files are still open, excluding scan time from speed', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(0)
     const local = new LocalDirectory('chosen')
-    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(page(['0', '1', '2', '3', '4', '5']))
+    let scanned!: (manifest: FileDownloadManifestResponse) => void
+    const manifest = vi.spyOn(fileApi, 'getDownloadManifest').mockImplementation(() => new Promise((resolve) => { scanned = resolve }))
+    let network!: ReadableStreamDefaultController<Uint8Array>
+    const stream = vi.spyOn(fileApi, 'downloadFileStream').mockImplementation(async (_, path) => path === 'small.txt'
+      ? response('abc') : new Response(new ReadableStream<Uint8Array>({ start(controller) { network = controller } })))
+    const reports: ManagedDownloadProgress[] = []
+    const pending = executeDirectoryDownload('s', local.asHandle(), {
+      paths: ['large.dat', 'small.txt'], basePath: '/', layout: 'original',
+    }, (event) => reports.push(event), new AbortController().signal)
+    await waitFor(() => expect(manifest).toHaveBeenCalledTimes(1))
+    expect(stream).not.toHaveBeenCalled()
+    expect(reports.at(-1)).toMatchObject({ listingComplete: false, downloadedSize: 0, progress: 0 })
+    expect(reports.at(-1)?.speed).toBeUndefined()
+    vi.setSystemTime(60000)
+    scanned({ ...fileManifest(['small.txt']), entries: [
+      { path: 'large.dat', type: 'file', size: 6 }, { path: 'small.txt', type: 'file', size: 3 },
+    ] })
+    await waitFor(() => expect(reports.at(-1)?.completedFiles).toBe(1))
+    expect(reports.at(-1)).toMatchObject({ listingComplete: true, size: 9, totalFiles: 2, downloadedSize: 3 })
+    expect(reports.at(-1)?.progress).toBeCloseTo(33.333)
+    vi.setSystemTime(61000)
+    network.enqueue(new TextEncoder().encode('one'))
+    await waitFor(() => expect(reports.at(-1)?.downloadedSize).toBe(6))
+    expect(reports.at(-1)?.progress).toBeCloseTo(66.667)
+    expect(reports.at(-1)?.completedFiles).toBe(1)
+    expect(reports.at(-1)?.speed).toBe(6)
+    network.enqueue(new TextEncoder().encode('two'))
+    network.close()
+    expect((await pending).completedFiles).toBe(2)
+    expect(reports.filter((event) => event.listingComplete).every((event) => event.size === 9 && event.totalFiles === 2)).toBe(true)
+    expect(manifest).toHaveBeenCalledTimes(1)
+  })
+
+  it('finishes empty files and directories without invalid byte progress', async () => {
+    const local = new LocalDirectory('chosen')
+    vi.stubGlobal('showDirectoryPicker', vi.fn().mockResolvedValue(local.asHandle()))
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue({ ...fileManifest([]), entries: [
+      { path: 'empty-dir', type: 'directory', size: 0 }, { path: 'empty.txt', type: 'file', size: 0 },
+    ] })
+    vi.spyOn(fileApi, 'downloadFileStream').mockResolvedValue(response(''))
+    const { result } = renderHook(() => useDirectoryDownload('s'))
+    await act(async () => result.current.downloadToDirectory({ paths: ['empty-dir', 'empty.txt'], basePath: '/', layout: 'original' }))
+    expect(local.export().directories.has('empty-dir')).toBe(true)
+    expect(local.export().files.get('empty.txt')!.bytes.byteLength).toBe(0)
+    expect(useDownloadStore.getState().tasks[0]).toMatchObject({ status: 'completed', progress: 100, size: 0, downloadedSize: 0, completedFiles: 1 })
+  })
+
+  it('keeps transfer concurrency at four and fills slots without waiting for other transfers', async () => {
+    const local = new LocalDirectory('chosen')
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(fileManifest(['0', '1', '2', '3', '4', '5']))
     const controllers: ReadableStreamDefaultController<Uint8Array>[] = []
     const stream = vi.spyOn(fileApi, 'downloadFileStream').mockImplementation(async () => new Response(new ReadableStream<Uint8Array>({
       start(controller) { controller.enqueue(new TextEncoder().encode('abc')); controllers.push(controller) },
@@ -182,7 +233,7 @@ describe('streaming directory download', () => {
 
   it('retains successful files and reports server and source-change failures individually', async () => {
     const local = new LocalDirectory('chosen')
-    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue({ ...page(['good', 'changed']), errors: [{ path: 'link', message: '目录链接不能下载' }] })
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue({ ...fileManifest(['good', 'changed']), errors: [{ path: 'link', message: '目录链接不能下载' }] })
     vi.spyOn(fileApi, 'downloadFileStream').mockImplementation(async (_, path) => response(path === 'good' ? 'yes' : 'different'))
     const result = await executeDirectoryDownload('s', local.asHandle(), { paths: ['good', 'changed', 'link'], basePath: '/', layout: 'flat' }, vi.fn(), new AbortController().signal)
     expect(result).toMatchObject({ totalFiles: 3, completedFiles: 1, failedFiles: 2 })
@@ -195,7 +246,7 @@ describe('streaming directory download', () => {
 
   it('saves same-named selected files separately and exposes the flat name mapping', async () => {
     const local = new LocalDirectory('chosen')
-    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(page(['search/a/data.dat', 'search/b/data.dat']))
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(fileManifest(['search/a/data.dat', 'search/b/data.dat']))
     vi.spyOn(fileApi, 'downloadFileStream').mockImplementation(async (_, path) => response(path.includes('/a/') ? 'one' : 'two'))
     const result = await executeDirectoryDownload('s', local.asHandle(), {
       paths: ['search/a/data.dat', 'search/b/data.dat'], basePath: '/search', layout: 'flat',
@@ -206,16 +257,19 @@ describe('streaming directory download', () => {
     expect(result.warnings?.[0]).toMatchObject({ path: 'search/b/data.dat', destination: 'data (2).dat' })
   })
 
-  it('stops on server generation changes and binds each content request to its manifest generation', async () => {
+  it('binds every content request to the complete manifest generation and reports replacement failures', async () => {
     const local = new LocalDirectory('chosen')
-    vi.spyOn(fileApi, 'getDownloadManifest')
-      .mockResolvedValueOnce(page(['a'], 'next'))
-      .mockResolvedValueOnce({ ...page(['b']), server_generation: 8 })
-    const stream = vi.spyOn(fileApi, 'downloadFileStream').mockResolvedValue(response('old'))
-    await expect(executeDirectoryDownload('s', local.asHandle(), {
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(fileManifest(['a', 'b']))
+    const stream = vi.spyOn(fileApi, 'downloadFileStream').mockImplementation(async (_, path) => {
+      if (path === 'b') throw new Error('服务器实例发生变化，请重新下载')
+      return response('old')
+    })
+    const result = await executeDirectoryDownload('s', local.asHandle(), {
       paths: ['a', 'b'], basePath: '/', layout: 'original',
-    }, vi.fn(), new AbortController().signal)).rejects.toThrow('服务器实例发生变化')
-    expect(stream).toHaveBeenCalledExactlyOnceWith('s', 'a', expect.any(AbortSignal), 7)
+    }, vi.fn(), new AbortController().signal)
+    expect(stream).toHaveBeenCalledWith('s', 'a', expect.any(AbortSignal), 7)
+    expect(stream).toHaveBeenCalledWith('s', 'b', expect.any(AbortSignal), 7)
+    expect(result).toMatchObject({ completedFiles: 1, failedFiles: 1, failures: [{ path: 'b', error: '服务器实例发生变化，请重新下载' }] })
     expect(local.export().files.get('a')!.text).toBe('old')
     expect(local.export().files.has('b')).toBe(false)
   })
@@ -235,7 +289,7 @@ describe('direct download entry and task lifetime', () => {
     let choose!: (handle: FileSystemDirectoryHandle) => void
     const picker = vi.fn(() => new Promise<FileSystemDirectoryHandle>((resolve) => { choose = resolve }))
     vi.stubGlobal('showDirectoryPicker', picker)
-    const manifest = vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(page(['search/file.txt']))
+    const manifest = vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(fileManifest(['search/file.txt']))
     vi.spyOn(fileApi, 'downloadFileStream').mockResolvedValue(response('abc'))
     const { result, unmount } = renderHook(() => useDirectoryDownload('s'))
     const paths = ['search/file.txt']
@@ -251,10 +305,29 @@ describe('direct download entry and task lifetime', () => {
     expect(useDownloadStore.getState().tasks[0]).toMatchObject({ status: 'completed', completedFiles: 1, totalFiles: 1 })
   })
 
+  it('cancels during scanning without starting file transfers when a manifest arrives later', async () => {
+    const local = new LocalDirectory('chosen')
+    vi.stubGlobal('showDirectoryPicker', vi.fn().mockResolvedValue(local.asHandle()))
+    let scanned!: (manifest: FileDownloadManifestResponse) => void
+    const manifest = vi.spyOn(fileApi, 'getDownloadManifest').mockImplementation(() => new Promise((resolve) => { scanned = resolve }))
+    const stream = vi.spyOn(fileApi, 'downloadFileStream')
+    const { result } = renderHook(() => useDirectoryDownload('s'))
+    let pending!: Promise<void>
+    act(() => { pending = result.current.downloadToDirectory({ paths: ['file.txt'], basePath: '/', layout: 'original' }) })
+    await waitFor(() => expect(manifest).toHaveBeenCalledTimes(1))
+    act(() => useDownloadStore.getState().cancelTask(useDownloadStore.getState().tasks[0].id))
+    expect(manifest.mock.calls[0][2]?.aborted).toBe(true)
+    scanned(fileManifest(['file.txt']))
+    await act(async () => { await pending })
+    expect(stream).not.toHaveBeenCalled()
+    expect(local.export().files.size).toBe(0)
+    expect(useDownloadStore.getState().tasks[0]).toMatchObject({ status: 'cancelled', listingComplete: false, completedFiles: 0 })
+  })
+
   it('cancels active transfers and pending files while keeping completed files', async () => {
     const local = new LocalDirectory('chosen')
     vi.stubGlobal('showDirectoryPicker', vi.fn().mockResolvedValue(local.asHandle()))
-    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(page(['0', '1', '2', '3', '4', '5']))
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(fileManifest(['0', '1', '2', '3', '4', '5']))
     const cancelledStreams = vi.fn()
     const stream = vi.spyOn(fileApi, 'downloadFileStream').mockImplementation(async (_, path) => path === '0'
       ? response('yes') : new Response(new ReadableStream<Uint8Array>({ cancel: cancelledStreams })))
@@ -283,7 +356,7 @@ describe('direct download entry and task lifetime', () => {
   it('shows partial failures as an error while preserving successful local output and counts', async () => {
     const local = new LocalDirectory('chosen')
     vi.stubGlobal('showDirectoryPicker', vi.fn().mockResolvedValue(local.asHandle()))
-    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(page(['good', 'failed']))
+    vi.spyOn(fileApi, 'getDownloadManifest').mockResolvedValue(fileManifest(['good', 'failed']))
     vi.spyOn(fileApi, 'downloadFileStream').mockImplementation(async (_, path) => {
       if (path === 'failed') throw new Error('服务器文件不存在')
       return response('yes')
@@ -291,7 +364,7 @@ describe('direct download entry and task lifetime', () => {
     const { result } = renderHook(() => useDirectoryDownload('s'))
     await act(async () => result.current.downloadToDirectory({ paths: ['good', 'failed'], basePath: '/', layout: 'original' }))
     expect(useDownloadStore.getState().tasks[0]).toMatchObject({
-      status: 'error', totalFiles: 2, completedFiles: 1, failedFiles: 1,
+      status: 'error', progress: 50, totalFiles: 2, completedFiles: 1, failedFiles: 1,
       failures: [{ path: 'failed', error: '服务器文件不存在' }],
     })
     expect(local.export().files.get('good')!.text).toBe('yes')

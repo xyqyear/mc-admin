@@ -156,7 +156,7 @@ Long-form, current-state design docs live under `backend/docs/`:
 - `docs/player-identity.md` — usercache-first identity resolution, v4 UUID gates, Mojang fallback
 - `docs/players.md` — owned identity/session service, producers and DB models
 - `docs/log-monitor.md` — watchfiles tail loop, regex chain and shared player-service dispatch
-- `docs/files.md` — file CRUD helpers, batch deletion, bounded generation-bound download manifests, multi-path compression, upload sessions and `fd`-backed deep search
+- `docs/files.md` — file CRUD helpers, batch deletion, complete generation-bound download manifests, multi-path compression, upload sessions and `fd`-backed deep search
 - `docs/archive-upload.md` — resumable archive upload protocol, temp files, offset handling, SHA256 and publication tasks
 - `docs/snapshots.md` — Restic identity, SQLite snapshot notes, ignored paths (`<LEVEL_NAME>`), restore planner, retention and lock interaction
 - `docs/cron.md` — APScheduler integration, registry metadata, system jobs, built-in jobs

@@ -28,7 +28,6 @@ from ...files import (
     set_upload_policy,
 )
 from ...files.api_models import (
-    DownloadManifestRequest,
     DownloadManifestResponse,
     FilePathsRequest,
 )
@@ -153,7 +152,7 @@ async def create_file_or_directory_endpoint(
 
 @router.post("/{server_id}/files/download-manifest", response_model=DownloadManifestResponse)
 async def download_manifest_endpoint(
-    server_id: str, request: DownloadManifestRequest, _: UserPublic = Depends(get_current_user),
+    server_id: str, request: FilePathsRequest, _: UserPublic = Depends(get_current_user),
 ):
     async with get_async_session() as session:
         reference = await resolve_server_ref(session, server_id, servers_root=get_settings().server_path)

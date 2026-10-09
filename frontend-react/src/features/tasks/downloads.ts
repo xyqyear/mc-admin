@@ -143,7 +143,7 @@ export const useDownloadManager = () => {
         ...result,
         status: result.failedFiles ? 'error' : 'completed',
         error: result.failedFiles ? `${result.failedFiles} 个文件下载失败，已完成的文件已保留` : undefined,
-        progress: 100,
+        progress: result.failedFiles ? result.progress ?? 0 : 100,
         endTime: Date.now(),
         abortController: undefined,
       })

@@ -15,9 +15,8 @@ import os
 import shutil
 import stat
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Protocol
+from typing import IO
 
 from PIL import Image
 
@@ -28,65 +27,29 @@ async def iterdir(path: Path) -> list[Path]:
     return await asyncio.to_thread(_iterdir_sync, path)
 
 
-@dataclass
-class TreeDirectoryCursor:
-    path: str
-    offset: int
-    stamp: tuple[int, int, int]
+async def tree_entries(base: Path, roots: Sequence[str]) -> list[tuple[str, str, int, str | None]]:
+    return await asyncio.to_thread(_tree_entries_sync, base, roots)
 
 
-@dataclass
-class TreePageCursor:
-    root_index: int
-    directories: list[TreeDirectoryCursor]
-
-
-class TreeChangedError(ValueError):
-    pass
-
-
-class _DirectoryIterator(Protocol):
-    def __next__(self) -> os.DirEntry[str]: ...
-
-    def close(self) -> None: ...
-
-
-async def tree_page(
-    base: Path, roots: Sequence[str], *, cursor: TreePageCursor | None, limit: int,
-) -> tuple[list[tuple[str, str, int, str | None]], TreePageCursor | None]:
-    return await asyncio.to_thread(_tree_page_sync, base, roots, cursor, limit)
-
-
-def _tree_page_sync(
-    base: Path, roots: Sequence[str], cursor: TreePageCursor | None, limit: int,
-) -> tuple[list[tuple[str, str, int, str | None]], TreePageCursor | None]:
+def _tree_entries_sync(base: Path, roots: Sequence[str]) -> list[tuple[str, str, int, str | None]]:
     boundary = base.resolve()
-    state = cursor or TreePageCursor(0, [])
-    iterators: list[_DirectoryIterator] = []
+    pending = [base / root for root in reversed(roots)]
     rows: list[tuple[str, str, int, str | None]] = []
-
-    def directory_stamp(path: Path) -> tuple[int, int, int]:
-        metadata = path.lstat()
-        if not stat.S_ISDIR(metadata.st_mode) or not path.resolve().is_relative_to(boundary):
-            raise TreeChangedError()
-        return metadata.st_dev, metadata.st_ino, metadata.st_mtime_ns
-
-    def visit(path: Path) -> None:
+    while pending:
+        path = pending.pop()
         relative = path.relative_to(base).as_posix()
         relative = "" if relative == "." else relative
         try:
             if not path.resolve().is_relative_to(boundary):
                 rows.append((relative, "", 0, "路径越界，无法下载"))
-                return
+                continue
             metadata = path.stat()
             if stat.S_ISDIR(metadata.st_mode):
                 if path.is_symlink():
                     rows.append((relative, "", 0, "不支持递归下载符号链接目录"))
-                    return
-                stamp = directory_stamp(path)
-                iterator = os.scandir(path)
-                state.directories.append(TreeDirectoryCursor(relative, 0, stamp))
-                iterators.append(iterator)
+                    continue
+                with os.scandir(path) as children:
+                    pending.extend(Path(child.path) for child in children)
                 if relative:
                     rows.append((relative, "directory", 0, None))
             elif stat.S_ISREG(metadata.st_mode):
@@ -95,36 +58,7 @@ def _tree_page_sync(
                 rows.append((relative, "", 0, "不支持下载此文件类型"))
         except OSError:
             rows.append((relative, "", 0, "文件已变化或无法读取，请刷新后重试"))
-
-    try:
-        for directory in state.directories:
-            path = base / directory.path
-            if directory_stamp(path) != directory.stamp:
-                raise TreeChangedError()
-            iterator = os.scandir(path)
-            iterators.append(iterator)
-            for _ in range(directory.offset):
-                if next(iterator, None) is None:
-                    raise TreeChangedError()
-        while len(rows) < limit:
-            if iterators:
-                child = next(iterators[-1], None)
-                if child is None:
-                    iterators.pop().close()
-                    state.directories.pop()
-                    continue
-                state.directories[-1].offset += 1
-                visit(Path(child.path))
-            elif state.root_index < len(roots):
-                root = roots[state.root_index]
-                state.root_index += 1
-                visit(base / root)
-            else:
-                return rows, None
-        return rows, state if iterators or state.root_index < len(roots) else None
-    finally:
-        for iterator in iterators:
-            iterator.close()
+    return rows
 
 
 async def lexists(path: Path) -> bool:

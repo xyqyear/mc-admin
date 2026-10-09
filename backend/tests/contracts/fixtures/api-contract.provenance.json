@@ -1,6 +1,6 @@
 {
-  "base_commit": "8ae423801c0715053de6ae0b8446914fa5f640b5",
-  "source": "Reviewed working tree for logical snapshot exclusions and shared target rules",
-  "captured_on": "2026-10-07",
-  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including non-snapshot task acceptance, file batch deletion, paginated download manifests, generation-bound downloads, multi-path compression with validated browser-local timestamps, snapshot notes, authenticated logical target rules, world-only target checks and server detail generations; public event and task payload schemas"
+  "base_commit": "e168427b709ecaecbfd6ffd5c1479a31855ffa42",
+  "source": "Reviewed working tree for complete single-response download manifests",
+  "captured_on": "2026-10-09",
+  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including non-snapshot task acceptance, file batch deletion, complete download manifests, generation-bound downloads, multi-path compression with validated browser-local timestamps, snapshot notes, authenticated logical target rules, world-only target checks and server detail generations; public event and task payload schemas"
 }

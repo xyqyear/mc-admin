@@ -19,13 +19,12 @@ type manifestEntry struct {
 	Size int64  `json:"size"`
 }
 
-type manifestPage struct {
+type downloadManifest struct {
 	Generation int             `json:"server_generation"`
 	Entries    []manifestEntry `json:"entries"`
 	Errors     []struct {
 		Path string `json:"path"`
 	} `json:"errors"`
-	Cursor string `json:"next_cursor"`
 }
 
 func batchManifestDelete(ctx context.Context, t *engine.Scope) error {
@@ -44,52 +43,56 @@ func batchManifestDelete(ctx context.Context, t *engine.Scope) error {
 	if err = c.JSON(ctx, "POST", base+"/create", map[string]string{"name": "empty", "path": "/selected", "type": "directory"}, nil, 200); err != nil {
 		return err
 	}
+	bulk := filepath.Join(t.Env.Dir, "servers", id, "data", "selected", "bulk")
+	if err = os.MkdirAll(bulk, 0o755); err != nil {
+		return err
+	}
+	for index := 0; index < 240; index++ {
+		if err = os.WriteFile(filepath.Join(bulk, fmt.Sprintf("file-%03d.txt", index)), nil, 0o644); err != nil {
+			return err
+		}
+	}
 	anonymous := api.New(fixtures.BackendOf(t.Env).URL, t.Recorder)
 	for _, route := range []string{"/download-manifest", "/delete-batch"} {
 		if err = anonymous.JSON(ctx, "POST", base+route, map[string]any{"paths": []string{"selected"}}, nil, 401); err != nil {
 			return err
 		}
 	}
-	if err = t.Step("recursive pages preserve same-named files and empty directories without expanding scope", func() error {
-		cursor := ""
+	if err = t.Step("one complete manifest preserves more than 200 entries, same-named files and empty directories", func() error {
 		actual := map[string]string{}
-		for pageNumber := 0; pageNumber < 10; pageNumber++ {
-			request := map[string]any{"paths": []string{"selected", "selected/a/same.txt"}, "limit": 2}
-			if cursor != "" {
-				request["cursor"] = cursor
+		var manifest downloadManifest
+		if err := c.JSON(ctx, "POST", base+"/download-manifest", map[string]any{"paths": []string{"selected", "selected/a/same.txt"}}, &manifest, 200); err != nil {
+			return err
+		}
+		if len(manifest.Errors) != 0 || manifest.Generation <= 0 {
+			return fmt.Errorf("invalid complete manifest %+v", manifest)
+		}
+		for _, entry := range manifest.Entries {
+			if _, duplicate := actual[entry.Path]; duplicate {
+				return fmt.Errorf("duplicate manifest path %s", entry.Path)
 			}
-			var page manifestPage
-			if err := c.JSON(ctx, "POST", base+"/download-manifest", request, &page, 200); err != nil {
-				return err
-			}
-			if len(page.Entries)+len(page.Errors) > 2 || len(page.Errors) != 0 || page.Generation <= 0 {
-				return fmt.Errorf("invalid bounded manifest page %+v", page)
-			}
-			for _, entry := range page.Entries {
-				if _, duplicate := actual[entry.Path]; duplicate {
-					return fmt.Errorf("duplicate manifest path %s", entry.Path)
+			actual[entry.Path] = entry.Type
+			if content, selected := contents[entry.Path]; entry.Type == "file" && selected {
+				response, err := c.Do(ctx, "GET", base+"/download?path="+url.QueryEscape(entry.Path)+fmt.Sprintf("&expected_generation=%d", manifest.Generation), nil, nil)
+				if err != nil {
+					return err
 				}
-				actual[entry.Path] = entry.Type
-				if entry.Type == "file" {
-					response, err := c.Do(ctx, "GET", base+"/download?path="+url.QueryEscape(entry.Path)+fmt.Sprintf("&expected_generation=%d", page.Generation), nil, nil)
-					if err != nil {
-						return err
-					}
-					if err = c.Expect(response, 200); err != nil {
-						return err
-					}
-					if string(response.Body) != contents[entry.Path] || int64(len(response.Body)) != entry.Size {
-						return fmt.Errorf("download differs from manifest for %s", entry.Path)
-					}
+				if err = c.Expect(response, 200); err != nil {
+					return err
 				}
-			}
-			cursor = page.Cursor
-			if cursor == "" {
-				break
+				if string(response.Body) != content || int64(len(response.Body)) != entry.Size {
+					return fmt.Errorf("download differs from manifest for %s", entry.Path)
+				}
+			} else if entry.Type == "file" && entry.Size != 0 {
+				return fmt.Errorf("empty fixture has unexpected size: %+v", entry)
 			}
 		}
 		expected := map[string]string{"selected": "directory", "selected/a": "directory", "selected/b": "directory", "selected/empty": "directory", "selected/a/same.txt": "file", "selected/b/same.txt": "file"}
-		if cursor != "" || !reflect.DeepEqual(actual, expected) {
+		expected["selected/bulk"] = "directory"
+		for index := 0; index < 240; index++ {
+			expected[fmt.Sprintf("selected/bulk/file-%03d.txt", index)] = "file"
+		}
+		if !reflect.DeepEqual(actual, expected) {
 			return fmt.Errorf("manifest scope=%v expected=%v", actual, expected)
 		}
 		return nil

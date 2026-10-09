@@ -159,7 +159,7 @@ export const executeDirectoryDownload = async (
   report: (progress: ManagedDownloadProgress) => void,
   signal: AbortSignal,
 ): Promise<ManagedDownloadResult> => {
-  const started = Date.now()
+  let started = 0
   const output = await createExportDirectory(selected, serverId, signal).catch((error: unknown) => {
     if (signal.aborted) throw error
     throw new Error(getLocalDownloadError(error), { cause: error })
@@ -178,16 +178,17 @@ export const executeDirectoryDownload = async (
   }
   const mapper = new DirectoryDownloadPathMapper(options)
   const directories = new Map<string, Promise<FileSystemDirectoryHandle>>([['', Promise.resolve(output)]])
-  const seen = new Set<string>()
   let generation: number | undefined
   let reportedAt = 0
   const emit = (force = false) => {
     const now = Date.now()
     if (!force && now - reportedAt < 150) return
     reportedAt = now
-    progress.speed = (progress.downloadedSize ?? 0) / Math.max((now - started) / 1000, 0.001)
-    progress.progress = progress.totalFiles
-      ? Math.min(99, ((progress.completedFiles ?? 0) + progress.failedFiles) / progress.totalFiles * 100)
+    progress.speed = progress.listingComplete
+      ? (progress.downloadedSize ?? 0) / Math.max((now - started) / 1000, 0.001)
+      : undefined
+    progress.progress = progress.size
+      ? Math.min(99, (progress.downloadedSize ?? 0) / progress.size * 100)
       : 0
     report({ ...progress, failures: [...progress.failures!], warnings: [...progress.warnings!] })
   }
@@ -254,64 +255,45 @@ export const executeDirectoryDownload = async (
 
   emit(true)
   try {
-    const roots = normalizeDownloadPaths(options.paths)
-    for (let groupStart = 0; groupStart < roots.length; groupStart += 1000) {
-      const paths = roots.slice(groupStart, groupStart + 1000)
-      let cursor: string | undefined
-      do {
-        signal.throwIfAborted()
-        const page = await fileApi.getDownloadManifest(serverId, { paths, cursor, limit: 200 }, signal)
-        if (generation !== undefined && page.server_generation !== generation) {
-          throw new Error('服务器实例发生变化，请重新下载')
-        }
-        generation = page.server_generation
-        const files: DestinationEntry[] = []
-        for (const error of page.errors) {
-          if (seen.has(error.path)) continue
-          seen.add(error.path)
-          progress.totalFiles = (progress.totalFiles ?? 0) + 1
-          fail(error.path, error.message)
-        }
-        for (const entry of page.entries) {
-          if (seen.has(entry.path)) continue
-          seen.add(entry.path)
-          if (entry.type === 'file') {
-            progress.totalFiles = (progress.totalFiles ?? 0) + 1
-            progress.size = (progress.size ?? 0) + entry.size
-          }
-          try {
-            const mapped = mapper.map(entry)
-            if (!mapped) continue
-            if (mapped.warning) {
-              progress.warningCount = (progress.warningCount ?? 0) + 1
-              if (progress.warnings!.length < 100) progress.warnings!.push(mapped.warning)
-            }
-            if (entry.type === 'directory') {
-              await getDirectory(mapped.parts)
-            } else {
-              files.push(mapped)
-            }
-          } catch (error) {
-            if (signal.aborted) throw error
-            if (entry.type === 'directory') progress.totalFiles = (progress.totalFiles ?? 0) + 1
-            fail(entry.path, getLocalDownloadError(error))
-          }
-        }
-        emit(true)
-        let next = 0
-        const worker = async () => {
-          while (!signal.aborted && next < files.length) {
-            const entry = files[next++]
-            await writeFile(entry)
-          }
-        }
-        await Promise.all(Array.from({ length: Math.min(4, files.length) }, worker))
-        signal.throwIfAborted()
-        if (page.next_cursor === cursor) throw new Error('下载清单分页未前进，请重新下载')
-        cursor = page.next_cursor ?? undefined
-      } while (cursor)
-    }
+    signal.throwIfAborted()
+    const manifest = await fileApi.getDownloadManifest(serverId, { paths: normalizeDownloadPaths(options.paths) }, signal)
+    signal.throwIfAborted()
+    generation = manifest.server_generation
+    progress.totalFiles = manifest.entries.filter((entry) => entry.type === 'file').length + manifest.errors.length
+    progress.size = manifest.entries.reduce((total, entry) => total + entry.size, 0)
     progress.listingComplete = true
+    started = Date.now()
+    emit(true)
+    for (const error of manifest.errors) fail(error.path, error.message)
+    const files: DestinationEntry[] = []
+    for (const entry of manifest.entries) {
+      try {
+        signal.throwIfAborted()
+        const mapped = mapper.map(entry)
+        if (!mapped) continue
+        if (mapped.warning) {
+          progress.warningCount = (progress.warningCount ?? 0) + 1
+          if (progress.warnings!.length < 100) progress.warnings!.push(mapped.warning)
+        }
+        if (entry.type === 'directory') {
+          await getDirectory(mapped.parts)
+        } else {
+          files.push(mapped)
+        }
+      } catch (error) {
+        if (signal.aborted) throw error
+        if (entry.type === 'directory') progress.totalFiles = (progress.totalFiles ?? 0) + 1
+        fail(entry.path, getLocalDownloadError(error))
+      }
+    }
+    let next = 0
+    const worker = async () => {
+      while (!signal.aborted && next < files.length) {
+        await writeFile(files[next++])
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(4, files.length) }, worker))
+    signal.throwIfAborted()
     emit(true)
     return progress
   } catch (error) {

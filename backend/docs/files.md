@@ -1,6 +1,6 @@
 # File Operations (`app.files`)
 
-CRUD for files inside a server's data directory, scoped batch deletion and compression, bounded download manifests, deep search, ownership repair, and multi-file upload with conflict resolution.
+CRUD for files inside a server's data directory, scoped batch deletion and compression, complete download manifests, deep search, ownership repair, and multi-file upload with conflict resolution.
 
 ## Directory boundary and operation policies
 
@@ -56,35 +56,33 @@ DELETE interface remains supported.
 
 ## Browser-owned directory exports
 
-`POST /servers/{server_id}/files/download-manifest` accepts frozen `paths[]`, an
-optional opaque cursor and a page limit from 1 to 500 (default 200). Pages contain
-data-relative file paths, byte sizes, directory paths including empty directories,
-safe per-entry errors and `server_generation`. Selected parents subsume selected
-children. There is no application-level total-file or selected-root count limit.
-Enumeration retains a depth-first directory stack rather than the complete tree,
-and closes all directory iterators when each page finishes. Continuing a page
-reopens the current branch and skips its consumed directory entries; it does not
-rescan unrelated completed subtrees. This avoids keeping a complete manifest or
-per-file content in memory. Very large individual directories still incur offset
-rescan cost across pages.
+`POST /servers/{server_id}/files/download-manifest` accepts frozen `paths[]` and
+returns one complete response containing data-relative file paths, byte sizes,
+directory paths including empty directories, safe per-entry errors and
+`server_generation`. Selected parents subsume selected children. There is no
+application-level total-file or selected-root count limit. Python enumerates the
+selected tree once in a worker thread and closes each directory iterator after
+collecting its children. Metadata stays in request memory until the response;
+there is no temporary manifest, retained job, cursor or pagination state.
 
-The cursor binds the registered server generation, data path and normalized
-requested roots. Directory device/inode/mtime evidence rejects replaced or
-structurally changed active branches with 409. Every request confines selected
-roots again. Recursive enumeration never follows directory symlinks, including
-internal aliases; it reports them as unsupported entries. Internal file links
-are supported, while escaping or unreadable descendants produce safe errors.
+Every request confines selected roots to the captured server data directory.
+Recursive enumeration never follows directory symlinks, including internal
+aliases; it reports them as unsupported entries. Internal file links are
+supported, while escaping or unreadable descendants produce safe errors.
 Existing authenticated GET file downloads remain the transport; browser exports
 pass `expected_generation` to reject same-name replacement servers. Legacy
 download callers can omit that additive query parameter.
 
 Direct export has no backend write lease or durable execution task. The browser
-selects an authorized local folder, streams files with bounded concurrency and
-owns flat/original path mapping, progress and cancellation. It is not a snapshot:
-server files can change during enumeration or transfer. Size changes must be
-reported by the browser; a page structure conflict requires starting a new
-export. Browser refresh or closure ends transfers. Successfully completed local
-files remain when later work fails or is cancelled.
+selects an authorized local folder and shows a scanning phase until the complete
+manifest arrives. It fixes total bytes before starting one queue of up to four
+file transfers and owns flat/original path mapping, progress and cancellation.
+Progress counts received bytes; saved-file counts increase only after writes
+close. Metadata memory grows with the selection, while file streams remain
+bounded by transfer concurrency. This is not a snapshot: server files can change
+during enumeration or transfer, and size changes are reported as file failures.
+Browser refresh or closure ends transfers. Successfully completed local files
+remain when later work fails or is cancelled.
 
 ## Scoped persistent compression
 

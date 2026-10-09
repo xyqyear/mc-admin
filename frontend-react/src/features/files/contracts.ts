@@ -14,8 +14,6 @@ export interface FileListResponse {
 
 export interface FileDownloadManifestRequest {
   paths: string[];
-  cursor?: string;
-  limit?: number;
 }
 
 export interface FileDownloadManifestEntry {
@@ -28,7 +26,6 @@ export interface FileDownloadManifestResponse {
   server_generation: number;
   entries: FileDownloadManifestEntry[];
   errors: { path: string; message: string }[];
-  next_cursor: string | null;
 }
 
 export interface FileContent {

@@ -27,6 +27,7 @@ interface DownloadTaskItemProps {
 
 const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
   const { cancelTask, removeTask } = useDownloadActions()
+  const scanning = task.status === 'downloading' && task.totalFiles !== undefined && !task.listingComplete
 
   const getStatusIcon = () => {
     switch (task.status) {
@@ -70,7 +71,7 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
     if (task.totalFiles !== undefined) {
       return task.listingComplete
         ? `${task.completedFiles ?? 0} / ${task.totalFiles} 个文件`
-        : `已保存 ${task.completedFiles ?? 0} 个，正在读取清单`
+        : scanning ? '正在扫描文件' : ''
     }
     if (task.size && task.downloadedSize) {
       return `${formatFileSize(task.downloadedSize)} / ${formatFileSize(task.size)}`
@@ -115,7 +116,7 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
       <div>
         <strong>状态：</strong>
         {task.status === 'downloading'
-          ? '下载中'
+          ? scanning ? '正在扫描文件' : '下载中'
           : task.status === 'completed'
             ? '已完成'
             : task.status === 'error'
@@ -189,7 +190,10 @@ const DownloadTaskItem: React.FC<DownloadTaskItemProps> = ({ task }) => {
 
             {task.status === 'downloading' && (
               <div className="mt-1">
-                <Progress value={task.progress} className="h-1 mb-0.5" />
+                <Progress
+                  value={scanning ? null : task.progress}
+                  className="h-1 mb-0.5 [&_[data-slot=progress-indicator][data-indeterminate]]:w-1/3 [&_[data-slot=progress-indicator][data-indeterminate]]:animate-pulse"
+                />
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>{getProgressInfo()}</span>
                   {task.speed && <span>{formatSpeed(task.speed)}</span>}

@@ -1,11 +1,10 @@
 import asyncio
-from dataclasses import replace
 
 import pytest
 from fastapi import HTTPException
 
 from app.files import base
-from app.files.api_models import DownloadManifestRequest
+from app.files.api_models import FilePathsRequest
 from app.files.downloads import download_manifest
 from app.operations.coordinator import (
     ResourceClaim,
@@ -13,6 +12,7 @@ from app.operations.coordinator import (
     get_operation_coordinator,
 )
 from app.servers.references import ServerRef
+from app.utils import async_fs
 from tests.files.test_application_ownership import file_application
 
 __all__ = ["file_application"]
@@ -22,25 +22,17 @@ def reference(env):
     return ServerRef("first", 1, env.runtime.settings.server_path, env.instance.get_project_path(), env.data)
 
 
-async def test_manifest_pages_preserve_selected_tree_empty_directories_and_literal_names(file_application):
+async def test_manifest_preserves_selected_tree_empty_directories_and_literal_names(file_application):
     env = file_application
     (env.data / "chosen" / "empty").mkdir(parents=True)
     (env.data / "chosen" / "same.txt").write_bytes(b"first")
     (env.data / "chosen" / "nested").mkdir()
     (env.data / "chosen" / "nested" / "same.txt").write_bytes(b"second")
     (env.data / "chosen" / "config\\notes.txt").write_bytes(b"literal")
-    cursor = None
-    entries = []
-    for _ in range(10):
-        page = await download_manifest(reference(env), DownloadManifestRequest(paths=["/chosen", "chosen/nested/same.txt", "chosen"], cursor=cursor, limit=2))
-        assert not page.errors
-        assert len(page.entries) <= 2
-        assert page.server_generation == 1
-        entries.extend((entry.path, entry.type, entry.size) for entry in page.entries)
-        cursor = page.next_cursor
-        if cursor is None:
-            break
-    assert cursor is None
+    manifest = await download_manifest(reference(env), FilePathsRequest(paths=["/chosen", "chosen/nested/same.txt", "chosen"]))
+    assert not manifest.errors
+    assert manifest.server_generation == 1
+    entries = [(entry.path, entry.type, entry.size) for entry in manifest.entries]
     assert len(entries) == len(set(entries)) == 6
     assert set(entries) == {
         ("chosen", "directory", 0), ("chosen/empty", "directory", 0),
@@ -55,31 +47,48 @@ async def test_manifest_confines_links_and_reports_unsupported_recursive_aliases
     (env.data / "export" / "file-link").symlink_to(env.data / "plugin.conf")
     (env.data / "export" / "directory-link").symlink_to(env.data / "world", target_is_directory=True)
     (env.data / "export" / "escape").symlink_to(env.instance.get_project_path())
-    page = await download_manifest(reference(env), DownloadManifestRequest(paths=["export"]))
-    assert {(entry.path, entry.size) for entry in page.entries if entry.type == "file"} == {("export/file-link", len(b"plugin-original"))}
-    assert {error.path for error in page.errors} == {"export/directory-link", "export/escape"}
-    assert not any(entry.path.startswith("export/directory-link/") for entry in page.entries)
+    manifest = await download_manifest(reference(env), FilePathsRequest(paths=["export"]))
+    assert {(entry.path, entry.size) for entry in manifest.entries if entry.type == "file"} == {("export/file-link", len(b"plugin-original"))}
+    assert {error.path for error in manifest.errors} == {"export/directory-link", "export/escape"}
+    assert not any(entry.path.startswith("export/directory-link/") for entry in manifest.entries)
     for escaping in ("../docker-compose.yml", "export/escape"):
         with pytest.raises(HTTPException) as error:
-            await download_manifest(reference(env), DownloadManifestRequest(paths=[escaping]))
+            await download_manifest(reference(env), FilePathsRequest(paths=[escaping]))
         assert error.value.status_code == 400
 
 
-async def test_manifest_cursor_binds_scope_generation_and_directory_structure(file_application):
+async def test_manifest_returns_all_files_and_hidden_entries_beyond_old_page_limit(file_application):
     env = file_application
-    page = await download_manifest(reference(env), DownloadManifestRequest(paths=["world"], limit=1))
-    assert page.next_cursor is not None
-    for changed_ref, changed_paths in ((replace(reference(env), generation=2), ["world"]), (reference(env), ["plugin.conf"])):
-        with pytest.raises(HTTPException) as error:
-            await download_manifest(changed_ref, DownloadManifestRequest(paths=changed_paths, cursor=page.next_cursor))
-        assert error.value.status_code == 409
-    (env.data / "world" / "new.dat").write_bytes(b"new")
-    with pytest.raises(HTTPException) as error:
-        await download_manifest(reference(env), DownloadManifestRequest(paths=["world"], cursor=page.next_cursor))
-    assert error.value.status_code == 409
-    with pytest.raises(HTTPException) as error:
-        await download_manifest(reference(env), DownloadManifestRequest(paths=["world"], cursor="invalid"))
-    assert error.value.status_code == 400
+    directory = env.data / "many"
+    directory.mkdir()
+    names = [f"file-{index}.txt" for index in range(256)]
+    for name in names:
+        (directory / name).write_bytes(b"content")
+    (directory / ".keep").write_bytes(b"new")
+    manifest = await download_manifest(reference(env), FilePathsRequest(paths=["many", "many/file-0.txt"]))
+    files = {entry.path: entry.size for entry in manifest.entries if entry.type == "file"}
+    assert not manifest.errors
+    assert files == {**{f"many/{name}": 7 for name in names}, "many/.keep": 3}
+    assert len(manifest.entries) == 258
+    assert "next_cursor" not in manifest.model_dump()
+
+
+async def test_manifest_reports_unreadable_directory_and_keeps_other_files(file_application, monkeypatch):
+    env = file_application
+    blocked = env.data / "selected" / "blocked"
+    blocked.mkdir(parents=True)
+    (env.data / "selected" / "good.txt").write_bytes(b"readable")
+    original = async_fs.os.scandir
+
+    def unreadable(path):
+        if path == blocked:
+            raise PermissionError("private filesystem detail")
+        return original(path)
+
+    monkeypatch.setattr(async_fs.os, "scandir", unreadable)
+    manifest = await download_manifest(reference(env), FilePathsRequest(paths=["selected"]))
+    assert {(entry.path, entry.size) for entry in manifest.entries if entry.type == "file"} == {("selected/good.txt", 8)}
+    assert [(error.path, error.message) for error in manifest.errors] == [("selected/blocked", "文件已变化或无法读取，请刷新后重试")]
 
 
 @pytest.mark.parametrize("invalid", ["/", "world/..", "../docker-compose.yml", "missing"])

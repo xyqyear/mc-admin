@@ -7,11 +7,6 @@ class FilePathsRequest(BaseModel):
     paths: list[str] = Field(min_length=1)
 
 
-class DownloadManifestRequest(FilePathsRequest):
-    cursor: str | None = None
-    limit: int = Field(default=200, ge=1, le=500)
-
-
 class DownloadManifestEntry(BaseModel):
     path: str
     type: Literal["file", "directory"]
@@ -27,7 +22,6 @@ class DownloadManifestResponse(BaseModel):
     server_generation: int
     entries: list[DownloadManifestEntry]
     errors: list[DownloadManifestError]
-    next_cursor: str | None
 
 
 class PopulateServerRequest(BaseModel):
