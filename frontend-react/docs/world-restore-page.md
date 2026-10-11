@@ -102,27 +102,30 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 `features/world/restore/components/RestorePreviewModal.tsx` is a `<Dialog>` containing a mini Leaflet map (`CRS.Simple`) and a custom `<PreviewTileLayer>`:
 
-- 使用 backups 的 `useSnapshotPreview` 提交共用预览任务，显示真实阶段和可用的进度。
-- 仅在任务成功、获得 `preview_id` 后挂载地图；任务读取失败保持观察和重连提示。
-- 每 30 秒发送 `/snapshots/previews/{id}/heartbeat`。404/409/410 会移除就绪地图并提示重新准备。
-- 准备中关闭或卸载只停止观察；“停止准备”显式取消任务。就绪后关闭、替换或卸载提交清理任务。
-- 地图请求 `/snapshots/previews/{id}/tiles/{rx}/{rz}.png`，沿用已有瓦片组件及区域集合。
-- “按此预览恢复”在确认后携带预览 ID，后端在写入前复核绑定；直接恢复仍可使用。
-- Paints affected region rectangles immediately; for chunk selections up to 5,000 chunks it also paints per-chunk rectangles.
-- Shows an in-dialog message instead of a blank canvas when invoked with a dimension/world selection.
+- Composes `useSnapshotPreview` from backups for preparation, task observation,
+  heartbeat and cleanup. The map mounts only after a confirmed ready result;
+  expired or rejected sessions remove it and offer preparation again.
+- Requests `/snapshots/previews/{id}/tiles/{rx}/{rz}.png` with the existing tile
+  renderer and affected-region set. Region rectangles appear immediately; chunk
+  selections up to 5,000 chunks also show individual rectangles.
+- Shows an explanatory message for dimension/world selections without map preview.
+- Confirms a preview-bound restore using the captured selection and preview ID.
+
+Shared cancellation, disconnect, heartbeat and binding rules are owned by
+[common snapshot UI](snapshot-recovery.md).
 
 ## Restoration history drawer
 
-`features/world/restore/components/RestorationHistoryDrawer.tsx` composes `features/backups/ui/RestorationHistoryDialog`, with unified paginated recovery history and world preview actions. Per-row rollback is gated on:
+`RestorationHistoryDrawer` composes `features/backups/ui/RestorationHistoryDialog`
+with world preview actions. It honors the backend's `rollback_available` and
+unavailable reason, and additionally requires the world server to be stopped.
+History remains visible when safety data is missing or the original generation
+cannot be established; neither condition authorizes writes to a replacement.
 
-- terminal history with a recoverable safety reference (including failed, cancelled and interrupted outcomes)
-- `safety_snapshot_id` is set
-- `safety_snapshot_exists === true`
-- server stopped and no `binding_issue` (old or uncertain server-generation bindings remain visible with an explanation)
-
-回滚按统一历史的 `rollback_available` 与原因提示控制，同时要求世界服务器停服。回滚会覆盖选中范围内后来的修改，并先创建新的安全快照。当前任务未结束或任务读取失败时保持阻塞；浏览器断线不会中断后台恢复。
-
-`useWorldRestoreController` owns selection and mode confirmation. `features/backups/useSnapshotPreview` owns task observation, heartbeat and cleanup submission for both presentation types. The application operation observer refreshes file/world/history resources after terminal outcomes independently of the initiating page.
+`useWorldRestoreController` owns selection and mode confirmation. The common
+history dialog owns its progress while open, and active recovery discovery works
+even when a reloaded world page has no selection. See [recovery observation](snapshot-recovery.md)
+for task latching, blocking and single-observer ownership.
 
 ## Routing
 
@@ -132,10 +135,13 @@ Shared server operation buttons consume `useServerMaintenance` through the serve
 
 Lazy-loaded in `App.tsx`. Sidebar entry: `Map` icon under each server's submenu.
 
-## Recovery observation and ignored targets
+## Ignored targets and refresh
 
-`useSnapshotOperation` discovers active server/global recovery through the database-only active endpoint, independently of the current selection. Refreshing a map with no selection therefore still opens its existing progress drawer. Once discovered, the task ID stays latched until its own terminal result is observed; disappearing from the active list or a failed read never means completion. The history dialog owns progress while it is open, avoiding a second recovery drawer during rollback.
+The selection panel checks current rules for world, dimension and region/chunk
+scopes. Fully protected selections disable creation/restoration; mixed scopes
+show one skip notice. Creation composes `SnapshotCreateDialog`, and restoration
+retains its closing guard and task-center entry.
 
-The selection panel checks current ignore rules for world, dimension and selected-region/chunk scopes. Fully protected selections disable creation/restoration, while mixed scopes show one skip notice. Creation uses the common blocking `SnapshotCreateDialog`, which shows real task messages and available percentages. Restoration keeps its prior closing guard and offers a task-center entry.
-
-The application observer refreshes queries after terminal operations and advances a per-server/global tile URL revision when data changed. This forces visible browser tiles to refresh even for an MCC-only restore or unchanged MCA mtime; the backend still removes only the appropriate PNGs and preserves other cache assets.
+[Application operation refresh](operation-refresh.md) handles off-page completion
+and tile URL revisions, including MCC-only changes and unchanged MCA mtimes.
+Backend cache invalidation remains scoped to affected derived PNGs.

@@ -1,8 +1,13 @@
 # MC Admin API E2E
 
-Independent Go module and Linux executable; scenarios exercise the real application image through HTTP, SSE and WebSocket with actual SQLite, Docker/Minecraft and Restic. See `README.md` for commands, `docs/architecture.md` for lifecycle/extension contracts, `docs/coverage.md` for feature families and gaps, and `../docs/release.md` for qualification requirements.
+An independent Go executable tests the actual application image through public
+HTTP, SSE and WebSocket APIs. Inherit [repository rules](../AGENTS.md).
+Use [build/run instructions](README.md), [the documentation index](docs/README.md)
+and [the coverage inventory](docs/coverage.md).
 
-## Commands
+## Commands and validation
+
+Run from `e2e/`. These are examples for directly related cases, not a checklist:
 
 ```bash
 make lint
@@ -11,63 +16,42 @@ go test -race -vet=off -count=1 -run '^TestShardPartitionIsCompleteAndStable$' .
 make build
 ./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --case '^files\.directories-search-and-errors$'
 ./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --case '^files\.directories-search-and-errors$' --no-reuse
-./bin/mc-admin-e2e browser --backend-image mc-admin:e2e -- pnpm --dir ../frontend-react exec playwright test browser/journeys.spec.ts --grep 'lifecycle acceptance stays blocked until task status confirms completion$'
 ```
 
-These local examples apply only when the named tests cover the change. Select explicit Go packages and test-name regexes, API case-ID regexes, and browser spec/title filters for directly related cases and shared affected paths. Never run entire project, component or browser test suites locally, including reconstructing them through directory batches or subagents. `--case` matches a regular expression; anchor each selected ID. `--tag` intersects with that selection, and its CLI default is `smoke`; use the appropriate explicit tag to include a related regression or external case.
+- Select explicit affected Go packages/test regexes, API case-ID regexes and browser spec/title filters. Anchor each API case ID. `--tag` intersects with case selection and defaults to `smoke`, so specify the appropriate tag.
+- Format changed Go files with `gofmt`; run vet on affected packages and race-enabled, uncached framework tests for infrastructure changes. `-vet=off` requires the separate vet check.
+- Run selected affected real cases normally and with `--no-reuse`; shuffle a relevant reusable group when its reuse contract changes.
+- `make test`, `make check`, broad regression runs and unfiltered browser commands are full-suite CI entry points. Never reconstruct full local execution through directory batches, shards or agents.
+- Full validation requires the latest SHA's complete qualification under the root rules; [CI](../docs/ci.md) owns dispatch and waiting instructions.
 
-Full-suite commands are CI entry points:
+## Case and fixture rules
 
-```bash
-make test
-make test TEST_FLAGS=-json
-make check
-./bin/mc-admin-e2e run --backend-image mc-admin:e2e --tag regression --no-reuse --seed 42
-./bin/mc-admin-e2e coverage --require-complete --output coverage /path/to/run-one /path/to/run-two
-./bin/mc-admin-e2e browser --backend-image mc-admin:e2e -- pnpm --dir ../frontend-react test:browser
-```
+- Add coverage for observable backend behavior and update [coverage.md](docs/coverage.md) plus the affected domain page in the same change.
+- Declare stable case ID, recipe, timeout, tags and explicit isolation. Start with `engine.Fresh`; reuse requires a documented verification invariant and compensation for every mutation.
+- Cases run independently, in shuffled order and without reuse. Do not import backend internals or another suite, share mutable cross-run data, or add domain-specific branches to the scheduler.
+- Historical SQLite inputs use isolated stopped deployments and standard SQLite/shipped Alembic maintenance. Assert results through public APIs and process outcomes; database queries cannot substitute for business assertions.
+- `StartTask` validates acceptance. Use `RunTask`/`RunTaskResult` or equivalent terminal observation before asserting completion. Propagate context through all I/O and polling; retain terminal SSE events and independent state/content assertions.
+- Never retry a failed business scenario into success or silently skip missing real dependencies. Permission tests verify unchanged state as well as status codes; credential-log tests inspect audit and application logs after successful business actions.
 
-Build the application image from the repository root with `docker build -t mc-admin:e2e .`. Go version and dependency checksums live in this module's `go.mod` and `go.sum`. The runtime binary needs no Go installation. `make lint` checks formatting and runs vet in the independent Static Checks push workflow. `make test` runs all framework packages with race detection, implicit vet disabled and uncached results; `TEST_FLAGS=-json` exposes per-test events and elapsed times. `make check` combines lint and the full framework suite for CI, not local validation. Candidate qualification runs `make test` and `make build`; real scenarios run through the executable. Required configuration or dependencies must be present for every selected case; missing inputs fail the run. Full validation requires all GitHub Actions gates for the latest commit SHA under `../AGENTS.md`.
+## Ownership and cleanup
 
-## Module map
+- Reserve environment capacity before the deployment deadline and retain it through teardown. Diagnostic and cleanup phases have independent budgets. Long SSE reads use their operation context.
+- Register cleanup at allocation, including partial setup; attempt remaining cleanup after individual failures. Journal Docker identities before creation and validate labels/IDs before removal. Never prune the daemon or delete by an unvalidated prefix.
+- Unconfirmed teardown retains ownership and capacity, cancels new allocation and drains active groups. Pending cases still receive failed results. Diagnostic failure alone does not retain capacity after successful teardown.
+- Register secrets with the redactor before use. Upload explicit redacted evidence paths, never `runtime/` or browser fixture credentials.
+- Keep Fresh cases and verified reusable groups atomic in planning. Cost history affects placement only; it cannot remove current cases or shorten business/cleanup deadlines.
 
-- `cmd/mc-admin-e2e/` — CLI, preflight, signals and recovery entrypoint; `api_plan.go` freezes current-profile plans and audits independently required qualification.
-- `cmd/mc-admin-e2e/browser.go` — owned provider wrapper for real browser/deployment commands, private fixture metadata, child-process draining and durable cleanup.
-- `scripts/deployment_rehearsal.py` — released-image upgrade, complete persistent checkpoints, guarded old-code rejection, disaster recovery, retained legacy-history rollback/undo, ambiguous-identity rejection and explicit world rollback through actual APIs. Bootstrap actual historical releases with their matching runner; current API bootstrap is not backward compatible.
-- `scripts/test_deployment_rehearsal.py` — temporary-filesystem tests for checkpoint retention on unconfirmed writer shutdown and nonrecursive copying before cleanup; the static-checks backend job runs this specific unittest script.
-- `internal/engine/` — unified catalog, immutable automatic shard plans, lifecycle cost profiles, resource-aware exclusive workers and JSON/JUnit timings.
-- `internal/environment/` — provider dependency graph, resources, verification and LIFO cleanup.
-- `internal/platform/` — local Docker adapter, port/run locks and durable ownership journal.
-- `internal/api/` — sessions/CSRF, HTTP, bounded waits, tasks, SSE and WebSocket.
-- `internal/api/wait.go` — `StartTask` validates 202 acceptance; `RunTask`/`RunTaskResult` wait for confirmed completion and decode the business result. Lifecycle, creation, synchronization, deletion, manual self-check/DNS, map initialization and upload hashing/publication use these task contracts.
-- `internal/evidence/` — structured evidence, secret redaction and bounded payloads.
-- `internal/coverage/` — deployed OpenAPI/WS observations, exact current-catalog/shard audits and candidate-bound local/cloud cleanup evidence.
-- `internal/fixtures/` — API bootstrap, deployment, Minecraft/Restic providers and shared fixture data. The backend uses `ARCHIVE_PATH=archives` relative to `/data`, so archive journeys cover configuration path normalization.
-- `suites/<domain>/` — normal Go case functions, registered through `suites/catalog.go`.
-- `suites/costs.json` — committed positive scheduling fallback with source runs and measurement semantics. CI restores compatible audited lifecycle history once; unknown cases use recipe/default costs and remain automatically discovered.
-- `suites/servers/` — configuration versions, legacy mode conversions, stopped intent, real Docker startup failure and recovery, exact-name restart schedules with single-execution identity protection, and stopped SQLite migration inputs.
-- `suites/cron/` — configured versus registered state, invalid retained definitions, safe scheduling and durable execution outcomes. Repeated explicit-ID submissions retain one stored job with the requested name/cron updates.
-- `suites/files/` — real fd filtering and file mutations through public APIs; upper and lower date filters each exclude results independently.
-- `suites/dns/` — incremental reconciliation through the real SDK and pinned MC Router, owned TLS service-edge faults, unknown/empty observations and cross-service failure isolation. Test hosts/CA changes stay inside the owned backend container. The `connectivity-v1` recipe leases host ports for local backend/router access and actual Minecraft traffic; Huawei cases verify cloud records and public DNS resolution and persist non-secret cloud recovery manifests. See `suites/dns/README.md` for `cleanup-dns`.
-- `suites/operations/` — startup handling of interrupted task/cron histories, scoped recovery permissions and cache degradation; local SQLite inputs are prepared only while the owned deployment is stopped.
-- `suites/tasks/` — task acceptance, cross-session observation, retained outcomes after dismissal/restart, list filtering and cleanup.
-- `suites/snapshots/` — task-based global/project/path creation, file recovery history and reversible rollback, source/current exclusion protection and mixed-root skip/coverage distinctions, task-owned paginated previews and stale-preview rejection, repository maintenance tasks and real lock recovery.
-- `suites/world/` — real Restic scope/rollback including empty ranges and instance ownership, precise file conflicts, task-observation disconnection, explicit cancellation and process interruption with database-write recovery, mcmap preview freshness and artifact leases; deterministic public-format inputs supplement actual Minecraft worlds.
+## Read for the task
 
-## Rules
+| Change | Read before implementation |
+| --- | --- |
+| Add a case, recipe or provider | [Architecture and extension](docs/architecture.md), relevant [coverage domain](docs/coverage.md) |
+| Scheduler, shards, timing or coverage audit | [Scheduling](docs/scheduling.md), [coverage reporting](docs/coverage.md#从真实运行结果生成接口覆盖记录), [CI](../docs/ci.md) |
+| DNS/provider scenarios or cleanup | [DNS suite guide](suites/dns/README.md) |
+| World inputs and subprocess interruption | [World suite guide](suites/world/README.md) |
+| Browser journeys | [Browser verification](../frontend-react/docs/browser-tests.md) |
+| Upgrade/checkpoint recovery | [Deployment rehearsal](docs/deployment-rehearsal.md), [release](../docs/release.md) |
 
-- Add API E2E coverage for new observable backend behavior and update `docs/coverage.md` in the same change.
-- Declare a stable case ID, recipe, timeout, tags and explicit isolation. Start with `engine.Fresh`; verified reuse needs a narrow documented invariant and compensation for every mutation.
-- Cases must run independently, in shuffled order and with reuse disabled. Do not import backend internals or another suite, share mutable cross-run data, or add feature-specific branches to the scheduler.
-- Historical database inputs use isolated, stopped deployments and standard SQLite/shipped Alembic maintenance commands. Assert behavior through public APIs and process outcomes; do not use database queries as substitutes for API assertions.
-- Propagate context through all I/O and polling. Require terminal task/SSE results and assert resulting state/content. Never retry a failed business scenario into success or silently skip missing real dependencies.
-- Reserve environment capacity before starting the deployment deadline; retain it through teardown. Give each diagnostic and cleanup phase its own budget. SSE bodies use their operation context without the ordinary HTTP client timeout.
-- Failed or expired environment teardown leaves ownership unresolved: retain its capacity, cancel new allocations and drain active groups with independent cleanup contexts. Pending cases must still have failed results. Diagnostic failure alone does not retain capacity after successful teardown.
-- Keep Fresh cases and reusable recipe groups atomic when balancing worker/Minecraft costs. `--no-reuse` creates one atomic group per case and uses a separate history profile. Retain the historical reusable-group lifecycle floor when members disappear so setup/teardown costs do not disappear with their recorded case. Seed changes execution priority only.
-- CI freezes the current catalog, source/image/runner identities, historical source, cost fingerprint, worker/slot limits and seed in one immutable plan. It globally allocates every selected atomic group into one matrix, allowing groups with different provider dependencies to share a shard, with at most 16 shards and 16 concurrent jobs; each runner has two workers and one Minecraft slot. Provider dependencies supply metadata and credential/recovery bindings. Preparation preflight/image pulls are reported separately and excluded from the 300-second fixture/case/cleanup target. Oversized groups or fixed overhead remain explicit soft-budget limits, never shorter business deadlines.
-- PR regression, ordinary automatic CI and `qualification` require every current API case except DNSPod. CI offers only `regression`, `qualification` and explicit `dnspod` profiles; local case/tag filters remain available. Every API shard uses the unrestricted `dns-e2e` configuration store; shard dependency metadata selects provider configuration and recovery steps, and only those steps receive the required credentials. DNSPod selection requires `E2E_EXTERNAL_CONFIG`. Exact-once expected coverage, successful outcomes, candidate identity and all owned local/cloud cleanup must pass before publishing reusable timing history. Restoration selects the latest comparable successful audited source across trusted repository branches; new history cannot trim the current catalog.
-- Read scheduler queue/resource wait separately from case execution and lifecycle phases. Queue times are attributed once to the first case in a group; final group teardown belongs to its last case. Historical baseline costs remove reservation delay approximately and are not pure assertion times.
-- Permission scenarios verify rejected requests preserve real task/resource state as well as checking status codes. Credential-log scenarios require successful audited business operations and inspect both audit and ordinary application logs.
-- Register cleanup when allocating a resource, including partial setup. Journal Docker objects before creating them; keep run/environment ownership labels. Never prune the daemon or delete by an unvalidated prefix.
-- Register secret values with the redactor before use. Upload explicit report/evidence paths; never upload `runtime/`.
-- Run `gofmt` on changed Go files, `go vet` on explicit affected packages and race-enabled framework tests selected by package and `-run` for infrastructure changes; preserve `-count=1` and run vet separately when tests use `-vet=off`. Run explicitly selected affected real cases normally and with `--no-reuse`. The shard-count CI matrix discovers the complete catalog for remote validation.
+Implementation and coverage details belong in their topic docs. Update these
+instructions only for commands, constraints or reading routes; follow
+[documentation ownership](../docs/documentation.md).

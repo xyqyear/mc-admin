@@ -2,6 +2,8 @@
 
 `browser/` drives the built application in Chromium through real routes, Monaco, dialogs, HTTP, WebSockets and Leaflet. No business hook or QueryClient is replaced. `playwright.config.ts` uses one worker, no retries, and retains screenshots/traces for failed tests. The Go runner owns deployment, credentials, resource leases and cleanup; tests cannot attach to an arbitrary application.
 
+## Local execution
+
 Install Node 24 dependencies with `pnpm install --frozen-lockfile`, then `pnpm exec playwright install --with-deps chromium`. Local checks select only journeys directly related to the change and journeys affected through shared dependencies, with an explicit spec file and title filter. Complete project, component and browser test suites belong to GitHub Actions; do not reconstruct them locally through directory batches or subagents. Run from the frontend directory against the Docker config ID loaded from the release candidate OCI artifact:
 
 ```bash
@@ -16,21 +18,41 @@ BROWSER_OUTPUT_DIR=/tmp/browser-report \
 
 This example selects the lifecycle acceptance journey; choose the explicit related titles for the actual change. Unfiltered `pnpm test:browser` is a full-suite CI command. Complete qualification uses the frozen case assignments described below. The complete GitHub Actions gates must pass for the latest commit SHA under `../AGENTS.md` and the [repository rules](../../AGENTS.md).
 
+## Fixture and evidence ownership
+
 The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owned URL, credentials, server path and image/environment/manifest identities. Tests validate its local URL, directory ownership and private permissions. Never publish the runtime directory or private fixture. Publish the runner's redacted report/cleanup evidence and the Playwright results/report/artifacts; traces belong to short-lived test credentials and should still have restricted retention.
+
+`MC_ADMIN_BROWSER_CLIENT_METADATA` optionally names a JSON file with `{path,url,version,sha1,size}` for an official Minecraft client. Tests verify the official download host, SHA1 and byte count before copying it into the owned server's map cache. Production palette generation and rendering still run normally. This fixture avoids repeated external downloads; it never supplies fabricated JARs, palettes or PNGs. Without it, the application downloads its normal dependency.
+
+## Journey coverage
 
 Browser journeys cover file read/save failure with exact-byte retry and deliberately empty saves; real Compose version conflicts and background completion after navigation; session retry/logout and actual console commands after reconnection; disconnected world-task observation with retained blocking, successful backend completion and a later edit that rollback must overwrite from the safety snapshot; and server-enforced prune expiry with unchanged region hashes. Transport faults occur in Playwright routing or an owned HTTP proxy. Version changes, task states, restore history and expiry remain real backend decisions. Each case sets its required lifecycle state and restores it in fixture teardown; file/configuration edits have explicit cleanup. Failure does not skip later cases. `BROWSER_REVERSE_ORDER=1` reverses journey registration to verify independence in a second fresh deployment; local runs retain their explicit related-case selection.
 
+### Editor behavior
+
 The Monaco journey uses the built server Compose and new-template editors without replacing Monaco, workers or schema responses. Real clipboard pastes retain multiline YAML indentation; visible target text must appear before keyboard navigation changes the selection and can cancel asynchronous paste. Invalid YAML produces error decorations, keyboard navigation opens diagnostic hover, valid Compose restores clean diagnostics, and schema hover and `MEMORY` completion exercise the loaded Minecraft schema. Navigating between editors and reopening both verifies worker availability after disposal and remount; worker-related console errors and uncaught exceptions fail the case. Drafts are never submitted, and API reads verify that server configuration and the template list remain unchanged.
 
+### Directory upload
+
 The directory upload journey selects an owned directory through a native browser `webkitdirectory` input, retaining its real `File` objects, relative paths and bytes. The test driver delivers those files through the document drop handler's files fallback because synthetic drops cannot supply operating-system directory entries. No upload hook, dialog, policy request or multipart request is replaced. Unchecking a directory must submit false decisions for both its immediate and nested descendants while the outside directory stays selected; three files with the same basename retain distinct paths. The final API reads and owned host files prove that unchecked content remains intact and the selected file receives its original upload bytes.
+
+### Recovery and cleanup
 
 The restore journey holds the real map-status request until the completed history row is visible, then releases it and verifies that the same open drawer still offers rollback after the map tabs appear. No map or history response is fabricated. A Query/MSW integration test also drives this transition through the real selection panel, history dialog and rollback task.
 
 The restore journey and lifecycle fixture use `browser/cleanup.ts` to attempt every declared cleanup without replacing the original assertion failure. If both the journey and cleanup fail, the report includes their original stacks, with the journey failure first; a cleanup-only failure still fails the case. The wrapper separately reclaims the owned deployment and records that outcome in its manifest.
 
-`MC_ADMIN_BROWSER_CLIENT_METADATA` optionally names a JSON file with `{path,url,version,sha1,size}` for an official Minecraft client. Tests verify the official download host, SHA1 and byte count before copying it into the owned server's map cache. Production palette generation and rendering still run normally. This fixture avoids repeated external downloads; it never supplies fabricated JARs, palettes or PNGs. Without it, the application downloads its normal dependency.
+### File selection and rule feedback
 
 The file-layout cases retain the actual server-rule GET response behind a transport gate. Batch toolbars sit below file-list and advanced-search results and take no space for empty selections. Selecting, clearing selections and checking/allowed/ignored transitions preserve result row geometry; while files are selected, rule transitions also preserve batch-toolbar geometry. All file controls share one rule read and submit no per-path check POST; navigating away and back refreshes a changed configuration while retaining the client cache. Disabled snapshot controls expose their reason only through tooltips; download and packing remain available. Each case owns its source files and ignore configuration and restores both during cleanup.
+
+### Task acceptance and file recovery
+
+Lifecycle acceptance has a dedicated journey: actual Docker startup returns 202; delaying delivery of real task-detail responses keeps the original controls blocked, exposes the reason/task-center link, and releases controls only after confirmed completion. The transport gate never fabricates task or server state.
+
+The file recovery journey creates a mixed-selection snapshot from the actual UI, checks source-specific skips and preview bytes, restores after a reload, and rolls back through filtered history after removing the current ignore rule. Individually ignored directories remain disabled; mixed selections skip them and rollback retains their recorded protection. File and map reload cases temporarily stop the next Restic backup worker only inside their owned application container, using a verified PID handle; they release it after checking resumed progress and close guards. The helper resumes automatically on input closure or its bounded timeout, and declared cleanup awaits its exit. These cases retain real task and filesystem results rather than synthesizing a running response.
+
+The batch journey checks one multi-path snapshot with notes, restores only selected files, packs the same scope and deletes it while preserving unselected bytes. Directory-export cases replace only the directory picker with an owned native Chrome OPFS directory handle; native writable streams and real manifest/file APIs produce outputs inspected for exact bytes, empty directories and safe flat-name collisions. Advanced-search grouping checkboxes aggregate matching descendant paths while preserving selections outside the group; manifests contain those exact paths without treating a synthetic parent directory as the operation scope, so unmatched sibling files remain intact. They also check navigation while downloading and unsupported-browser tooltips with packing still available. The overview player case uses owned log/usercache inputs and public player APIs to verify keyboard opening and keeping the detail dialog after logout.
 
 ## Timed CI shards
 
@@ -56,9 +78,3 @@ node scripts/compare-browser-observations.mjs \
 ```
 
 The comparison requires a matching browser, viewport and ordered measurement windows. It includes before/after context and raw endpoint summaries, then computes deltas; it does not manufacture a baseline or enforce an arbitrary performance threshold. Map windows include navigation, readiness checks and a fixed three-second settling period, so their total durations are not rendering-only timings. Navigation cancellations and incomplete requests remain visible, and stable idle windows should be assessed separately from page transitions.
-
-Lifecycle acceptance has a dedicated journey: actual Docker startup returns 202; delaying delivery of real task-detail responses keeps the original controls blocked, exposes the reason/task-center link, and releases controls only after confirmed completion. The transport gate never fabricates task or server state.
-
-The file recovery journey creates a mixed-selection snapshot from the actual UI, checks source-specific skips and preview bytes, restores after a reload, and rolls back through filtered history after removing the current ignore rule. Individually ignored directories remain disabled; mixed selections skip them and rollback retains their recorded protection. File and map reload cases temporarily stop the next Restic backup worker only inside their owned application container, using a verified PID handle; they release it after checking resumed progress and close guards. The helper resumes automatically on input closure or its bounded timeout, and declared cleanup awaits its exit. These cases retain real task and filesystem results rather than synthesizing a running response.
-
-The batch journey checks one multi-path snapshot with notes, restores only selected files, packs the same scope and deletes it while preserving unselected bytes. Directory-export cases replace only the directory picker with an owned native Chrome OPFS directory handle; native writable streams and real manifest/file APIs produce outputs inspected for exact bytes, empty directories and safe flat-name collisions. Advanced-search grouping checkboxes aggregate matching descendant paths while preserving selections outside the group; manifests contain those exact paths without treating a synthetic parent directory as the operation scope, so unmatched sibling files remain intact. They also check navigation while downloading and unsupported-browser tooltips with packing still available. The overview player case uses owned log/usercache inputs and public player APIs to verify keyboard opening and keeping the detail dialog after logout.

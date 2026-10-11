@@ -97,7 +97,7 @@ It splits the request into Restic steps and explicit empty-selection cleanup:
 - **`FileStep`** — file targets grouped by parent directory, restored via the parent subtree with `--include /<name>` patterns. `--delete` then only considers included names: an on-disk file missing from the snapshot is deleted, non-included siblings are untouched. Speculative includes of paths in neither place (the world-restore MCC enumeration) are no-ops.
 - **`EmptyStep`** — the snapshot explicitly contains an empty target directory, or its parent exists but none of the selected file names exists in that snapshot. Restic can skip deletion when its effective selection is empty. The application therefore deletes only selected live content, preserving the directory root and the union of current and recorded ignored descendants. Unselected siblings and absence markers remain untouched.
 
-Targets whose parent directory is absent from the snapshot are skipped — restic can neither restore them nor traverse-delete there. (Known restic limitation, unchanged from the previous architecture: deletion-by-include cannot reach through directories the snapshot lacks; the chunks restore scope compensates with `mcmap remove-chunks`.)
+Targets whose parent directory is absent from the snapshot are skipped — restic can neither restore them nor traverse-delete there. (Deletion-by-include cannot reach through directories the snapshot lacks; the chunks adapter compensates with `mcmap remove-chunks`.)
 
 `SnapshotService` groups selected logical roots by their projected execution exclusions before building Restic steps. It executes plans in two modes: **in-place** (`restore`, `--delete` on, target = source dir) and **staged** (`stage`, no delete, full absolute execution path mirrored under a stage root — callers use `SnapshotProtection.execution_path` before `SnapshotService.stage_destination`). `restore(dry_run=True)` executes the same plan without writing. Status percents are rescaled across steps into one monotonic progress stream, and per-step summaries are merged into a single final `summary` event.
 
@@ -124,6 +124,11 @@ All commands run through `ResticClient.binary_path`, which defaults to `settings
 
 Request-supplied `server_id` and `paths` are joined into filesystem paths, so the snapshots router and the cron backup job validate every resolved path (symlinks followed) with `async_fs.resolve_inside`: the server's project path must stay under the servers root and each sub-path under the server's data directory. Escapes reject with HTTP 400 / a failed job — restore runs with delete semantics, so this is enforced before any restic call.
 
+`utils/async_fs.py` provides `resolve_many` and `lexists_many` to batch reads in
+one worker-thread call. Resolution still follows each complete candidate and
+checks containment. Cached parent existence belongs only to one preparation;
+execution repeats accepted-path binding checks before effects.
+
 ## Lock interaction
 
 `SnapshotCommands` resolves affected servers and file paths, then
@@ -139,65 +144,18 @@ speculative missing sidecars while requiring at least one existing target.
 Manual requests retain missing-target validation. Ignored-path, coverage and
 restore planning remain shared through `SnapshotService`.
 
-Manual creation uses `POST /snapshots {scope, note?}`. File and world recovery use
-`POST /snapshots/restorations {scope, source_snapshot_id}` and returns
-`202 {task_id, restoration_id, skipped_paths}`. The task worker waits for its
-resources, revalidates frozen identity/path/protection, creates and persists a
-safety snapshot plus missing-path evidence, then applies the selected replacement.
-History acceptance occurs after the journal reserves the task and before its worker
-starts. Rejection, queued cancellation and failure before execution settle history.
-`GET /snapshots/restorations` and its detail route project journal state; rollback
-availability follows retained generations and actual repository references.
-
-`POST /snapshots/restorations/{id}/rollback` creates another recovery task and
-records its parent. It saves current contents first, including edits made since
-the original restore. Missing targets use an owned temporary absence marker when
-no live target exists; a rollback removes only allowed selected paths and empty
-ancestors that were absent, preserving protected descendants and later siblings.
-Source, current and retained-chain exclusions apply to safety creation and writes.
-Versioned history retains selected logical paths, frozen execution mappings and
-missing execution ancestors with their logical projections. A dangling internal
-directory link can therefore restore its missing real directory; rollback removes
-newly created empty real ancestors and preserves the link node. Accepted target
-claims cover these ancestors, and scope/mapping evidence is checked after restart.
-
-Every restore owns its target file scope. Whole-server/data targets and paths
-intersecting known world roots additionally require stopped servers and maintenance
-ownership, the server's `MAP_CACHE` scope and the concrete
-`FILES(data/.mcmap/tiles)` cache path; ordinary configuration/plugin/file restores
-remain available online.
-A normal file restore can run beside world maintenance when their file scopes do
-not overlap. Dry-run preview and reads do not acquire these leases. Running/busy
-and path checks repeat after acquisition. Invalid unrelated server.properties
-values do not prevent recovery: world-name lookup reads only level-name.
-
-Closing observation of a recovery does not stop it. Explicit task cancellation
-waits for owned processes and finite cleanup. A failed or cancelled restore touching
-world data clears the affected server's derived tiles even before the first Restic
-file event. Successful restoration invalidates reported terrain changes. Cache
-cleanup uses captured server references, so restored project metadata cannot hide
-the affected cache. Unknown writers retain artifacts and mark cache degradation;
-cleanup errors remain failed operations with retained history and safety evidence.
-
-Accepted manual tasks hold deletion admission and target references through task
-finalization. Server removal checks these references before cancelling other tasks
-and again while frozen/exclusive; completed history does not block repository
-retention. A missing safety snapshot leaves its history readable with an explicit
-unavailable reason. Ordinary file restoration remains available online.
-
-世界执行使用相同的命令、历史和保护规划，mcmap 仅承担区块合并。`preparation.py` 解析目标、实例、缺失范围与源保护，供恢复和预览共用。cron 通过 `SnapshotCommands.backup` 执行同一创建逻辑，不另建手动任务或重复历史；维护冲突记录 `skipped`。备份已完成但保留策略因活动引用被拒绝时，cron 明确记录已创建快照及跳过清理的原因。
+Common file/world recovery uses durable tasks, retained safety evidence and
+generation-bound history. See [restoration and previews](snapshot-restoration.md)
+for acceptance, rollback, source eligibility and cleanup. World chunk execution
+is an adapter to that contract; cron uses `SnapshotCommands.backup` without
+creating duplicate manual-task history.
 
 ## 预览与仓库维护任务
 
-`POST /api/snapshots/previews` 接受相同的 `scope` 与完整 `source_snapshot_id`，返回 202 任务。`snapshots/previews.py` 负责准备、绑定与查询，`preview_sessions.py` 统一心跳、有效期和清理，`world/preview_rendering.py` 只处理地图临时副本及瓦片。预览不创建安全快照，不写入恢复历史或在线目标。
-
-文件预览保存 JSONL 明细，`GET /previews/{id}/actions?cursor=...&limit=...` 每页最多 200 条；响应提供下一页位置，零字节文件和目录动作也保留在明细中。明细总量上限为 64 MiB，单行上限为 32 KiB。超过限制时任务失败并要求缩小范围，不把截断结果当作完整预览。任务结果只含计数、说明和至多 100 个忽略路径。
-
-就绪结果可由 `GET /previews/{id}` 读取，`POST /previews/{id}/heartbeat` 延长有效期。`DELETE /previews/{id}` 返回清理任务，等待读取与渲染退出后才完成。准备中关闭观察不取消任务；显式停止使用通用任务取消接口。每台服务器最多一个活动预览，全局预览同时占用其捕获的服务器集合。重启后结果不可再应用；未知写入者的临时目录和阻断证据仍保留。
-
-带 `preview_id` 恢复时，受理和实际写入前都核对源 ID、规范化范围、服务器代次、当前保护规则和已观测目标版本。版本结合选中目标的文件元数据与相关路径的操作记录；普通在线文件不扫描整棵目录、不承诺外部程序的原子状态。范围外的文件写入不会使预览失效。直接恢复仍可用，安全快照始终捕获执行前的真实状态。
-
-`GET /api/snapshots/usage`、`GET /locks` 为普通读取。`DELETE /{snapshot_id}` 和 `POST /unlock` 返回任务；仓库独占占用从受理保留至所属进程及收尾结束，期间拒绝新的快照依赖。清锁只移除 Restic 判断已失效的锁，不能强制移除活跃锁。
+Preview preparation, heartbeats, cleanup, repository deletion and stale-lock
+tasks follow [the shared restoration contract](snapshot-restoration.md#预览与仓库维护任务).
+Active tasks and ready previews retain repository references until their owned
+readers and writers finish; completed history alone does not prevent retention.
 
 ## Snapshot notes
 
@@ -216,21 +174,9 @@ created snapshot as a successful content result. The shared creation dialog keep
 that identity visible and offers a separate note save retry. It never resubmits
 snapshot creation to repair metadata.
 
-`POST /snapshots/eligible` filters roots using the union of current and source
-protection, then requires coverage or documented absence for every remaining
-non-world root. A recorded exclusion skips a root; missing coverage without
-exclusion never silently narrows a file selection. Sources with no effective
-roots are omitted. Each source carries `skipped_paths` (at most 100) and
-`skipped_count`, independent of its ordinary snapshot metadata. Source protection
-is checked in the restoration/preview worker. File scopes requiring world
-maintenance also read source protection before admission stop checks, using
-effective execution roots so an ignored world root cannot require stopping an
-otherwise online file restore. Other requests accept durable tasks before
-repository reads; unavailable or entirely source-protected targets fail before
-safety capture, preview publication or writes. Queued execution revalidates the frozen
-rules and original mappings before safety capture or writes. Previews and task
-results expose the same skips; history retains original selection and protection
-so removing current rules cannot expand a rollback into previously skipped roots.
+Eligible sources must distinguish recorded exclusions from missing coverage.
+The [source eligibility contract](snapshot-restoration.md#source-eligibility)
+defines mixed-root skips, admission stop checks and retained rollback protection.
 
 ## Observation and target feedback
 
@@ -244,6 +190,6 @@ scopes report a bounded skip list and total, including protected MCC logical
 counterparts. Both forms provide advisory UI feedback: acceptance and execution
 repeat authoritative checks, including source and rollback-chain protection.
 
-`GET /snapshots/restorations/active?server_id=...` reads only the journal and restoration tables. It includes queued, running, cancelling and finalizing work, including global restores targeting the selected server. Offset/limit pagination is bounded to 200 rows per request. History supports `kind`, `status`, `entry_point` and server filters before pagination, and projects all captured server generations. A failed history repository check does not prevent active task observation.
-
-Preview preparation records its session identity in the submitted worker context. Non-successful completion awaits session closure before publishing terminal task status, even if cancellation arrives after a ready result. Unknown writers still retain protected artifacts and block unsafe reuse.
+Active restoration discovery reads journal/history state independently of
+repository availability; see [history and observation](snapshot-restoration.md#history-and-active-observation).
+Preview failure/cancellation waits for session cleanup before terminal publication.

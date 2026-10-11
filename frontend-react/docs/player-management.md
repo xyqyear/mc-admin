@@ -38,7 +38,7 @@ Shared `formatDuration` in `shared/utils/formatUtils.ts` displays accumulated pl
 
 ## UUID formatting
 
-Mojang returns hex without dashes (`8667ba71b85a4004af54457a9734eed7`); our backend stores the same shape. The frontend's `formatUUID` helper (`shared/utils/formatUtils.ts`) renders it as `8667ba71-b85a-4004-af54-457a9734eed7` for display and back to compact for API calls.
+Mojang returns hex without dashes (`8667ba71b85a4004af54457a9734eed7`); our backend stores the same shape. `formatUUID` in `shared/utils/formatUtils.ts` adds dashes for display. The pure `normalizeUuid` helper in `features/players/identity.ts` validates syntax and returns lowercase compact hex or `null`; profile and map consumers share it. Online-mode checks and network identity resolution belong to the backend.
 
 ## Where the data comes from
 
@@ -48,4 +48,4 @@ The backend's `app.players` system writes to `Player`, `PlayerSession`, `PlayerC
 - RCON sync every N seconds (PlayerSyncer reconciles drift)
 - Heartbeat-driven crash recovery (closes orphan sessions on restart)
 
-The frontend doesn't interact with any of that machinery — it just reads the resulting tables.
+The frontend reads public player APIs; it does not access database tables or own these producers. See [backend player tracking](../../backend/docs/players.md).

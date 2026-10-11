@@ -2,33 +2,29 @@
 
 These scenarios run the deployed API with real Minecraft, mcmap and Restic. Each case owns a fresh environment. Cases that only require public world formats use deterministic NBT/Anvil inputs without starting Minecraft; the relevant mcmap or Restic executable still runs in the real application image. A scenario may reuse its own snapshots across related operations, with explicit before/after byte assertions; no scenario depends on another case's data or order.
 
-| Case | Observable behavior |
-| --- | --- |
-| `world.map-render-and-cache` | Discover a saved real world, reject unsafe/missing paths, initialize the real client jar and palette, reuse and force-regenerate prerequisites, serve concurrent 512×512 PNG requests, refresh a stale tile and its ETag. |
-| `world.claims-and-player-locations` | Extract SNBT FTB teams and disconnected claim clusters, preserve force-loaded chunks, resolve present dimensions and retain unresolved dimensions, read gzip player NBT, report malformed files, serve both aliases, read dynamic dimension labels. |
-| `world.legacy-layout-and-extractors` | Discover multiple roots and legacy/custom/deep dimensions; extract LatMod JSON, universe.dat and per-team gzip NBT; enforce format precedence, name fallback, legacy player storage, missing-field skips and missing-server responses. |
-| `world.scoped-restore-and-rollback` | Create world/dimension snapshots, select eligible snapshots, prepare and clean all four preview scopes through tasks without live mutation, restore and undo chunks/regions/dimensions/worlds, preserve boundaries across terrain/entities/POI files, restore additional world roots, paginate history, and reject rollback after safety-snapshot deletion. |
-| `world.preview-lifecycle` | Render real preview PNGs, heartbeat, replace the prior session, reject out-of-scope tiles, await idempotent cleanup tasks, enforce the disk guard, expire a session through the real janitor. |
-| `world.chunk-prune` | Read defaults and latest task state, reject invalid requests and running-server apply, execute both preview/apply modes, verify polygon geometry and claims protection, inspect resulting Anvil chunk tables, cancel a running preview. |
-| `world.prune-preview-validity` | Reject changed world/claim inputs, expire a preview through its dynamic TTL, retain data on rejection, apply a new preview with actual claim protection, reject repeated application and retain its unique task identity. |
-| `world.prune-dismiss-active` | Pause the owned real mcmap apply; dismiss the completed preview from the task center while retaining its claim file, geometry and feature projection; reject another apply and active-task dismissal; resume the original writer and verify contents. Restart rejects use of previous-process preview artifacts. |
-| `world.restoration-generation` | Restore through real Restic, recreate the same server name, retain old history and safety references, reject its rollback without changing new data, preserve the refusal after restart, and allow a current-generation restore. |
-| `world.empty-scope-rollback` | Snapshot an empty region directory through real Restic, add live MCA files, restore the empty dimension or selected region, roll back to the exact live bytes, then undo that rollback to recover the empty scope; unselected regions and ordinary files remain unchanged. |
-| `world.interrupted-restore-recovery` | Observe operation-lock rejection, kill only the owned backend during a persisted restore, restart the deployment, verify interrupted history and restore original bytes through safety rollback. |
-| `world.missing-sidecars-and-rollback` | Restore nonempty entities/POI after deleting their entire directories through the API, across world/dimension/region/chunk scopes, then verify rollback removes only the restored scope and reinstates directory absence. |
-| `world.delete-waits-for-writer` | Pause an owned real mcmap writer, verify deletion freezes new writes, then require the application to terminate the writer before deletion succeeds; observe the owned process and project and retain ordered cancellation/deletion history. |
-| `world.disconnect-restore-and-maintenance` | Keep ordinary file restore available online, require stopped state for whole-server restore, expose maintenance and reject startup/rebuild/deletion/global backup during restore, reject overlapping file CRUD/upload while allowing unrelated file writes/restores, record scheduled restart as skipped, explicitly cancel the accepted recovery task and verify stopped writers, terminal cancelled history and safety rollback without backend restart. |
-| `world.safety-snapshot-disconnect` | Disconnect task observation after durable safety evidence; resume the real paused writer and require the same task/restoration/operation to finish successfully with released maintenance; persist independent configuration and cron changes; overwrite live data and then recover the exact pre-request bytes through safety rollback without restarting the backend. |
+The [world coverage catalog](../../docs/coverage/world.md) owns case IDs and
+observable behavior. This guide explains fixture construction, real-process
+interruption and evidence boundaries for extending those cases.
+
+## World format fixtures
 
 `assets.go` and `legacy.go` generate small public-format NBT, gzip, Anvil and SNBT inputs. Fixture writes are restricted to the case's owned server data directory and recorded as evidence. They neither import application code nor replace Minecraft, mcmap, Restic or API implementations. Map rendering uses the world generated by the actual Minecraft server; selective restore and pruning additionally use small deterministic region fixtures so exact chunk boundaries can be checked.
 
 The format layouts were checked against the deployed mcmap v0.8.4 source (`ac6e5e23f02910994d4a515f1c25ac1c0bd1d1e4`). Format detection and extraction are always performed by the real binary in the application image. No source checkout is needed when running the tests.
 
+## Preview expiry and recovery
+
 Preview expiry first locates the existing session directory under the owned runtime's private scratch root, then observes its removal before its final API assertion: both heartbeat and tile requests extend session lifetime. Restic crash recovery pauses the owned writer after safety evidence is persisted before sending SIGKILL, then uses the normal backend restart and rollback APIs.
+
+## Maintenance and cancellation
 
 The maintenance scenario accepts a common snapshot recovery task and pauses its real Restic child with SIGSTOP. Backup holds maintenance for conflict checks; a post-safety `ls` holds the explicit cancellation point. The task cancellation API must terminate and reap the writer before releasing ownership. Signals validate the container root, command and process start time through a pidfd; cleanup resumes surviving owned processes and stops the observer.
 
+## Disconnected observation
+
 The safety-observation scenario pauses after durable safety evidence, disconnects observation, then resumes the writer. The original task, restoration and journal must share an operation ID and finish successfully without restarting the app. Independent database mutations verify that SQLite locks are released. A later edit and byte-checked rollback prove that safety data remains useful. The browser proxy separately interrupts real task-detail delivery after safety evidence, preserves the blocked progress UI and reconnects. Neither scenario claims to force cancellation inside a SQLite instruction; deterministic backend tests cover transaction boundaries.
+
+## Deletion and artifact retention
 
 The deletion scenario also leaves its real mcmap writer stopped until the application cancels it. It accepts HTTP 202 and requires deletion-task completion only after the prune task is cancelled, its original process identity is gone, and operation history confirms stopped writers before successful deletion. An observer rejects removal of the owned project while that process is still alive. The case does not resume the writer to make deletion pass.
 

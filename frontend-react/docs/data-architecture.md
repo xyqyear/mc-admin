@@ -35,11 +35,13 @@ The shared Axios instance and `ApiError` live in `shared/http/api.ts`: same-orig
 
 ## Writes
 
+One-off, flow-local preview/check requests and stream/progress operations may use
+their feature transport directly when they should not create shared cached state.
+Ordinary server-state reads still use the query layer.
+
 Query and mutation modules export concrete hooks such as `useServers`,
 `useServerStatus`, `useCreateFile(serverId)` and `useLogin`. Each hook captures its
 QueryClient and any required router, server or download context directly.
-The resource interfaces include 54 concrete hooks: 20 named query hooks and
-34 named mutation hooks.
 Reusable query options retain their domain polling and retry policies; caller
 options are applied after those defaults. File and archive downloads remain
 ordinary hooks backed by the download manager rather than mutations.
@@ -48,17 +50,11 @@ Single-resource writes invalidate their detail key; list/aggregate changes inval
 
 ## Features and operation completion
 
-`features/configuration/contracts.ts` and `api.ts` own Compose reads/writes, template snapshot parameters, previews and both mode conversions. `queries.ts` exposes shared query options; read-only template-copy selection uses the same versioned Compose cache with a string selector. `commands.ts` requires an accepted version for every configuration write and only announces task/operation discovery after submission.
-
-Feature commands wake operation discovery when background work is accepted and when synchronous journaled writes settle, including possible partial failures. File write/create/rename, completed or partially written ordinary uploads, archive rename/compression and task cancellation use their owning command/controller boundary. Preview and self-check acceptance wake discovery before any view-local observation guard, so leaving during submission does not defer global observation. `waitForTaskResult` wakes on acceptance and observation end for its task consumers. Read-only checks, searches and upload conflict/policy reads do not wake operation discovery.
-
-`app/operations/OperationObserver.tsx` is mounted once within the authenticated layout. Its `/operations/changes` query reads batches of up to 200 lightweight notifications from the runtime-owned bounded memory feed. Instance-scoped opaque cursors recover across navigation and network reconnect; historical operation list/detail reads remain independent. Active operations poll every two seconds, idle discovery every 30 seconds, and polling pauses while hidden. Focus, reconnect and command discovery invalidation trigger immediate reads. Failed or unknown activity reads retry at the active interval.
-
-Features register affected keys through `operationResources.ts`; configuration, servers, files/archives, world, backups/history, health and DNS declare their own operations. Each received terminal change updates map revisions and merges the affected query keys for one invalidation per batch. Success, failure, cancellation, interruption and skipped outcomes synchronize the corresponding business resources even after the initiating page or progress dialog closes. A later effective change of the same operation can invalidate again; operation IDs do not suppress newer notifications.
-
-The observer cancels affected in-flight reads, marks their resources stale and processes each batch before advancing a session-scoped Query checkpoint, then immediately requests any remaining pages. Cancellation includes initial requests without cached data, so an old response cannot overwrite the reset or terminal refresh. Business reads do not need to succeed before the checkpoint advances. The scheduling query starts with explicit unknown `null` data, allowing submission invalidation to cancel even its first pending observation rather than join a stale bootstrap request. The checkpoint is separate from the scheduling query because cancellation can restore that query's previous data. Read errors and aborted requests preserve the last processed page; an AbortSignal check rejects late responses after cache clear or session unmount. Query cache retains only the cursor and active count, without a growing operation history or ID set. Checkpoints do not expire while logged in and clear with the authentication cache.
-
-First entry, changed backend instance and unavailable notification history return an explicit reset and a fixed new starting cursor. Reset invalidates the operation-related feature prefixes and changes a global map image token; notifications committed during business refresh remain available after the reset cursor. Local authored editor state stays in its existing edit session. Task progress, completion messages and retained results continue through their feature/task interfaces. `RebuildProgressDialog`, populate/compression/ownership presentation and world restore/prune views delegate business completion to the observer.
+Feature commands wake durable-operation discovery; application-level observation
+refreshes business resources across pages and after partial failures. See
+[operation refresh](operation-refresh.md) for cursors, checkpoints, batching,
+logout/reset behavior and tile revisions. Versioned existing-server editors
+are described in [configuration](configuration.md).
 
 ## `queryKeys` factory
 
@@ -98,72 +94,47 @@ Pick the bucket based on how fast the underlying state actually changes — not 
 
 ## Editor drafts
 
-The configuration feature models an accepted baseline (including an opaque version), a local draft and current remote data separately. Untouched Compose/template editors follow fresh remote reads, including a page reopened from cached data after an independent task. Once the user authors content, accepts a comparison, or receives an applied submission, background reads cannot replace that draft. Edited template forms retain their accepted schema until explicit comparison. A remote mode change preserves the original editor until the user confirms discarding its draft and loading the new mode.
-
-Conversion dialogs keep their captured baseline even while the text session appears untouched: selected templates, extracted variables and authored form values live outside that session. A background Compose refresh therefore still requires comparison before submitting conversion parameters. The untouched-read policy is an explicit opt-in for the Compose and template editors, not a default for every configuration flow.
-
-Every configuration write submits the baseline version. HTTP 409 `configuration_conflict` or a background task's matching `error_code` requires a successful remote read and full baseline/remote/draft comparison. “接受此版本为新基准” preserves the draft, accepts only the displayed version, and returns to editing; a separate submit performs the write. Successful tasks return the actual applied `version`: the session accepts that submitted snapshot as its baseline while preserving any newer local draft. Already-read data from before completion is not treated as a new conflict; a fresh read with any other version still requires comparison. A further race remains a conflict. Confirmed reload is the explicit discard action and only resets after a successful read. Mode conversion preserves edited variables during conflicts and reruns the comparison after acceptance. Drafts remain local to mounted editors.
-
-File, global template/default-variable and dynamic-config editors use `useEditorDraft` with a resource key. Remote updates replace pristine content but preserve authored content. Loading failures never establish a writable empty session; a successful empty read is valid content. Their existing write contracts are unchanged.
+Keep authored drafts separate from cached server data. Existing-server Compose
+and template-parameter editors retain accepted versions and explicit conflict
+comparison; other resource editors use `useEditorDraft` with their own write
+contracts. The [configuration editor contract](configuration.md#editor-drafts)
+defines fresh/pristine reads, conversion baselines and failed-load behavior.
 
 ## HTTP/query integration tests
 
-`src/test/http.ts` creates isolated real QueryClients and Axios-adapter responses; `TestProviders.tsx` supplies the client and router. Existing page tests preserve real query/mutation hooks while replacing transport and heavyweight editors. Query retry tests verify actual attempt counts.
-
-`features/configuration/ConfigurationScreen.test.tsx` and `app/operations/OperationObserver.test.tsx` use MSW HTTP handlers with real QueryClients. They exercise delayed loads, intentional empty writes, draft preservation, synchronous/async conflicts, explicit acceptance and resubmission, mode conversion, leaving/returning to the page, incremental deduplication, paginated reconnection, explicit resets and remounted session isolation. `App.test.tsx` exercises production AUTH-event and HTTP-401 cache cleanup, login cache/navigation, new-owner resource reads and cancellation of late old-session observation. Query hooks and invalidation remain real.
-
-Archive upload integration keeps native File/Blob bytes, the real SHA256
-implementation and the real task waiter. A fixed `abc` digest independently
-checks verification; unequal bytes and missing digests reject publication and
-clean up the session. Running tasks at 100% and temporary status-read failures
-remain pending until a successful terminal outcome. Lifecycle unit tests retain
-controlled transport and hashing for queue, pause, retry, unmount and close
-boundaries.
+The [testing guide](testing.md) owns QueryClient/MSW boundaries, observable
+assertions, fixture ownership and related test entry points.
 
 ## File and world controllers
 
-Files own typed contracts/API/query/commands, draft and navigation controllers, upload sessions and UI. World owns common layout/map/layers and feature-specific restore/prune controllers. Shared map code has no reverse dependency on restore; files and world publish their own terminal resource mappings to the application observer. File keys scope invalidation by server; explicit global file-root resources conservatively refresh all affected server caches. Archive-root resources alone do not invalidate unrelated servers.
-
-`useWorldMapController` exposes concrete `server`, `map`, `claims` and `players`
-groups. `WorldDimensionSelect`, `WorldMapInitialization` and
-`WorldPlayerLocationList` present shared dimension, initialization and player
-inputs. Restore retains its mode-change confirmation, selected scope and stable
-backup/history sidebar; prune owns its full-dimension preview/apply guards and
-read-only claims list. Map-status error presentation remains specific to restore.
-
-The common controller owns pending cross-dimension pan. Only the matching
-dimension's overlay render applies it, before attaching layers; a microtask
-clears the target so later renders do not replay it. Hidden player markers retain
-a lightweight initialized overlay for this callback. Coordinate helpers preserve
-Leaflet `[-Z, X]`, 16-block chunks, 512-block regions and floor division for
-negative cells. See [server-map.md](server-map.md) and
-[player-locations-overlay.md](player-locations-overlay.md).
-
-Map initialization terminal outcomes refresh that server's map status and region
-queries even after leaving the page. Individual `map_render` operations do not
-invalidate map queries, which would otherwise trigger another render cycle.
-
-Independent-task progress views display state and offer explicit commands; closing or unmounting never supplies their business completion behavior. Snapshot recovery latches its confirmed scope and discovers accepted work through a database-only endpoint after reload, even when transient map selection is gone. Acceptance, a disappearing active-list entry and a failed status read never count as completion. The observed terminal result stays visible until dismissal. Successful local CRUD and partial browser uploads still refresh their immediate write results.
-
-The tests use real QueryClient caches and MSW HTTP boundaries. Coverage includes file filtering/drafts/partial batches, prune availability and late rejection, shared world URL selection, task disconnection/reconnection, accepted cancellation while observation still reports running, ready-preview disposal, old-generation history guards and off-page partial-write completion. Server controls retain their status-specific availability and stay blocked by an active task until the maintenance projection clears.
-
-`app/overview/queries.integration.test.tsx` verifies cross-page fresh-cache reuse, shared invalidation and stopped-server gating through real MSW endpoints. Player integration tests verify initial cached names, shared-cache updates before rerender, stable map identities under UUID normalization, and streamed updates reaching both single-profile and map observers. Schedule integration tests keep active-but-unregistered jobs visible, retry registration, refresh the server card and read older responses without the optional fields.
-
-DNS integration tests exercise degraded/unknown and empty desired states, update availability, visible partial provider writes after an overall failure, and refresh failures without false success feedback.
+Files own navigation, editing and upload controllers; world owns layout/map/layer
+state plus restore/prune workflows. Both compose the public backups feature for
+shared recovery. See [file management](file-management.md),
+[map controllers](server-map.md#shared-feature-controller) and
+[common snapshot UI](snapshot-recovery.md) for their local lifecycles.
 
 ## Snapshot recovery
 
-File controls submit explicit data-path scopes through `features/backups/commands`.
-Creation stays busy until the task finishes. Recovery uses the common progress card;
-HTTP acceptance does not unlock it, status read errors show reconnecting, and
-navigation only stops observation. Database-only active restoration discovery resumes observation on entry and re-enabling. One feature-owned polling observer per QueryClient/server scope serves all file, world and history consumers: empty results poll every 30 seconds, active/unknown/failed results every two seconds. Fresh entry checks and errors retain admission guards; history lists refresh on entry, actions and invalidation instead of periodic repository reads. The last consumer detaching stops its polling.
-The server toolbar opens paginated recovery history, including safety availability
-and parent rollback links. A confirmed rollback replaces later changes in the
-selected scope, first saving a new safety snapshot so that rollback is reversible.
-Excluded descendants remain untouched and receive a brief notice.
+`features/backups` owns shared contracts, commands, previews, history and recovery
+observation. [Common snapshot UI](snapshot-recovery.md) defines creation completion,
+protection feedback, activity-aware discovery and rollback guards; the world
+feature supplies its map-specific adapters.
 
-`features/backups` owns explicit snapshot scopes, creation mutations, recovery task observation and reusable progress/history UI. File management and world recovery import only these public contracts, commands and UI entries. The backups operation-resource registry refreshes snapshots and history after all terminal outcomes, even if the initiating file page has unmounted.
+## Session and browser-owned state
 
-`features/backups/useSnapshotPreview` observes preparation tasks for both file lists and maps. Ready results retain heartbeat state; closing them submits cleanup. Preparation observation can end without cancellation. File details are paginated by the backend; the map composes its own rendering component without a backups dependency on world internals. Snapshot deletion and stale-lock cleanup mutations await their actual terminal task results.
+Session guards use `useCurrentUser()` and the backend's HttpOnly JWT cookie.
+Network/server lookup failures keep the requested route available for retry;
+authentication rejection opens login. Axios sends credentials and CSRF, while
+the shared finite SSE reader supplies CSRF for unsafe methods and rejects EOF
+before an explicit terminal event. See [backend authentication](../../backend/docs/auth.md).
 
-`features/world/map/revision.ts` stores the newest relevant notification sequence and operation ID for each server and global scope in Query cache. Feed sequence determines arrival order independently of server time; later effective changes of one terminal operation still change the tile URL. A separate global reset token changes on bootstrap or lost history, resets sequence comparison baselines and remains independent of server/global timestamps. Tile URLs combine these tokens with MCA mtime, so MCC-only changes, same-mtime replacements and lost-notification recovery refresh browser images. Read-only previews and snapshots leave the input revision unchanged.
+| Local owner | State |
+| --- | --- |
+| `app/layout/sidebarStore.ts` | Sidebar collapse and open sections |
+| `features/users/loginPreferenceStore.ts` | Preferred login method |
+| `features/tasks/panelStore.ts` | Panel/tab/drag state; launcher position persists |
+| `features/tasks/downloadStore.ts` | Browser-owned downloads; reload cancels in-flight records |
+| `features/world/restore/selectionStore.ts` | Transient per-server world selection |
+
+Backend tasks and player profiles remain Query data, not mirrored stores.
+Browser downloads have their own [task-center lifecycle](task-center.md).

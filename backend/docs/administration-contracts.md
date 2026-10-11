@@ -1,6 +1,6 @@
 # Administration compatibility contracts
 
-This inventory describes the supported user journeys for the application-boundaries refactor. The route and schema baseline is `tests/contracts/fixtures/api-contract.json`; its executable comparison lives in `tests/contracts/`. The independently deployed API scenarios and their exact case IDs are catalogued in `../../e2e/docs/coverage.md`. A route snapshot detects accidental contract changes; it does not prove authorization or business behavior.
+This inventory maps supported administration journeys to their regression owners. [Observable behavior](../../openspec/specs/administration-compatibility/spec.md) is the compatibility contract; component docs explain its implementation. The route and schema baseline is `tests/contracts/fixtures/api-contract.json`; its executable comparison lives in `tests/contracts/`. The independently deployed API scenarios and their exact case IDs are catalogued in `../../e2e/docs/coverage.md`. A route snapshot detects accidental contract changes; it does not prove authorization or business behavior.
 
 ## Common boundaries
 
@@ -26,10 +26,10 @@ All paths below are relative to `/api`; the fixture includes individual methods 
 | Back up and restore files | Snapshot coverage, ignore rules, retention, time restrictions and safety snapshots remain. Ordinary file restores remain available online. Full-server/world writes require stopped state; maintenance conflicts are explicit. | `tests/snapshots/`, `tests/world/test_maintenance.py`; `e2e/suites/snapshots/`, `world/maintenance.go` |
 | Selectively restore and roll back worlds | World/dimension/region/chunk scopes, sidecars, preview expiry and retained safety references remain. History binds to the original server generation and can restore a missing range and undo that rollback. Empty snapshot selections remove only selected content, respecting ignores. Closing task observation leaves recovery running; explicit cancellation finalizes history and releases leases only after writers stop. Cancellation before a completed safety snapshot/history does not promise rollback, and unconfirmed writers retain recovery blocking. Restart marks interrupted history. | `tests/world/`, `tests/snapshots/test_empty_restore.py`; `e2e/suites/world/restore.go`, `restore_generation.go`, `maintenance.go` |
 | Render maps, inspect claims/player positions, prune chunks | Dimension/layout support, cache/geometry contracts, safe reads and stopped-state pruning remain. Prune and restore cannot overlap startup/rebuild/restart; actual map writers own cache/file resources. Expired, changed or consumed prune previews cannot authorize another apply, and active readers/applies retain their preview artifacts. | `tests/mcmap/`, `tests/ftb_claims/`, `tests/player_locations/`, `tests/world/test_prune_validity.py`; `e2e/suites/world/` |
-| Configure server restart plans and custom cron | Server-managed plan lookup uses exact ownership. Prefix-related servers and independently named cron jobs cannot be read or changed accidentally. Ambiguous legacy managed plans return 409 without mutation. | `tests/cron/`, `tests/servers/test_restart_schedule_identity.py`; `e2e/suites/minecraft/schedule.go`, `cron/` |
+| Configure server restart plans and custom cron | Server-managed plan lookup uses exact ownership. Prefix-related servers and independently named cron jobs cannot be read or changed accidentally. Managed plans target exact logical names; deterministic selection preserves other retained plans. Each execution revalidates its captured instance. See [cron](cron.md#server-managed-restart-plans). | `tests/cron/`, `tests/servers/test_restart_schedule_identity.py`; `e2e/suites/minecraft/schedule.go`, `cron/` |
 | Observe players and history | Identity resolution, filtering, chat/achievement cursors and post-commit events remain. Concurrent repeated joins yield one open session; repeated leaves preserve the first recorded end time and duration. | `tests/players/`, `tests/migrations/`; `e2e/suites/players/` |
 | Use console, RCON and external events | WebSocket connection/disconnection, console IO, RCON validation, in-game messaging and SSE envelope/cursor behavior remain. Streams are not replaced with background task polling. | `tests/events/`, `tests/servers/test_bot_integration_routes.py`, `tests/test_websocket_console.py`; `e2e/suites/minecraft/`, `players/`, `auth/` |
-| Inspect health/resources, reconcile DNS/router | Health categories, failure isolation, runtime dynamic settings and DNS provider reconciliation/deletion policies remain. External qualification stays explicit and requires owned test domains. | `tests/self_check/`, `tests/dns/`, `tests/test_monitoring.py`; `e2e/suites/selfcheck/`, `system/`, `dns/` |
+| Inspect health/resources, reconcile DNS/router | Health categories, failure isolation, runtime dynamic settings and DNS provider reconciliation/deletion policies remain. DNS cases use owned test domains; complete qualification includes Huawei, while DNSPod requires explicit selection. See [DNS qualification](../../e2e/suites/dns/README.md). | `tests/self_check/`, `tests/dns/`, `tests/test_monitoring.py`; `e2e/suites/selfcheck/`, `system/`, `dns/` |
 
 Test paths in the table identify the owning suites; `rg --files tests` and the collected capability manifest provide the concrete test identities. The E2E coverage document tracks remaining breadth gaps separately from unit-test coverage.
 
@@ -59,12 +59,12 @@ declare their resource scopes. This does not provide multi-worker deployment.
 Schema migration runs before DB consumers start. The supported release fixture
 is generated from the actual `v5.3.0` source and contains synthetic data, never
 user exports. Duplicate open player sessions block the uniqueness migration
-before DDL; the offline preflight/repair process in `database-migrations.md`
+before DDL; the [offline preflight/repair process](database-schema.md#unique-open-player-sessions)
 requires an explicit database path and reviewed report, preserves session IDs,
 and writes durable repair evidence. Startup reconciles interrupted ownership
-before producers and writes. Server generations bind managed plans and
-restoration history; uncertain historical ownership is retained without
-reassignment. Downgrade guards preserve unresolved operation evidence and
+before producers and writes. Server generations bind restoration history and captured executions; managed
+restart plans retain their logical-name target. Uncertain historical restoration
+ownership is retained without reassignment. Downgrade guards preserve unresolved operation evidence and
 identity protection; schema rollback never automatically undoes user data edits.
 
 Binary versions, synthetic fixtures and workload commands are documented in `testing.md`. Baseline timings are measurements tied to their environment, not arbitrary performance pass/fail thresholds.
@@ -78,16 +78,12 @@ and is recorded separately from that registry digest. See
 rollback boundaries. A local protocol rehearsal does not represent a GHCR
 release or permission to replace a deployed user's data.
 
-## Intentional corrections
+## Interaction failure boundaries
 
-Intentional corrections cover wrong-server schedule/history reuse, duplicate
-open sessions and repeated-leave duration changes, unsafe maintenance or file/cache
-overlap, deletion despite unsettled writes, credential-bearing error output,
-lost editor drafts, false refresh success and login redirects caused by temporary
-errors. Console connection waits for both terminal readiness and an eligible
-server state, regardless of response order; losing eligibility closes the socket
-and its retry timer. Configuration versions detect stale saves. Prune input versions reject
-stale/repeated authorization; preview references prevent premature cleanup.
-Empty world selections restore their actual absence and retain reversible
-history. These corrections have owning regression tests above; other supported
-behavior remains a compatibility target.
+Console connection waits for both terminal readiness and eligible server state;
+losing eligibility closes the socket and retry timer. Configuration versions reject
+stale saves while preserving drafts. A temporary session lookup failure permits
+retry without redirecting a signed-in user. Task acceptance and refresh failures
+cannot report completed work. See [frontend data ownership](../../frontend-react/docs/data-architecture.md),
+[configuration drafts](../../frontend-react/docs/configuration.md) and the owning
+regressions above.

@@ -22,3 +22,5 @@ pnpm build:bundle
 密码和动态码登录均由后端建立 HttpOnly Cookie 会话，写请求携带 CSRF 令牌；客户端读取当前会话作为路由守卫依据。
 
 开发约束和定向验证方式见 [AGENTS.md](AGENTS.md)，业务边界见 [数据架构](docs/data-architecture.md)，浏览器环境与观测方法见 [浏览器验证](docs/browser-tests.md)。本地仅运行与改动直接相关的测试文件或用例，完整验证由 GitHub Actions 执行。
+
+完整主题目录见[前端文档索引](docs/README.md)。

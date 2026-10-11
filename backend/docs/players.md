@@ -97,7 +97,7 @@ Concurrent log and RCON observations reuse its identity. Departure updates only
 rows that remain open, so a repeated or concurrent departure cannot replace an
 already recorded duration. Closed sessions and sessions on other servers remain
 independent. Historical duplicate open sessions require the explicitly reviewed
-offline repair described in `database-migrations.md`; startup does not silently
+offline repair described in [schema maintenance](database-schema.md#unique-open-player-sessions); startup does not silently
 rewrite player history.
 - **`PlayerChatMessage`** — `message_id` cursor, `(player_db_id, server_db_id)`, `message_text`, `sent_at`. Indexes on `(player, time)` and `(server, time)`.
 - **`PlayerAchievement`** — `(player_db_id, server_db_id, achievement_name)` unique, `earned_at`.

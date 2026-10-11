@@ -1,144 +1,32 @@
-# 后端功能完整覆盖清单与 E2E 测试范围
+# 后端功能覆盖索引与 E2E 测试范围
 
-本清单将后端的各个功能域映射到统一 `suites/catalog.go` 中具有稳定 ID 的测试用例。当前 catalog 共 **93 个场景**，默认回归执行除 DNSPod 外的 **92 个场景**。其中 13 个带有冒烟标签，4 个依赖真实外部服务；这些标签可以重叠。实际必需集合由当前 catalog 推导，不由文档计数或历史结果决定。
+领域清单将业务行为映射到 `suites/catalog.go` 中具有稳定 ID 的用例。
+必需集合由当前 catalog 推导；使用 `mc-admin-e2e list` 或 `plan` 查看，
+文档不重复维护场景总数。清单描述已经实现的断言，实际通过情况以当前
+提交的完整 qualification 及 CI artifacts 为准，见[发布要求](../../docs/release.md)。
 
-下表描述测试代码已经实现的断言。实际使用的镜像、运行范围、失败情况和验证结果，以当前提交的完整资格运行及其 CI artifacts 为准；用例已经实现，不等于对应部署已经验证通过。完整资格要求见[发布说明](../../docs/release.md)。
+## 领域清单
 
-普通 PR、常规自动 CI 和完整 `qualification` 均执行当前 catalog 中除 DNSPod 外的全部用例。CI 仅提供 `regression`、`qualification` 和 `dnspod` profile；只有 DNSPod 保留显式选择。`--tag regression` 与默认 CI 集合一致，`--tag smoke` 选择核心工作流，本地仍可按标签和明确的相关用例 ID 定向执行。可以使用 `list` 或 `plan` 查看目录和配方。
+| 功能域 | 已实现的断言与具体 case ID |
+| --- | --- |
+| 部署、身份与系统 | [静态交付、认证、权限、设置、操作历史与恢复](coverage/system.md) |
+| 模板、服务器与 Minecraft | [模板、配置版本、生命周期、调度与迁移](coverage/servers.md) |
+| 文件、归档、任务与快照 | [文件内容、上传发布、任务观察、快照保护与恢复](coverage/files.md) |
+| 世界、地图与玩家 | [布局、恢复、裁剪、缓存、领地、玩家会话与身份](coverage/world.md) |
+| 调度、自检与外部集成 | [Cron、自检、资源、DNS/router 和真实供应商](coverage/integrations.md) |
 
-真实浏览器流程和[完整持久数据部署演练](deployment-rehearsal.md)使用同一个 owned provider 包装器，单独记录结果，不计入上述 Go API 用例数。部署演练通过真实 v6.0.0-beta.1 镜像生成历史数据，覆盖升级后的 ID/配置/内容保留、旧代码拒绝新 schema、完整检查点灾备、旧恢复记录回滚及再次回滚、歧义归属拒绝写入，以及世界快照恢复和安全快照回滚。
+PR、普通自动 CI 和完整 qualification 执行当前 catalog 中除 DNSPod 外的
+全部用例；DNSPod 需要显式选择。CI profiles 为 `regression`、`qualification`
+和 `dnspod`。本地通过明确的相关 case ID 和相交标签定向执行，见[运行入口](../README.md)。
 
-## 部署、身份认证与系统行为
-
-| 功能域 | 稳定用例 ID | 已实现的验证内容 |
-| --- | --- | --- |
-| 空数据库启动 | `startup.empty-database-bootstrap` | 使用正式启动流程初始化真实 SQLite，并达到镜像附带的 Alembic 最新迁移版本；初始化用户、配置、定时任务和自检 API 均可用。 |
-| 支持的数据库升级 | `startup.versioned-database-upgrade` | 使用镜像附带的 Alembic，将测试独占数据库降级至指定基线版本；正常重启后验证升级至最新版本，同时保留用户、登录会话、配置和服务器清单。 |
-| 不支持的数据库状态 | `startup.unknown-revision-refused`、`startup.unversioned-schema-refused` | 数据库包含未知迁移版本，或已经存在业务表但缺少迁移版本元数据时，应用启动以非零退出码失败，并输出相应诊断信息。 |
-| 密码登录、角色与 CSRF | `auth.sessions-and-permissions` | 拒绝匿名访问和错误密码；验证真实登录、当前身份、owner/admin 权限边界；缺少 CSRF 时拒绝请求且不产生修改；注销后拒绝继续访问。 |
-| 管理员用户管理 | `auth.user-administration` | 创建可实际登录的账号；拒绝重复账号、非法角色和 admin 角色无权执行的管理写操作；防止 owner 删除自己；删除账号后清单、密码登录和已签发会话同步失效；拒绝重复删除。 |
-| 登录码交接流程 | `auth.code-login-and-csrf` | 建立真实登录码 WebSocket；通过主令牌确认登录码，交换浏览器登录票据并一次性完成登录；拒绝非法登录码、票据和重复使用；验证会话 Cookie 及 CSRF 不匹配时的拒绝行为；读取普通容器日志与审计，确认本次真实 code/ticket 的完整值、截断片段及原始凭据帧未泄露，成功审计记录的对应字段已脱敏。 |
-| 启动后的服务发现 | `system.discovery` | 验证健康与系统接口、已注册的定时任务与自检服务、空业务清单、禁用状态的 DNS 及玩家相关接口。本用例验证可发现性，具体业务效果由对应领域用例验证。 |
-| 动态配置模块与结构 | `system.configuration-catalog` | 检查 `dns`、`snapshots`、`players`、`log_parser`、`mcmap`、`world`、`self_check` 七个模块的目录和 Schema；拒绝不存在的模块。 |
-| 配置持久化与重置 | `system.configuration-persistence`、`system.configuration-roundtrip` | 逐个模块更新和读取配置；代表性非法值及缺少必要捕获组的日志规则被拒绝，且不覆盖原有有效配置；真实重启后保留配置及登录会话；逐个模块恢复注册默认值。已保存日志规则的实际解析还由玩家用例验证，其他运行时刷新由世界、快照、自检及外部 DNS 用例验证。 |
-| 主机指标、静态资源与参数校验 | `system.metrics-static-validation` | 检查 CPU、内存、磁盘指标为有限值、范围合理且相互一致；验证生产 HTML、单页应用路由回退、打包资源和 robots 文件；验证 API 404、结构化参数错误、匿名指标访问被拒绝及公开健康检查。 |
-| 审计日志 | `system.audit-redaction` | 执行 API 操作后读取测试部署的审计日志；核对操作者、成功与被拒绝的写操作、只读请求不被记录；正常表单登录和用户创建中的密码脱敏；在 DNS 禁用状态下通过真实配置 API 保存并读回测试 ak/sk，检查审计、app.log 和容器标准输出（含 SQL 日志）均不包含本次合成凭据；嵌套额外字段验证中间件递归，同时保留普通任务与状态字段。该配置测试不访问云服务。 |
-| 配置凭据及异常日志 | `system.configuration-credential-logs` | 提交含合成密码的非法/合法 Compose 与文件正文，验证失败任务不泄漏、成功保存内容不变；缺失快照触发的预览与恢复任务失败使用安全消息；审计、app.log、容器标准输出均不含测试凭据，成功操作的正文已脱敏且审计存在。 |
-| 公共事件连接 | `system.events-handshake` | 验证带会话认证的 WebSocket 连接，以及非法回放游标触发的重置协议。实际事件产生与持久化回放由 `players.tracking-events-and-history` 验证。 |
-| 操作增量刷新通知 | `operations.incremental-refresh-feed` | 通过真实文件创建、写入与后台删除验证跨会话读取受理和终态、精确服务器代次与路径、单条分页和稳定重读、分页期间新写入不丢失、追平后不重复已处理通知；共享通知中其他后台操作不影响本次文件范围断言。拒绝匿名访问和非法页大小，损坏游标明确重置；真实重启后旧实例游标重置，原操作及已移除任务的结果保留，新实例继续通知并核对文件内容。通知条数及数据量淘汰边界由后端定向测试承担。 |
-| 中断任务与定时执行历史 | `operations.interrupted-task-and-cron-history` | 停止独占部署后预置运行中操作/任务/定时执行记录，正常启动后通过 API 验证中断终态、原执行 ID、原消息加中断说明、非负耗时、结束时间和暂停计划保留，执行次数只增加一次且暂停计划显示未注册；再次重启不重复计数或重放、不恢复旧任务，原文件及停服意图保持。此场景验证持久中断输入的启动处理，实际子进程取消与回收由后端进程测试及相关真实工具场景承担。 |
-| 恢复权限与局部阻断 | `operations.scoped-recovery-and-permissions` | 真实 Compose 与中断记录指纹不一致时，目标服务器写入被阻断但安全读取及另一服务器仍可用；操作历史要求登录，解除要求 owner/CSRF，无 force 绕过；拒绝操作保留原数据及阻断；修复独占目录中的 Compose 后显式解除，保留操作者、历史中断结论及重启后的解除结果。 |
-| 地图缓存降级恢复 | `operations.cache-degradation-and-recovery` | 在自有服务器中使 tiles 路径为普通文件，重启时缓存清理失败可见但不冻结文件管理或新任务；移除障碍后再次重启，允许丢弃的旧缓存被清理、降级解除，世界数据保持。 |
-
-## 模板、服务器与 Minecraft 运行行为
-
-| 功能域 | 稳定用例 ID | 已实现的验证内容 |
-| --- | --- | --- |
-| 模板生命周期 | `templates.lifecycle` | 验证带类型变量的模板增删改查、Schema、渲染结果、非法变量拒绝和删除效果。 |
-| 模板类型、默认值与端口 | `templates.types-defaults-and-boundaries` | 验证字符串、整数、浮点数、枚举、布尔值的 Schema 与替换；拒绝类型错误、越界值、缺少必填项、重复定义和未定义变量；模板和默认变量保存时拒绝非法正则、倒置范围及不符合约束的默认值，并保持原数据；默认值在重启后保留；建议端口避开现有游戏与 RCON 端口映射。 |
-| 直接创建与模板创建服务器 | `servers.template-snapshot` | 验证直接创建、重复冲突、删除后按模板重新创建；删除源模板后保留服务器的模板快照；最终删除服务器。 |
-| Compose 转换与重建 | `servers.compose-conversions-and-rebuild` | 验证 Compose 读取与编辑、变量提取、转换预览；内容相同的转换不触发重建，内容变化时重建任务达到终态且元数据立即一致；每次配置任务均核对停服状态及原运行意图；源模板修改或删除后，服务器快照预览与保存仍使用保留定义；显式升级采用新源模板，直接模式与模板模式转换及 Compose 持久化正确，未携带版本的既有请求仍可用。 |
-| Configuration versions | `servers.configuration-versions` | Independent editors receive the same baseline; an accepted write changes the version and stale writes receive `configuration_conflict` with the current version without overwriting content. External Compose changes invalidate a previously observed version. Legacy saves remain accepted. Extraction/conversion previews carry the observed version; mode changes version their source metadata, and stale template/direct conversions are rejected. |
-| Partial configuration failure | `servers.configuration-partial-failure-recovery` | A real owned Docker container runs a harmless sleep command, without game downloads. Applying an invalid executable fails container startup after writing configuration; task and operation history report the failure, changed content and original running intent. Unconfirmed writers block further applies; down and explicit recovery allow a versioned repair while preserving the stopped state and original failed history. This qualifies Docker lifecycle failure, not Minecraft readiness. |
-| 重启计划与创建参数校验 | `servers.restart-schedule-and-creation` | 拒绝非法创建参数组合；创建服务器时一并建立重启计划；验证计划读取、更新、暂停、恢复、取消、稳定 ID、下次执行时间和自动默认值；删除服务器时取消计划。 |
-| 重启计划逻辑目标 | `servers.restart-schedule-logical-target` | 并发受管创建只产生一个计划，显示名完全相同的独立任务不被接管。受管计划允许任意显示名，暂停、恢复和真实后端重启保留参数与分类。删除服务器精确取消活动受管与独立重启任务；显式恢复后真实调度对缺失目标记录带原因和终态元数据的 `skipped`。同名新实例保留暂停计划和原 ID，显式恢复后的执行定位当前停止实例并记录另一种跳过原因，不启动服务器。再次重启保留两次执行历史，独立任务仍可明确恢复。 |
-| 历史重启计划迁移 | `servers.restart-schedule-legacy-migration` | 停止独占数据库并降级至 `2026092501` 后，以标准 SQLite 预置重复受管计划、早于服务器登记的计划、独立任务和真实历史表记录。启动至当前 schema 后保留原 ID、显示名、参数、cron、状态、执行次数和完整历史，活动计划正常注册，API 不再暴露旧绑定字段。服务器页面选最早未取消计划，逐项暂停、恢复和取消不影响其他记录，全部取消时选择最新取消项供明确恢复和更新；不新增替代 ID。删除服务器只取消参数精确匹配的活动任务，共同前缀另一服务器的计划和全部执行历史保持。 |
-| 定时任务实际重启 Minecraft | `minecraft.scheduled-restart` | 建立真实的分钟级计划并检查下次执行时间；等待执行历史完成，确认 Docker 启动时间发生变化、服务器恢复健康；通过 RCON 验证白名单与记分板数值保留，并核对世界标记文件。 |
-| 受管计划精确身份 | `minecraft.exact-restart-schedules` | 建立服务器名称前缀相似的计划及独立自定义 cron；验证 GET、更新、暂停、恢复、删除均只作用于精确归属的受管计划，其他任务保持原状。 |
-| 文件系统与数据库同步 | `servers.sync-reconciliation` | 验证仅 owner 可同步、状态一致时的试运行、真实项目目录偏差及强制执行保护；停用与接管预览不修改状态；实际应用两种转换后核对服务器清单和状态。 |
-| 显式服务器身份 | `minecraft.explicit-server-identity` | 孤立目录及接管预览均不允许写入；owner 显式接管后才可修改；缺失项目不能覆盖 ACTIVE 记录重建，停用后恢复目录不隐式激活；再次接管保留原文件，历史合法名称及登记在重启后仍可使用。实例代次与延迟任务复检由隔离的后端并发测试验证。 |
-| 服务器路径归属 | `minecraft.server-path-boundaries` | 拒绝 dot/dot-dot 服务器名称；项目 symlink 别名、指向根目录的 data symlink 均不能读取或写入目标；修复链接后通过 API 核对原文件完整。配置根 symlink 及本项目内部 data symlink 的兼容性由后端路径测试验证。 |
-| Minecraft 生命周期 | `minecraft.lifecycle` | 通过 API 保存含多个等号的合法标签值，实际创建并启动 Docker/Minecraft，等待应用返回健康状态；修改和读取 RCON 白名单，验证消息接口；拒绝删除运行中的服务器；停止后修改配置并重建，确认新配置生效且保持停止，再次启动达到健康状态；手动 up/start/restart/stop/down 均核对新增唯一成功操作历史、操作者、运行意图、结束阶段及同一服务器代次，最后删除服务器。 |
-| 运行概览与配置 | `minecraft.overview`、`minecraft.rcon-and-files` | 验证聚合概览、在线玩家与资源接口、生成的世界布局、真实 RCON 输出及生成的 `server.properties`。 |
-| Docker 控制台与运行时修改 | `minecraft.console-and-runtime-controls` | 验证 CPU、内存、IO、磁盘计数，控制台历史、尺寸调整、输入和未知消息协议；通过标准输入执行修改，再用 RCON 核对效果；验证格式化消息、运行中填充服务器数据的冲突、停止与启动，以及运行中修改 Compose 内存限制后的重建效果。 |
-| 控制台适配器错误安全输出 | `minecraft.console-safe-adapter-errors` | 在自有运行中 Minecraft 的 Compose 中设置 `logging.driver=none`，使真实 Docker SDK 无法读取历史；验证固定中文历史错误帧，同时 attach/stdin 仍可执行命令；通过 RCON 核对实际白名单变更，正常关闭 WebSocket 后服务器仍健康，普通容器日志不包含适配器原始 HTTP/文本诊断。 |
-| 已停止、缺失与非法请求 | `minecraft.stopped-and-invalid-requests` | 验证已停止服务器的指标、RCON、消息冲突和控制台错误帧；拒绝非法命令、消息长度与字段、非法操作；检查不存在的服务器响应。 |
-
-## 文件、归档、后台任务与全局快照
-
-| 功能域 | 稳定用例 ID | 已实现的验证内容 |
-| --- | --- | --- |
-| 文件内容与所有权 | `files.content-search-and-task` | 创建、写入、读取 UTF-8 文件；使用真实 `fd` 搜索；等待所有权修复任务完成；验证重命名、下载字节及删除效果。 |
-| 目录与搜索 | `files.directories-search-and-errors` | 验证嵌套目录操作；按正则、大小写、深度、大小、时间搜索并核对精确数量，分别验证上下时间界限能排除结果；拒绝文件与目录类型不匹配、路径缺失或冲突的操作；验证递归重命名与删除效果，以及包含字面反斜杠的 Linux 文件名创建、读写、重命名和删除。 |
-| 多文件上传 | `files.multipart-policies` | 发现上传冲突并要求指定处理策略；验证从不覆盖、总是覆盖、逐文件决策，嵌套文件内容、已消费或可继续使用的上传会话、重复上传后的实际字节，以及缺失会话的拒绝行为。 |
-| 多文件上传安全失败 | `files.multipart-safe-failures` | 按固定顺序上传到已有目录及后续正常文件，分别核对一次性和可复用会话的逐文件结果、固定中文原因、公开读取与实际磁盘字节，目录保持且后续成员成功；再用真实请求检查会话消费语义。父路径为普通文件时返回安全 HTTP 500，原文件保持、后续成员未写入且一次性会话已消费；应用文件日志和容器日志保留安全异常类型诊断，不回显请求中的适配器路径标记。 |
-| 文件路径边界 | `files.path-confinement` | 在读取、下载、搜索、创建、写入、删除、重命名、上传中拒绝目录穿越和符号链接越界；断开的符号链接不阻断正常目录列表；非法 multipart 路径不造成部分写入，已有安全文件内容保持不变。 |
-| 批量下载清单与删除 | `files.batch-manifest-delete` | 一次响应完整返回超过 200 个条目的递归清单，包含空目录和同名文件，实际下载字节与服务器代次一致；验证认证、路径边界及整批预检，一个后台任务只删除所选范围，保留未选内容。 |
-| 可续传归档工作流 | `archive.upload-populate-compress` | 部署使用相对存档目录 `ARCHIVE_PATH=archives`，验证上传发布不误报路径越界；核对偏移量与 HEAD 续传状态；拒绝旧偏移后继续正确上传；SHA256 任务结果与本地字节一致；验证发布和下载、真实 ZIP 解压与 7z 压缩、任务终态，以及摘要和详情的边界；重复压缩产生独立归档，并核对每份归档内的实际文件。 |
-| 归档状态与管理 | `archive.upload-state-and-management` | 拒绝非法初始化与分块；验证上传不完整、校验不匹配、取消和失败上传不发布；两个会话向同名目标发布时，不覆盖策略返回冲突并保留先完成文件；核对显式覆盖后的字节、目录与文件增删改查、列表隔离和路径边界。 |
-| 归档格式与失败处理 | `archive.formats-and-extraction-errors` | 解压带外层目录的 TAR，完整替换已有数据，包含隐藏文件的替换与删除，并消费源归档；损坏 ZIP 或缺少 properties 文件时失败且保留原内容、隐藏文件和源归档字节；压缩整个项目，再使用生成的 7z 成功填充服务器。 |
-| 子路径压缩内容与独立归档 | `archive.subpath-compression-content` | 通过公开 API 写入固定字节，等待目录及单文件压缩任务终态；旧请求省略客户端时间仍可压缩，名称仅含服务器名、时间及实际重名时的数字后缀；下载实际 7z 并核对大小，在候选容器中用真实 7z 列出精确子树成员、提取选中成员并比较字节。两次单文件压缩产生独立路径，各自保留对应代次内容；再次下载首份归档，其原始字节保持不变。 |
-| 多路径压缩 | `archive.multi-path-compression` | 拒绝无效或冲突的路径范围、ISO 格式、非法日期时间及路径形式的客户端时间；固定客户端本地时间生成仅含服务器名和时间的精确归档名，相同时间重复压缩使用 ` (2)` 后缀保留两份不同内容，首份下载字节不变；实际 7z 保留原路径、同名文件、空目录及含 `@`、方括号的字面文件名，归档成员与文件字节符合所选范围。 |
-| 任务取消 | `archive.task-cancellation` | 取消真实运行中的压缩任务；拒绝过早删除历史；等待取消终态，确认没有残留半成品归档，再删除终态历史。`world.chunk-prune` 还会取消真实区块清理预览任务。 |
-| 任务接口权限 | `archive.task-permissions` | 覆盖任务中心全部五个 method/path 操作和活跃列表变体；匿名、无效会话请求被拒绝，owner/admin 缺少 CSRF 的写请求被拒绝；已完成记录保持不变，被拒绝取消的真实压缩仍成功产出归档；两种角色均可读取、取消、删除和清空实际任务。 |
-| 任务历史 | `tasks.failure-filter-delete-clear` | 核对失败解压任务的错误、结束时间及可取消状态；验证按服务器、状态、活跃状态筛选；摘要不包含结果详情；拒绝取消已结束或缺失的任务；删除和清空列表后数量准确，详情仍可观察终态，未知任务详情返回 404。成功任务也由文件、归档、重建和世界用例验证。 |
-| 全局快照恢复 | `snapshots.restore-and-protection` | 读取共享规则并拒绝提交被忽略的文件，读取和拒绝不产生恢复历史；创建并列出真实 Restic 快照；完成后活动查询为空，历史范围/状态/入口筛选与目标实例一致；预览任务不修改数据，逐页读取明细且不遗漏空文件；空文件恢复后可随历史回滚回缺失状态；目标变化后拒绝旧预览恢复，重新准备后可应用；创建、预览、恢复和清理均等待后台任务终态；核对安全快照 ID、统一历史列表/详情、恢复后的内容、受保护路径及多余文件的删除效果；恢复后的修改被历史回滚覆盖，再次回滚可还原第一次回滚前的数据。 |
-| 仓库操作与备份范围 | `snapshots.repository-and-selection` | 验证仓库用量、锁与任务化解锁，按显式路径、服务器项目及全局范围提交创建任务并等待完成后筛选覆盖范围；验证占位符排除规则；拒绝缺失、穿越、符号链接越界及受保护路径；拒绝非完整快照 ID 的删除请求并确认已有快照仍在；等待快照删除任务结束后清单为空。 |
-| 快照备注与多路径恢复 | `snapshots.notes-and-multiple-paths` | 中文备注创建、编辑、长度及权限边界，来源投影一致且编辑不改变有效预览引用；恢复仅改变所选文件并保留安全快照，后端重启后备注和历史仍可读取及回滚，来源排除一个选中根时跳过它并保留其它可恢复根。 |
-| 混合忽略路径快照与恢复 | `snapshots.mixed-ignored-targets` | 混合创建只保存允许根；当前规则全部保护的请求在受理前拒绝且不产生历史；来源排除与未覆盖分别验证，来源返回实际跳过信息；预览仅展示允许文件且不写入；实际恢复和安全快照只处理允许根，取消当前忽略后回滚仍保留上次跳过内容。 |
-| 逻辑路径排除与共享规则 | `snapshots.logical-exclusions-and-shared-rules` | 认证规则 GET 返回相对路径、占位符展开、规则版本及与服务器详情一致的代次，读取不产生操作、任务或恢复历史；世界检查仅接受世界范围，别名与目标按名称分别判断；排除链接不传播到目标，排除目标不禁止未排除别名；当前规则不隐藏历史快照，实际提交仍拒绝被忽略路径；真实快照、来源筛选和别名恢复保持映射，重启后的回滚可逆；父目录恢复保留被忽略的链接节点，同时恢复未被忽略的目标数据。 |
-| 备份时间限制 | `snapshots.backup-time-restriction` | 备份时间窗口限制以预期原因拒绝手动快照；关闭限制后可创建真实快照。 |
-| 活跃锁与过期 Restic 锁 | `snapshots.stale-lock-recovery` | 由真实 Restic 进程持锁，解锁接口保留活跃锁；仅终止测试拥有的进程，随后清除其过期锁并再次成功备份。 |
-
-## 世界、地图与玩家数据
-
-| 功能域 | 稳定用例 ID | 已实现的验证内容 |
-| --- | --- | --- |
-| 世界布局与旧格式解析 | `world.legacy-layout-and-extractors` | 验证多个世界根目录、旧式维度、自定义维度和深层目录维度；解析 LatMod JSON、universe.dat、每团队 gzip NBT；检查优先级与名称回退、旧式玩家存档，以及字段或服务器缺失的边界。 |
-| 地图初始化与渲染 | `world.map-render-and-cache` | 使用真实 Minecraft 保存的世界；验证路径校验、实际客户端资源与调色板、缓存复用与强制重新生成；并发获取 512×512 PNG 瓦片；检查过期瓦片刷新和 ETag 变化。 |
-| 领地与存档玩家位置 | `world.claims-and-player-locations` | 解析 SNBT 格式的 FTB 团队与不相连领地分组、强制加载区块、已存在或无法解析的维度、gzip 玩家 NBT 和损坏文件；验证世界与地图接口别名及动态维度标签。 |
-| 按范围恢复与回滚 | `world.scoped-restore-and-rollback` | 通过公共 `/snapshots` 接口受理任务并等待真实终态；筛选可用快照，分别按区块、区域、维度和世界准备预览任务、清理预览并恢复；预览不修改数据；精确核对地形、实体、POI 边界及额外世界根目录；执行安全回滚，检查历史分页及安全快照缺失时的拒绝行为；真实地图瓦片在恢复/回滚后失效并按需重建，邻近瓦片、调色板和客户端 JAR 的 SHA256 保持。 |
-| 缺失目录恢复与回滚 | `world.missing-sidecars-and-rollback` | 使用非空实体和 POI 区域数据；目标缺少 sidecar 目录时，按世界、维度、区域和区块恢复其实际内容；安全回滚重新还原目录缺失状态。 |
-| 空范围恢复与重复回滚 | `world.empty-scope-rollback` | 真实 Restic 快照包含空 region 目录；随后写入区块，按维度或所选区域恢复为空，检查未选区域和普通文件保持；安全回滚恢复原始字节，再次回滚恢复空范围，全部历史保留有效安全快照。 |
-| 维护边界与取消恢复任务 | `world.disconnect-restore-and-maintenance` | 普通文件允许在线恢复，整服恢复要求停服；恢复期间维护状态可查询，启动、重建、删除与手动全局备份被拒绝，Compose 内容保持不变；选中区域目录内的写入、重命名、删除、创建和多文件上传被拒绝，原内容保留，但无关普通文件仍可写入和恢复；定时重启及单服、全局定时备份记录带原因和结束时间的 `skipped`，不产生新快照；显式取消任务后历史结束、维护释放，无需重启后端即可通过安全快照回滚。 |
-| 安全快照后的观察断线 | `world.safety-snapshot-disconnect` | 使用真实 Restic 暂停点，在安全引用持久化后断开任务观察；后台任务继续完成，任务、统一历史和 journal 的 operation ID/终态一致，维护释放。随后验证独立 SQLite 配置与计划任务写入仍可用；改变区域后用安全回滚精确恢复任务前字节。浏览器代理补充真实 HTTP 观察断线、阻塞提示和重连验证。 |
-| 删除期间的写入排空 | `world.delete-waits-for-writer` | 对归属明确的真实 mcmap 写入进程施加暂停；删除冻结期间拒绝新的启动、文件写入、所有权任务和地图初始化/渲染；应用自行终止并回收写入者后删除成功，核对取消任务 ID、进程退出、任务取消终态及操作历史的先后顺序，拒绝写入者仍存活时项目已消失。 |
-| 预览会话生命周期 | `world.preview-lifecycle` | 验证真实预览 PNG、心跳续期、预览替换、范围外请求被拒绝、结束操作幂等、磁盘空间保护，以及真实后台清理器执行的过期回收；有效预览阻止源快照删除和仓库锁清理，过期后允许删除。 |
-| 区块清理 | `world.chunk-prune` | 验证配置与最新状态；先在停服时完成有效预览，再启动服务器，验证应用以停服要求被拒绝且不创建任务；拒绝非法请求；覆盖两种预览与应用模式、多边形几何、领地保护、处理后的 Anvil 区块表，以及活跃预览任务的取消。 |
-| 清理预览有效性 | `world.prune-preview-validity` | 使用独立生成的 NBT/Anvil/SNBT 输入和真实 mcmap；世界或领地文件变化后以 `prune_preview_stale` 拒绝旧预览且不改数据；动态 TTL 自然到期返回 `prune_preview_expired`；新预览完成实际删除并保留领地区块，重复应用返回 `prune_preview_consumed`，状态保留唯一应用 ID。输入版本用于检测变化，不宣称 mcmap 接受冻结的区块清单。 |
-| 应用期间关闭预览 | `world.prune-dismiss-active` | 对归属明确的真实 mcmap apply 进程暂停；从任务中心删除已完成预览后，实际领地保护文件及其 SHA256 不变，专属状态和几何仍可读，重复应用被拒绝；恢复同一进程后应用成功且内容符合领地边界。后台重启后旧预览产物不能再次读取或应用。 |
-| 恢复记录实例归属 | `world.restoration-generation` | 真实 Restic 恢复记录绑定服务器代次；删除后同名重建仍可查看旧历史与安全快照，但旧记录显示 `generation_changed` 并以 `restoration_identity_conflict` 拒绝回滚，新实例字节保持；后台重启保留保护，新实例可用自己的代次正常恢复。 |
-| 恢复中断后的处理 | `world.interrupted-restore-recovery` | 验证操作锁冲突；在恢复记录已经持久化的执行过程中杀死测试后端；正常重启后检查中断历史，并通过安全快照回滚恢复原始字节。 |
-| 玩家跟踪、历史与公共事件 | `players.tracking-events-and-history` | 通过真实日志监听处理上线、聊天、成就和离线事件；重复上线/离线保留唯一开放会话和原始离线时间/时长，重复成就不重复入库；验证在线列表、详情、会话、聊天、成就接口及搜索、服务器、统计周期筛选；核对数据提交后的 WebSocket 事件和重启后的游标回放。 |
-| 重复开放会话的历史迁移 | `players.duplicate-session-migration` | 在测试独占、已停止的部署中构造旧 schema 重复开放会话；迁移先拒绝，再经离线预检及显式报告审核修复；启动后通过公开 API 核对全部历史 ID、唯一有效会话和精确总在线 180 秒，保留独立修复证据。 |
-| 身份规则与动态刷新 | `players.identity-config-and-cleanup` | 验证日志解析配置刷新、离线模式 UUID 与忽略名称规则、无法解析及非法资料请求；核对清理预览数量，选择性删除玩家及其历史，保留其他玩家，并验证重复清理的幂等性；删除最高聊天 ID 后，新聊天使用更大的 ID，重启后旧游标仍能重放新消息。 |
-| 历史数据清理与资料缓存 | `players.legacy-cleanup-and-cached-profiles` | 准备测试独占的历史离线模式 UUID 和头像缓存数据；验证资料 SSE 的规范化、去重及终态数量；核对离线身份清理预览与关联数据删除，保留在线模式 UUID 身份，并验证皮肤刷新及玩家缺失的行为。 |
-| 心跳与崩溃恢复 | `players.heartbeat-crash-recovery` | 准备过期心跳和未关闭会话；启动时正常会话按心跳时间结束，时长精确为 120 秒；晚于最后心跳加入的会话结束时间不早于加入时间，时长为 0；再次正常重启后统计保持不变。 |
-
-支持的数据格式和恢复范围边界见[世界测试数据与断言约定](../suites/world/README.md)。渲染使用真实 Minecraft 生成的数据；确定性的公开格式区域文件、NBT 和日志输入，使恢复、解析和玩家跟踪断言可以复现。
-
-玩家跟踪测试将具有代表性的服务器日志写入真实日志监听链路，并未验证 Minecraft 协议客户端能够实际加入游戏。历史数据库及启动用例会显式准备当前 API 无法创建的旧版 SQLite 状态，再观察真实部署的正常启动与 API 行为；测试代码不导入后端应用模块。
-
-## 调度、自检与外部集成
-
-| 功能域 | 稳定用例 ID | 已实现的验证内容 |
-| --- | --- | --- |
-| 定时任务配置 | `cron.configuration-and-weekdays` | 验证任务注册表、参数 Schema、受保护的系统任务、常用数字与名称形式的星期表达式；重复提交显式 ID 后完整列表仍只有一个任务，且名称与 cron 按新值更新；覆盖创建、读取、更新、暂停、恢复、取消，下次执行时间、筛选及非法输入。 |
-| 定时任务校验错误安全输出 | `cron.safe-validation-errors` | 对创建和更新提交真实 Schema 布尔解析错误及 CronTrigger 未知值错误；保持 HTTP 400 和字符串 detail，公开已知字段/类型提示或未知适配器的固定中文错误，不回显提交标记。拒绝创建不产生任务，拒绝更新保留原持久定义与调度注册；应用文件日志和容器日志保留安全 ValidationError 类型诊断并排除提交标记。 |
-| 调度注册与无效历史 | `cron.registration-and-invalid-history` | 停止独占部署后将 API 创建的任务改为未知类型和缺失参数；重启后列表与详情仍展示 active 期望状态及 failed 注册状态，系统任务仍正常 registered；通过公开更新修复后保留原 ID，暂停/恢复显示 inactive/registered，已注册任务重复恢复仍 409。 |
-| 调度器真实执行 | `cron.execution-and-recovery` | 定时 Restic 备份生成真实快照和执行历史；暂停后不再继续执行；重启保留任务与历史；定时自检产生可查询的持久化结果。 |
-| 自检执行、事件流与历史 | `selfcheck.execution-history-and-stream` | 完整执行与流式执行的结果包含所有注册检查项；开始与结束事件、终态结果及持久化发现一致；验证单项执行、筛选、分页、状态与重启后的持久化。 |
-| 游戏端口自检 | `selfcheck.game-port-current-state` | 对比 properties 中最终生效的端口赋值与 Compose 目标端口；制造不匹配并修复；检查当前状态替换、禁用检查项和历史保留。 |
-| 模组元数据与所有权自检 | `selfcheck.jar-metadata-and-ownership` | 向真实部署上传构造的各类 JAR 元数据，不依赖文件名识别备份模组；Quilt 使用合法结构及小写 ID，并验证依赖 ID、截断或尾逗号文件不被误识别；检测所有权不匹配，并通过 API 修复。该用例验证元数据自检，不验证 JAR 被 Minecraft 加载。 |
-| 备份自检 | `selfcheck.repository-health` | 配置真实 Restic 仓库；验证服务器快照覆盖与新鲜度、仓库访问、空闲锁状态，并核对相应自检发现。 |
-| 依赖与文件系统恢复 | `selfcheck.dependency-and-filesystem-recovery` | 移除再恢复测试部署内可执行文件的执行权限，移走再恢复测试项目目录；对应检查项反映失败与恢复状态。 |
-| DNS 禁用与配置校验 | `dns.disabled-and-validation` | 覆盖全部五个 DNS 路由，验证禁用时的状态与更新行为、匿名访问拒绝、非法供应商和地址配置；不访问云服务。 |
-| DNS 受控网络边界与降级 | `dns.owned-edge-reconciliation` | 完整部署通过原始 DNSPod SDK 请求独占 HTTPS 协议服务，并使用真实固定镜像 MC Router；确认无变化零写入、单条路由 upsert、两侧 unknown 独立保留与部分更新、单目标失败后只补缺失记录、空期望和禁用保留实际状态。DNS 降级时服务器同步主操作成功，完整自检保留 warning/evidence 且其它检查继续，HTTP/自检结果/app.log/容器日志不泄漏合成上游错误。CA、hosts 与端口仅属于测试容器，不访问云账号。此用例验证网络协议边界，不替代真实供应商资格验证。 |
-| DNSPod，需要显式选择 | `dns.dnspod-reconciliation` | 使用真实供应商及测试独占的 mc-router；独立 SDK 核对每条记录的唯一性、值和 TTL；验证启用状态、无修改的差异预览、A/AAAA/SRV 创建、幂等性、配置重载、路由偏差、地址与端口变化、CNAME 转换、部分删除及启用状态下的 DNS 自检；热禁用后生命周期触发不修改云端记录。 |
-| 华为 DNS，真实云验证 | `dns.huawei-reconciliation` | 对真实华为 DNS 和独占 mc-router 验证记录增改删、CNAME 替换、独立 SDK 读取和权威 DNS 应答；非托管 TXT 保护记录必须保留；持久清单和独立回收程序验证云端清理。 |
-| Minecraft 实际转发 | `dns.router-minecraft-traffic` | 普通回归不需要云凭据；使用真实 Minecraft 和 mc-router，通过唯一 MOTD 验证目的服务器、未知主机名拒绝、DNS 降级时路由修复。 |
-| 华为 DNS 到 Minecraft | `dns.huawei-minecraft-connectivity` | 通过独立 SDK 和权威 DNS 核对华为云记录，从 SRV/A 应答取得端口与地址，经真实 mc-router 验证 Minecraft MOTD；包含首次递归解析、启动修复、创建/删除/同步自动触发、监听端口变化和停止服务器后保留记录。 |
-| Mojang 真实访问 | `players.live-profile-and-skin` | 通过后端获取公开玩家资料和皮肤，要求成功解析身份、头像及更新时间；刷新皮肤，并在重启后保留下载缓存。 |
-
-真实云 DNS 用例使用 GitHub Environment 中配置的现有公共 zone，纳入统一 API 不可变计划和全局 matrix。所有 API 分片使用无分支限制或保护规则的 `dns-e2e` 配置存储，provider 依赖选择所需私有配置和回收步骤，仅相应步骤接收凭据；不同依赖的 atomic group 可以同片。仓库只保留示例域名和配置指南。DNSPod 显式选择仍需提供 `E2E_EXTERNAL_CONFIG`。禁用 DNS、受控 HTTPS 协议服务或本地真实 mc-router 客户端测试通过，并不表示真实供应商的记录修改已经验证通过。
-
-选择供应商前，应阅读[DNS 配置、资源归属与清理约定](../suites/dns/README.md)。缺少所选供应商配置时，用例明确失败并给出可执行的错误提示，不会被标记为跳过或通过。Mojang 真实访问用例要求外部请求实际成功，仅收到“资料未解析”的响应不能通过。外部用例的实际运行结果以当前提交的相应 CI 运行及清理审计为准。
-
-DNS 记录同步用例使用通过 API 创建、处于停止状态的 ACTIVE 服务器；另外的 connectivity 用例启动真实 Minecraft，验证配置域名经过代理到服务器的实际连接。DNS 验收同时要求华为云 API 记录正确、权威解析及首次递归查询成功；测试地址为运行器的回环地址，因此不验证互联网入口、防火墙或 NAT。各环境使用通用环境 ID 与可选相对父域组合为记录名称，避免并发同步互相覆盖。地址或服务器集合为空时，当前管理器跳过同步；因此部分删除场景保留一个目标地址，最终云端清理由独立供应商 SDK 按持久清单中的域名和范围执行，删除托管记录及测试创建的 TXT 记录，保留无关记录。SIGKILL 后应先回收本地写入者，再使用 `cloud/` 下无凭据的持久清单、当前凭据和 `cleanup-dns` 回收云记录；本地 Docker 回收不代表云端回收成功。
+[真实浏览器验证](../../frontend-react/docs/browser-tests.md)和
+[部署演练](deployment-rehearsal.md)使用同一 owned provider 包装器，独立
+记录结果，不计入 Go API 场景目录。部署演练覆盖发布版升级、完整检查点、
+历史恢复记录、歧义归属拒绝以及恢复/回滚后的实际内容。
 
 ## 从真实运行结果生成接口覆盖记录
 
-可以对一次完整运行，或同一次筛选产生的全部分片进行审计：
+从 `e2e/` 可以对一次完整运行，或同一次筛选产生的全部分片进行审计：
 
 ```bash
 ./bin/mc-admin-e2e coverage --require-complete \
@@ -148,11 +36,11 @@ DNS 记录同步用例使用通过 API 创建、处于停止状态的 ACTIVE 服
 
 请将路径替换为实际运行目录。分片必须使用相同应用镜像、筛选后的用例目录和分片总数，并具有不同的运行 ID 与分片序号。独立筛选的领域运行、冒烟与回归集、不同镜像的结果，不能合并成同一次完整验证。收集器会拒绝不兼容的 Schema、用例目录或镜像证据，以及重复或未列入计划的用例结果。
 
-完整 CI 使用 `ci-plan` 从当前目录生成不可变全局计划，再由 `ci-audit` 按独立指定的 profile 重建必需用例并审计实际结果。规划只让历史耗时影响估算和位置，不允许历史裁剪当前目录；每片验证同一 source/image/runner、历史来源、成本指纹、seed、复用策略、资源配置和 provider 依赖。每个 profile 的全部 atomic group 共同分配，普通与华为组可以同片；一个 matrix 最多 16 片、16 个 CI job 并发，每个运行器两个 worker、一个 Minecraft slot。provider 依赖用于凭据与回收绑定。300 秒软目标包含环境初始化、用例及清理，不含 checkout、依赖、OCI 加载和单独记录的 preflight/image pull 准备；不可拆组、固定开销和分片上限的超预算情况保留在计划中，不缩短业务超时。
+完整 CI 使用独立的 `ci-plan` / `ci-audit` 冻结并核对当前必需集合。分片、成本、provider 依赖和测量语义见[调度契约](scheduling.md)。
 
 资格审计要求当前 profile 的每个必需用例恰好执行并通过一次、全部计划分片存在、跟踪证据完整、应用候选一致，以及所有独占本地/云资源已验证回收。云清理清单必须匹配用例的供应商、run 与 environment，并确认已登记且已完成清理；普通 Docker 清理不能替代云端清理。任何必需用例遗漏、跳过、失败或资源清理失败，均使审计失败。通用 `coverage` 报告不能替代该资格审计。
 
-只有分片成功且最终覆盖与清理审计通过，CI 才发布 `timing-history-api/history.json`。后续从同分支、再从 main 恢复兼容的成功审计历史，一次冻结其 run/attempt/SHA/branch/artifact 来源；无历史、新增用例或无效历史使用正数回退。历史包含 setup/case/cleanup 阶段成本、复用组成员与保守生命周期下界、最终清理和无条件 recovery 固定开销；全局 matrix 分配保持 `api-lifecycle-v2` 测量语义与兼容指纹，已有匹配成本可复用。删除承担 setup/teardown 的成员不能消除复用组成本；`--no-reuse` 按单用例拆组并使用独立历史 profile。历史保留 90 天。
+只有全部分片和覆盖/清理审计成功，才能发布可复用耗时历史。历史来源选择见[CI 历史反馈](../../docs/ci.md#historical-feedback)，生命周期下界与校准见[API 调度](scheduling.md#timing-evidence-and-calibration)。
 
 每个环境从 `/api/openapi.json` 保存挂载后的 API Schema。收集器统一处理服务路径前缀，按“请求方法 + 路由”枚举操作，并补充 OpenAPI 未列出的三个 WebSocket：`/api/auth/code`、`/api/events`、`/api/servers/{server_id}/console`。
 
@@ -164,7 +52,7 @@ DNS 记录同步用例使用通过 API 创建、处于停止状态的 ACTIVE 服
 - 用例通过，且响应为 4xx：拒绝响应记录。
 - 其他状态：单独记录，不能作为成功响应。
 - 用例最终失败：其中访问过的操作单独列为失败用例记录。
-- API Schema 之外的静态资源与单页应用请求：列为未匹配请求，实际行为覆盖仍由前述功能表说明。
+- API Schema 之外的静态资源与单页应用请求：列为未匹配请求，实际行为覆盖仍由对应领域功能表说明。
 
 `--require-complete` 要求所有选中用例和分片均存在、通过、有跟踪证据，且无运行级错误。它**不要求每个操作都产生成功响应**。例如，正确断言 DNS 禁用时返回 503，仍属于其他状态记录。
 
@@ -176,12 +64,10 @@ CI 在完整 regression 和 qualification 审计时还会使用 `--require-obser
 
 拒绝响应可以满足“接口已有访问记录”的要求，但不代表成功业务流程已经验证。新增功能时，应同时审查行为断言，以及报告中的成功与拒绝记录。
 
-本目录通过业务工作流和代表性拒绝路径覆盖上述全部后端功能域，但没有穷举每种角色、路径、输入组合、历史迁移版本、Minecraft/模组版本、超时或调度边界。后续可以继续扩展的边界包括：会话与登录码过期、断连时序、所有路由的权限组合、上传过期与大文件传输中断、审计日志轮转、长期保留策略、慢速 WebSocket 消费者、资源耗尽、供应商故障与限流。后端 pytest 继续承担内部逻辑和组合边界验证。
+本目录通过业务工作流和代表性拒绝路径覆盖索引列出的后端功能域，但没有穷举每种角色、路径、输入组合、历史迁移版本、Minecraft/模组版本、超时或调度边界。后续可以继续扩展的边界包括：会话与登录码过期、断连时序、所有路由的权限组合、上传过期与大文件传输中断、审计日志轮转、长期保留策略、慢速 WebSocket 消费者、资源耗尽、供应商故障与限流。后端 pytest 继续承担内部逻辑和组合边界验证。
 
 前端导航、表单、编辑器、地图交互和客户端状态需要浏览器测试，不属于本 API 模块；生产静态资源交付已覆盖。整机 Docker 故障、跨主机容量和负载也需要相应的专用验证环境。
 
-新增可观察行为时，必须在同一变更中新增或扩展对应领域用例，并同步维护本清单。辅助逻辑优先保留在所属领域内；多个用例确实需要同一种环境能力时，再提取共享 provider。优先使用全新环境隔离，断言任务与事件流的终态以及最终数据，并分别验证正常运行和禁用复用运行。
+新增可观察行为时，必须在同一变更中新增或扩展对应领域用例，并同步维护本索引及对应领域清单。辅助逻辑优先保留在所属领域内；多个用例确实需要同一种环境能力时，再提取共享 provider。优先使用全新环境隔离，断言任务与事件流的终态以及最终数据，并分别验证正常运行和禁用复用运行。
 
 各用例必须独立于执行顺序和其他用例的状态；不得向调度器添加特定业务分支，也不得静默跳过缺失的真实依赖。环境复用、资源归属和清理约定见[架构说明](architecture.md)。
-
-| 非快照任务提交与重新观察 | `tasks.management-acceptance-and-reconnect` | 验证文件删除及时返回 202、使用另一个已认证会话取得终态和路径结果、检查实际文件与持久 operation；删除任务记录并重启后端后，仍能取得完全一致的结果；下线/删除通过任务完成，并重建同名实例验证正常业务路径。文件、归档、自检、同步、DNS 和地图原有场景均等待任务终态后校验实际结果。 |

@@ -1,6 +1,6 @@
 # World Restore (`app.world`)
 
-Selective rollback of Minecraft world data at four granularities — chunk, region, dimension, or whole world. Built on Restic for snapshot storage and the `mcmap replace-chunks` / `remove-chunks` subcommands for sub-region splicing. Every restore creates a safety snapshot first, so any rollback is undoable with one click.
+Selective rollback of Minecraft world data at four granularities — chunk, region, dimension, or whole world. Built on Restic for snapshot storage and the `mcmap replace-chunks` / `remove-chunks` subcommands for sub-region splicing. Restoration saves safety evidence before writes; rollback availability depends on retained snapshot references and server identity.
 
 `snapshots/commands.py` owns common task acceptance, recovery and rollback. `selection.py` plans confined paths
 and resource scopes; `scope_execution.py` merges protected chunks with mcmap; `snapshots/file_restore.py` applies file replacements; `snapshots/restoration_store.py` owns short history transactions; `finalization.py`
@@ -57,9 +57,12 @@ dimension scan for endpoints and restore flows that need the complete layout.
 
 ## Safety snapshots
 
-Before any restore touches the live world, the orchestrator creates a Restic snapshot at the same scope as the planned restore (a "safety snapshot"). Its id is recorded on the `Restoration` row. Rollback simply runs the restore in reverse: the safety snapshot is the source, the same `selection` is the target.
-
-恢复记录与任务在受理时关联；安全快照引用和缺失路径证据必须持久化后，才能开始写入。当前规则、源快照排除项和恢复链保护集合共同限制 Restic、mcmap、缺失目标删除及空父目录清理。世界、维度、区域、实体/POI 和 MCC 的允许性使用所选逻辑路径；忽略一个链接名称不会排除真实目标名称，忽略真实目标名称也不会禁止未被排除的别名。忽略的溢出文件与其 MCA 区块入口作为同一单元保留，其他允许区块仍可恢复。
+[Common restoration](snapshot-restoration.md) owns task acceptance, safety snapshots,
+generation-bound history, source/current/retained-chain protection and rollback.
+World execution applies these rules to terrain, entities/POI and MCC sidecars.
+An ignored overflow file and its MCA chunk entry remain one protected unit;
+other allowed chunks may still be restored. Logical selections determine exclusion
+matching, while canonical paths enforce containment and conflicting resources.
 
 世界布局发现保留服务器数据目录内链接根的逻辑名称，搜索实际根后将维度路径映射回该名称；数据目录外的链接根不进入布局。路径边界、资源冲突和执行前链接变化检查仍使用真实路径。Restic 暂存文件按真实路径落地，世界适配将文件级链接的 MCA/MCC 副本整理到同一逻辑区域目录，保证 mcmap 与地图预览按文件名找到对应溢出数据。
 
@@ -67,7 +70,9 @@ Before any restore touches the live world, the orchestrator creates a Restic sna
 
 手动维度快照以 `mc-admin-absence-v1:` Restic 标签保存当时缺失的附属目录。标签是有界、版本化的路径证据。旧快照未覆盖、且没有缺失证据的附属范围保持原状，并在跳过列表中说明；覆盖某个父目录但该目录中缺少子文件则属于可确认的源缺失。
 
-历史保存服务器代次、逻辑范围及真实路径映射、缺失路径/祖先、保护集合和回滚父记录。回滚使用这些证据，不要求当前世界仍有 MCA。全空目标的安全证据写在操作拥有的临时目录，不为备份修改在线世界。删除仅限允许的选中目标；空祖先使用 `rmdir`，保留新出现的兄弟文件。每次回滚都保存当前状态，因此可以再次回滚。
+History retains the planned world selection and logical-to-execution mapping,
+so rollback does not require the current world to contain MCAs. Shared absence
+evidence and empty-ancestor cleanup follow the common restoration contract.
 
 保留旧 `selection_json` 中的 `world_roots`、`absent_directories` 和 `absent_sidecar_dirs` 解码。旧世界记录缺少根目录时，只从安全快照中推导数据目录内的严格子路径；拒绝整个 data 根目录、外部路径或符号链接逃逸。归属不明或同名新实例不能使用旧记录写入。
 
@@ -88,34 +93,25 @@ Accepted tasks retain target references through finalization and reject server d
 
 `LockHolder` records kind, start time, optional user, description and restoration ID. `GET /api/servers/{server_id}/maintenance` exposes the current holder's active flag, kind and description. Shared frontend operation buttons poll this state; the prune page also immediately disables startup while its apply task is active.
 
-Manual snapshots and scheduled backups resolve their actual server targets and
-acquire declared resources together. A whole-server-root backup also holds a
-global FILES scope that conflicts with concurrent creation/adoption, including
-servers absent from its initial target discovery. If resources are busy, manual
-requests return 423 or cron skips with its existing notification. Ordinary
-non-world snapshot restoration retains online availability. See `snapshots.md`.
+Global and scheduled backup locking belongs to [snapshot resource ownership](snapshots.md).
+World adapters reuse the accepted parent lease for safety capture.
 
 ## Preview sessions
 
 Previewing a restore means showing the user what the world *would* look like after the restore, without touching live data.
 
-- **One session per server.** Starting a new preview tears down the prior session for that server.
 - **Tmpdir layout.** Sessions live under `/tmp/mc-admin-world-artifacts/<installation>/restore/<session_id>/`. Source MCAs are staged into `source/`; chunk-merged copies into `preview/` so the live world is untouched. Chunk restore stages use a separate `restore-stage/` feature directory in the same installation namespace.
 - **Lazy tile rendering.** `WorldPreviewRenderer.prepare` stages MCAs with restic, runs the chunk merge for CHUNKS scope, and attaches a per-session `ServerRenderQueue` for REGIONS/CHUNKS previews before the preparation task completes. The first request for each tile triggers an mcmap render via the same batching/coalescing/cancellation queue used by the live map. The queue's worker exits after 60 s of idle, so a quiet preview costs nothing. `PreviewMapCache` provides a `ServerMapCache`-shaped path resolver pointing at the staged MCAs and a session-local `tiles/` output. `SnapshotPreviews.tile` is the tile entry point — file-fast-path for already-rendered PNGs, queue-await otherwise (subject to `config.mcmap.request_timeout_seconds`); raises `FileNotFoundError` for tiles outside the staged affected-region set or for scopes without an attached render queue.
-- **Heartbeat-driven TTL.** Default 30 minutes. The browser pings every 30 s; on close, `DELETE /api/snapshots/previews/{id}` submits cleanup. A janitor task running every `preview_janitor_interval_seconds` reaps expired sessions and orphaned dirs. Cleanup awaits `ServerRenderQueue.close()` and active readers before deleting artifacts.
+
+
 - **Disk threshold guard.** Estimated cost is `affected_regions × preview_avg_region_bytes × 2`; REGIONS uses the selected region count, CHUNKS uses the unique parent-region count, and WORLD/DIMENSION use a conservative default. If the FS lacks headroom, the preparation task reports insufficient temporary disk space.
 
-Builds and tile reads hold active references. The tile endpoint reads the PNG
-bytes while pinned and then returns the response, so response delivery cannot
-race with file deletion. Closing, replacement or expiry
-detaches the session from new requests and waits for active users before deleting
-its files. A heartbeat cannot revive an already expired session. Requests verify
-both server ID and generation. Startup and periodic orphan cleanup inspect only
-owned token directories, recheck current sessions after asynchronous enumeration,
-and retain unresolved recovery references. An old task/history record does not
-resume or re-authorize a preview after restart.
-
-The common preparation task reports staging and chunk-merge progress and returns ready session metadata only after preparation succeeds. Tile rendering happens later through tile requests. A failed or explicitly cancelled preparation waits for owned session cleanup before its terminal task status; disconnecting observation alone does not cancel preparation.
+[Common preview lifetime](snapshot-restoration.md#预览与仓库维护任务) owns preparation,
+heartbeat, replacement, expiry and cleanup. World tile reads pin the session while
+reading PNG bytes, and cleanup closes the render queue and waits for readers.
+Preparation completes after staging and chunk merging; tiles render on demand.
+Owned orphan cleanup retains unresolved recovery references, and restart never
+re-authorizes an old map preview.
 
 Each lazy render owns a `world_preview_render` operation with the real server ID
 and generation. `PreviewRenderTarget` carries the separate session identity and
@@ -140,30 +136,27 @@ interruption. REGIONS/CHUNKS use the explicit selection. Only `region/` MCAs map
 to PNGs; `entities/` and `poi/` sidecars are skipped. Missing tiles count as
 invalidated, but other deletion failures propagate and persist cache degradation.
 
-The frontend application operation observer invalidates world-restore, map and
-affected file query keys after terminal outcomes, including partial failure.
-This works after leaving the initiating page. The map tile layer reloads the
-region manifest and combines MCA mtimes with the newest relevant terminal operation revision in tile URLs. MCC-only and same-mtime changes therefore refresh browser images. Read-only backups and previews do not advance that revision.
+[Application operation refresh](../../frontend-react/docs/operation-refresh.md)
+owns cross-page query invalidation and tile URL revisions, including MCC-only
+changes and unchanged MCA mtimes.
 
 ## Cancellation and crash recovery
 
-恢复任务独立于浏览器连接。断线、刷新和页面卸载只停止观察，不取消后台写入。显式取消通过任务接口执行，等待子进程、缓存清理和历史收尾后才发布终态。失败和取消记录保留安全快照，允许用户核对后回滚；不自动重试或自动撤销。
+Common cancellation and crash classification are documented in
+[restoration](snapshot-restoration.md#acceptance-safety-and-rollback) and
+[operation recovery](operation-recovery.md). World finalization invalidates the
+captured map scope before publishing a terminal task state, including partial
+failure. Unknown writers retain resource blocks; cache-cleanup failure records
+degradation rather than reporting success.
 
-If the backend crashes mid-restore, its `Restoration` row can remain `RUNNING` and an external writer may still exist. Before starting producers or admitting writes, operation recovery verifies recorded process ownership, reconciles the captured server generation and invalidates affected map caches. Unconfirmed writers block their resource; failed cache cleanup degrades the cache without permanently freezing server management.
+Startup calls `mark_running_restorations_interrupted()` for abandoned history,
+retaining safety references and the diagnostic `server restarted before completion`.
+History exposes rollback only when the required snapshot and original binding
+remain usable. Interrupted work is not replayed automatically.
 
-On startup, `mark_running_restorations_interrupted()` flips any such rows to `INTERRUPTED` with `error_message="server restarted before completion"`. The frontend history drawer surfaces rollback on these when the safety snapshot still exists — because the safety snapshot was created *before* the partial restore began, rolling back to it cleanly recovers the pre-restore state regardless of how far the restore got.
-
-Rollback rows are flat `Restoration` rows with `is_rollback=true`. A rollback also creates its own safety snapshot, so a successful rollback can itself be undone while that safety snapshot remains in restic.
-
-## Lifespan wiring
-
-The application runtime, in order:
-
-1. Recover journal ownership and resources, then mark abandoned restoration rows interrupted.
-2. `runtime_factories.py` builds `SnapshotCommands` and `SnapshotPreviews` when Restic is configured. Dynamic preview values are read by the preview manager at session/janitor runtime.
-3. `prepare()` reaps eligible orphan previews and restore stages before producers and admission; `start_janitor()` launches periodic preview cleanup. Shutdown drains request writers and closes preview queues before deleting unreferenced artifacts whose writers have stopped.
-
-The common preview router accesses its service through the current runtime’s typed `get_snapshot_previews()` accessor. Restoration operations retain safety references before writes and publish terminal task status after journal finalization. Adapter failures persist safe public messages in task results and restoration history.
+`SnapshotPreviews.prepare()` reaps eligible orphan previews and restore stages
+before producers and admission. The runtime starts the janitor and drains preview
+queues before deleting unreferenced artifacts; see [runtime ordering](runtime.md).
 
 ## Settings
 
@@ -182,14 +175,14 @@ Mounted under `/api/servers/{server_id}/world-restore/`:
 
 Claims and player locations also have `/api/servers/{server_id}/claims` and `/player-locations` aliases. World execution and history have no separate routes.
 
-创建、筛选、恢复和回滚使用 `/api/snapshots` 公共接口，显式传入 `{kind: "world", server_id, selection}`：
+World commands pass `{kind: "world", server_id, selection}` through the
+[common snapshot API](snapshot-restoration.md). `POST /api/snapshots/targets/check`
+accepts only world scopes and checks current selection rules without reading
+Restic. Source eligibility separately checks coverage without requiring speculative
+MCC files that do not exist.
 
-- `POST /snapshots`：世界或维度创建，202 任务受理。
-- `POST /snapshots/targets/check`：只接受 `WorldScope`，按当前规则检查世界、维度、区域或区块选区，返回禁用原因或跳过提示，不访问 Restic；文件、项目、全局范围及 `note` 字段被拒绝。
-- `POST /snapshots/eligible`：筛选覆盖允许范围的快照，不要求不存在的推测 MCC 文件。
-- `POST /snapshots/restorations`：202 返回任务与历史 ID；停服/维护预检查仍返回 409/423。
-- `GET /snapshots/restorations?server_id=…&limit=…&offset=…` 及详情：统一文件与世界历史，支持 `kind`、`status`、`entry_point` 筛选。
-- `GET /snapshots/restorations/active?server_id=…`：从数据库发现受理、排队、执行和收尾中的恢复，包含影响该服务器的全局任务。
-- `POST /snapshots/restorations/{id}/rollback`：新的恢复任务，保存当前状态并关联原记录。
-
-地图预览与文件预览共用 `/api/snapshots/previews`：POST 受理准备任务，GET `/{id}` 读取就绪元数据，GET `/{id}/actions` 分页读取文件动作，POST `/{id}/heartbeat` 续期，DELETE `/{id}` 受理清理任务，GET `/{id}/tiles/{rx}/{rz}.png` 按需渲染地图。区域副本保留被保护的在线附属文件；区块副本先复制在线 MCA 及其 MCC，再仅合并允许的选中区块，未选中和被忽略的外部区块保持原状。绑定与分页契约见 `snapshots.md`。准备期间的进度延长会话寿命，就绪后使用心跳和 TTL；停止观察不取消准备。
+Map previews use `GET /api/snapshots/previews/{id}/tiles/{rx}/{rz}.png` for
+REGIONS/CHUNKS selections. Region copies retain protected online sidecars; chunk
+copies start from online MCA/MCC data and merge only allowed selected chunks.
+Unselected and ignored overflow chunks remain intact. File actions, preview
+binding and lifetime use the common contracts above.

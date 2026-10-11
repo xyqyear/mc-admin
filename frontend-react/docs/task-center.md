@@ -16,9 +16,12 @@ Server controls show the maintenance reason and a task link when available. Crea
 
 ## Completion ownership
 
-`app/operations/OperationObserver.tsx` owns business-cache completion effects through feature resource registries for configuration, servers, files/archives, world, backups/history, health and DNS. Configuration, populate/compression/ownership presentation and world restore/prune views display outcomes without owning those effects. Closing independent-task dialogs does not cancel backend work. Dismissing generic task records does not destroy feature-owned prune preview metadata/projections. Task commands invalidate task and operation discovery; browser-owned partial uploads also invalidate their actual immediate writes.
-
-File and world recovery share independent tasks. Their progress dialogs retain the existing closing restrictions until the confirmed terminal state, including across failed reads. Database-only active restoration discovery resumes observation after navigation or reload; terminal results remain visible until dismissed. Disconnecting observation never cancels the writer. Explicit task cancellation waits for writer termination and cleanup before reporting its result.
+Task commands invalidate task and operation discovery. The application
+[operation observer](operation-refresh.md) owns business-cache refresh across
+navigation, including partial failures; task/progress panels only present it.
+Feature-owned prune metadata and retained recovery results survive generic task
+dismissal. The [shared snapshot UI](snapshot-recovery.md) owns recovery-specific
+closing guards, active discovery and history observation.
 
 ## Client state
 
@@ -26,6 +29,9 @@ File and world recovery share independent tasks. Their progress dialogs retain t
 - `downloadStore.ts`: browser download records and live AbortControllers. Directory batches retain fixed byte/file totals after scanning, received bytes, saved/failed file counts, destination and bounded failure/name-mapping details. Persisted in-flight records become cancelled on reload because an HTTP download cannot resume from a serialized controller.
 - `downloads.ts`: public download command adapter; archives and ordinary files supply the HTTP operation and progress callback. Browser-owned directory export supplies a streaming executor and aggregate progress through `executeManagedDownload`.
 
-`features/files/useDirectoryDownload.ts` invokes the writable directory picker during the initiating click, before asynchronous requests. Its executor shows an indeterminate scanning phase, obtains one complete recursive manifest and fixes total bytes before any content transfer. It binds content reads to the manifest's server generation and writes response streams into a separate local export folder with four concurrent transfers. Received bytes update progress even while a file remains open; speed excludes scanning time. Original layouts retain empty directories and use the captured browsing/search root. Flat layouts retain files, resolving duplicates, case-insensitive collisions and unsupported local names without overwriting existing files; task details display adjusted names. A file becomes complete only after its writable stream closes. Failed or cancelled transfers remove incomplete output while successful files remain. Closing the initiating view or task panel does not stop execution; cancellation aborts active reads and prevents later transfers, and refresh/closure ends the browser-owned work. Direct export reads live server files rather than a point-in-time snapshot.
+Directory-export execution belongs to
+[file operations](file-operations.md#浏览器目录导出). The task center displays its
+scanning/transfer state, fixed totals, saved/failed counts and name-mapping
+feedback. It does not own the picker, manifest or file-writing algorithm.
 
 `ui/TaskCenterTrigger.tsx`, `TaskCenterPanel.tsx`, `BackgroundTaskList.tsx`, `BackgroundTaskItem.tsx`, `DownloadTaskList.tsx` and `DownloadTaskItem.tsx` present these states. The public `ui/index.ts` entry is used by the app shell.

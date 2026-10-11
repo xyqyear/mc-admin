@@ -152,7 +152,11 @@ Sessions live in an in-memory dict (`_upload_sessions`) with a TTL; after expiry
 
 ## Why `fd` for deep search
 
-Deep search runs against trees with potentially hundreds of thousands of files (modpack assets, region files). Python's `os.walk` + per-file regex is slow; `fd` is Rust-backed, multi-threaded, and respects `.gitignore`/path filters out of the box. We pre-validate the search root sits inside the server's data dir (no traversal) before invocation, then parse stdout into typed rows.
+Deep search delegates recursive filtering to `fd` using `--unrestricted` and
+`--absolute-path`: hidden files and paths ignored by `.gitignore` remain searchable.
+Request filters determine matches. The backend validates that the search root is
+inside the server data directory before invocation and confines returned paths
+before exposing typed rows. The binary is required; see [development prerequisites](../../docs/development.md).
 
 ## SNBT
 

@@ -88,7 +88,7 @@ Compressing a folder is a long operation; both happen as background tasks.
 - `CompressionConfirmDialog.tsx` → `POST /api/archive/compress` returns a `task_id`
 - `useFileBrowser` watches the task via `useTask(task_id)` and supplies progress to `CompressionConfirmDialog.tsx`; `CompressionResultDialog.tsx` presents the finished archive
 
-The user can navigate away — the task center continues to track the task and toasts on completion.
+The user can navigate away; the task center continues to display progress and the terminal result.
 
 ## Files
 
@@ -107,19 +107,15 @@ The user can navigate away — the task center continues to track the task and t
 
 Real QueryClient/MSW tests exercise empty-file writes, a rejected online write with draft preservation, recursive regex/size/date filters, per-file overwrite policy, a reusable 1001-file upload cancelled during the second batch, and closing independent-task presentation.
 
-## Snapshot recovery
+## Snapshot recovery integration
 
-File controls submit explicit data-path scopes through `features/backups/commands`.
-Creation stays busy until the task finishes. Recovery uses the common progress card;
-HTTP acceptance does not unlock it, status read errors show reconnecting, and
-navigation only stops observation. Database-only active restoration discovery resumes observation on remount.
-The server toolbar opens paginated recovery history, including safety availability
-and parent rollback links. A confirmed rollback replaces later changes in the
-selected scope, first saving a new safety snapshot so that rollback is reversible.
-Excluded descendants remain untouched and receive a brief notice.
+`FileSnapshotRecovery`, mounted once per server file page, owns captured path
+arrays and common creation/preview/history UI. Row, toolbar and batch controls
+request actions without owning a separate session. Pagination, disappearing rows
+and asynchronous rule checks do not create duplicate recovery dialogs.
 
-## Common snapshot controls
-
-`FileSnapshotRecovery`, mounted once per server file page, owns captured path arrays, creation/preview dialogs, restoration observation and history. Row, toolbar and batch controls only request an action and show lightweight ignore-rule feedback. Table pagination, removed rows or a page reload cannot create duplicate recovery dialogs or lose an accepted restore. The toolbar's `/` scope means the server data directory; server-project backups remain a distinct public scope.
-
-Ignored targets disable creation and restoration with a reason; a mixed parent shows a short skip notice. `SnapshotCreateDialog` remains blocked until its task actually ends and displays its current stage. Active restore discovery does not query Restic history. Unknown initial activity or a failed task read keeps writes blocked; navigation does not cancel backend work. History filters by scope, status and originating page and uses the common rollback command.
+The toolbar's `/` scope means the server data directory; server-project backups
+remain distinct. The [shared snapshot UI](snapshot-recovery.md) owns acceptance,
+source eligibility, active discovery, history filters and rollback guards.
+[File operations](file-operations.md) owns selected-path identity, control layout
+and directory export. Backend writes remain authoritative.
