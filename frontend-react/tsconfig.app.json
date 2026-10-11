@@ -15,7 +15,8 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "react-jsx",
+    /* Vite transforms JSX; preserve accepts upstream React namespace imports. */
+    "jsx": "preserve",
 
     /* Linting */
     "strict": true,

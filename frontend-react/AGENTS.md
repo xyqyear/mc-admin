@@ -81,11 +81,11 @@ Compose and template editors follow a fresh remote read while untouched, includi
 
 ## UI stack — shadcn on base-ui (not Radix)
 
-shadcn here is built on `@base-ui/react` primitives, not Radix.
+shadcn uses the `base-nova` style with `@base-ui/react` primitives. Generated UI components import `cn` from the `cn` package; `src/shared/lib/utils.ts` re-exports it for application consumers. TypeScript checks JSX in `preserve` mode with `noEmit`; Vite and Vitest use the React plugin for the automatic runtime transform. This accepts upstream React namespace imports while keeping strict and unused-code checks enabled.
 
 `src/shared/ui/**`, `src/shared/hooks/use-mobile.ts` and `src/shared/lib/utils.ts` are shadcn-generated source. Create, update, migrate or regenerate them only through the official shadcn CLI. Do not manually edit, delete, move or merge these files, including imports, comments, styles and formatting. Exclude them from global refactors and comment/format cleanup rules. Compose project customizations in outer `shared/components/` or feature UI components.
 
-Run the project-locked CLI from `frontend-react/`: preview with `pnpm exec shadcn add <component> --dry-run` or `pnpm exec shadcn add <component> --diff`, then apply with the corresponding official CLI command; never manually merge preview output. Keep the `@/*` mapping synchronized in `tsconfig.json` and `tsconfig.app.json`. Use `pnpm exec shadcn info --json` to verify the resolved paths and installed components before changing generated source.
+Run the project-locked CLI from `frontend-react/`: preview with `pnpm exec shadcn add <component> --dry-run` or `pnpm exec shadcn add <component> --diff`, then update installed components with `pnpm exec shadcn add <component> --overwrite`. Use `pnpm exec shadcn migrate cn` for class-utility migration; never manually merge CLI output. Keep the `@/*` mapping synchronized in `tsconfig.json` and `tsconfig.app.json`. Use `pnpm exec shadcn info --json` to verify the resolved paths and installed components before changing generated source.
 
 Project-specific gotchas:
 
