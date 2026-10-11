@@ -1,7 +1,53 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
+import { createServer } from 'node:http'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { importBoundaryViolation, moduleReferences } from './import-boundaries.mjs'
 import { selectSchemaClosure } from './schema-closure.mjs'
+
+test('shadcn CLI resolves shared paths and recognizes installed components', async (t) => {
+  const root = fileURLToPath(new URL('../', import.meta.url))
+  const registry = createServer((request, response) => {
+    if (request.url !== '/r/index.json') {
+      response.writeHead(404).end()
+      return
+    }
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify([
+      { name: 'button', type: 'registry:ui' },
+      { name: 'sidebar', type: 'registry:ui' },
+    ]))
+  })
+  await new Promise((resolve, reject) => {
+    registry.once('error', reject)
+    registry.listen(0, '127.0.0.1', resolve)
+  })
+  t.after(() => new Promise((resolve, reject) => {
+    registry.close((error) => error ? reject(error) : resolve())
+  }))
+
+  const environment = { ...process.env }
+  for (const name of ['TS_NODE_PROJECT', 'TS_NODE_BASEURL', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']) {
+    delete environment[name]
+  }
+  environment.REGISTRY_URL = `http://127.0.0.1:${registry.address().port}/r`
+  const { stdout } = await promisify(execFile)('pnpm', ['exec', 'shadcn', 'info', '--json'], {
+    cwd: root,
+    env: environment,
+    encoding: 'utf8',
+    timeout: 30_000,
+  })
+  const { config, components } = JSON.parse(stdout)
+
+  assert.equal(config.resolvedPaths.ui, path.join(root, 'src/shared/ui'))
+  assert.equal(config.resolvedPaths.utils, path.join(root, 'src/shared/lib/utils'))
+  assert.equal(config.resolvedPaths.hooks, path.join(root, 'src/shared/hooks'))
+  assert.ok(components.includes('button'))
+  assert.ok(components.includes('sidebar'))
+})
 
 test('rejects reverse dependencies, old layers, and private cross-feature imports', () => {
   for (const [from, to] of [

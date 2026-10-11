@@ -81,7 +81,13 @@ Compose and template editors follow a fresh remote read while untouched, includi
 
 ## UI stack — shadcn on base-ui (not Radix)
 
-shadcn here is built on `@base-ui/react` primitives, not Radix. Project-specific gotchas:
+shadcn here is built on `@base-ui/react` primitives, not Radix.
+
+`src/shared/ui/**`, `src/shared/hooks/use-mobile.ts` and `src/shared/lib/utils.ts` are shadcn-generated source. Create, update, migrate or regenerate them only through the official shadcn CLI. Do not manually edit, delete, move or merge these files, including imports, comments, styles and formatting. Exclude them from global refactors and comment/format cleanup rules. Compose project customizations in outer `shared/components/` or feature UI components.
+
+Run the project-locked CLI from `frontend-react/`: preview with `pnpm exec shadcn add <component> --dry-run` or `pnpm exec shadcn add <component> --diff`, then apply with the corresponding official CLI command; never manually merge preview output. Keep the `@/*` mapping synchronized in `tsconfig.json` and `tsconfig.app.json`. Use `pnpm exec shadcn info --json` to verify the resolved paths and installed components before changing generated source.
+
+Project-specific gotchas:
 
 - **No `asChild`.** Use base-ui's `useRender` with the `render` prop, or compose via controlled state.
 - **`TooltipProvider` is mounted once in `src/main.tsx`.** Do not wrap individual components in another one.
