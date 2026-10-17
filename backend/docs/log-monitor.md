@@ -44,7 +44,21 @@ The runtime-owned monitor is started from `start_player_system()` (one watcher p
 
 ## Configuration
 
-`dynamic_config.log_parser`: `uuid_patterns`, `join_pattern`, `leave_pattern`, `chat_pattern`, `achievement_patterns`, `server_stop_pattern`. Updated at runtime through the dynamic-config UI; the monitor recompiles on change.
+`dynamic_config.log_parser`: `uuid_patterns`, `join_pattern`, `leave_pattern`, `chat_pattern`, `achievement_patterns`, `server_stop_pattern`. Updated at runtime through the dynamic-config UI; the parser reads the current rules for each line.
+
+The default leave rule requires bracketed log headers followed immediately by a
+player name without whitespace and `lost connection: ` with its reason. Capture groups
+one and two retain the player name and complete reason. Connection-address forms,
+bare IPv4 subjects, `GameProfile` objects, names containing whitespace and
+chat/narrative wrappers are rejected. Matching an ordinary departure does not
+require a preceding observed join. Administrators can configure rules for other
+formats.
+
+Stored rules retain their values when application defaults change. Existing
+deployments adopt a different rule by retaining the current module's other values,
+editing only `leave_pattern`, and saving the module. See
+[dynamic configuration](dynamic-config.md#migration-on-read) for default filling
+and the effect of resetting an entire module.
 
 ## Observation and history boundaries
 

@@ -175,6 +175,47 @@ class TestLeaveParsing:
         assert event.player_name == "salty_orange_"
         assert "TextComponent" in event.reason
 
+    @pytest.mark.parametrize(
+        "subject",
+        [
+            pytest.param("Alex (/192.0.2.4:25565)", id="named-ipv4"),
+            pytest.param("Alex (/[2001:db8::1]:25565)", id="named-ipv6"),
+            pytest.param("/192.0.2.4:25565", id="address-only"),
+            pytest.param("192.0.2.4", id="bare-ipv4"),
+            pytest.param(
+                "com.mojang.authlib.GameProfile@abc["
+                "id=12345678-1234-1234-1234-123456789abc,name=Alex,properties={}] "
+                "(/192.0.2.4:25565)",
+                id="game-profile",
+            ),
+            pytest.param("Maple Fox", id="whitespace-name"),
+            pytest.param("Disconnecting Alex", id="narrative-prefix"),
+        ],
+    )
+    def test_leave_pattern_ignores_connection_subjects(self, parser, subject):
+        log_line = f"[12:34:56] [Server thread/INFO]: {subject} lost connection: Disconnected"
+
+        assert parser.parse_line("server", log_line) is None
+
+    @pytest.mark.parametrize(
+        ("spacing", "reason"),
+        [
+            pytest.param("  ", "Disconnected", id="double-space-header"),
+            pytest.param(" ", "Timed out; Relay lost connection: Disconnected", id="nested-reason"),
+        ],
+    )
+    def test_leave_pattern_preserves_name_and_reason(self, parser, spacing, reason):
+        log_line = f"[12:34:56] [Server thread/INFO]:{spacing}Alex lost connection: {reason}"
+
+        event = parser.parse_line("server", log_line)
+
+        assert isinstance(event, PlayerLeftEvent)
+        assert event.player_name == "Alex"
+        assert event.reason == reason
+
+    def test_leave_pattern_requires_log_header(self, parser):
+        assert parser.parse_line("server", "Alex lost connection: Disconnected") is None
+
 
 class TestChatParsing:
     """Test chat message parsing from real server logs."""
