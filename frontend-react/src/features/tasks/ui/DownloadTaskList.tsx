@@ -18,7 +18,7 @@ const EmptyState = () => (
 )
 
 const DownloadTaskList: React.FC = () => {
-  const allTasks = useDownloadTasks()
+  const allTasks = [...useDownloadTasks()].sort((a, b) => b.startTime - a.startTime)
   const { clearCompletedTasks } = useDownloadActions()
 
   const activeTasks = allTasks.filter((task) => task.status === 'downloading')
