@@ -4,6 +4,7 @@ import pytest
 
 from app.dynamic_config.configs.log_parser import LogParserConfig
 from app.dynamic_config.manager import ConfigManager
+from app.dynamic_config.migration import ConfigMigrator
 from app.log_monitor.events import PlayerChatMessageEvent
 from app.log_monitor.parser import LogParser
 from tests.support.runtime import patch_runtime_resource
@@ -47,3 +48,19 @@ def test_valid_rule_extracts_chat_and_preserves_legacy_loading():
 
 def test_default_rules_satisfy_update_contract():
     LogParserConfig.model_validate({}).validate_update()
+
+
+@pytest.mark.parametrize(
+    "leave_pattern",
+    [
+        pytest.param(r"^(?!.*<).* (\S+) lost connection: (.*)", id="old-default"),
+        pytest.param(r"^LEAVE (\S+) :: (.*)$", id="custom"),
+    ],
+)
+def test_saved_leave_rule_survives_schema_change(leave_pattern):
+    stored = {"leave_pattern": leave_pattern, "join_pattern": r"^JOIN (\S+)$"}
+
+    migrated, _ = ConfigMigrator.migrate_config(stored, LogParserConfig, "previous-schema")
+
+    assert migrated["leave_pattern"] == leave_pattern
+    assert migrated["join_pattern"] == stored["join_pattern"]

@@ -114,7 +114,7 @@ func waitDetail(ctx context.Context, client *api.Client, uuid string, accept fun
 	return got, err
 }
 
-func readEvent(ctx context.Context, t *engine.Scope, connection *websocket.Conn, kind string) (map[string]any, error) {
+func readEvent(ctx context.Context, t *engine.Scope, connection *websocket.Conn, kind string, forbiddenKinds ...string) (map[string]any, error) {
 	for {
 		message, data, err := connection.Read(ctx)
 		if err != nil {
@@ -128,6 +128,11 @@ func readEvent(ctx context.Context, t *engine.Scope, connection *websocket.Conn,
 			return nil, err
 		}
 		t.Recorder.Event("public_event", event)
+		for _, forbidden := range forbiddenKinds {
+			if event["type"] == forbidden {
+				return nil, fmt.Errorf("unexpected %s event before %s", forbidden, kind)
+			}
+		}
 		if event["type"] == kind {
 			return event, nil
 		}
@@ -224,6 +229,35 @@ func tracking(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
+	if err = t.Step("failed connections preserve the online session until a later chat is committed", func() error {
+		if err := s.append(ctx,
+			"[12:00:06] [Server thread/INFO]: E2EPlayer (/203.0.113.10:1234) lost connection: Failed to verify username!",
+			"[12:00:07] [User Authenticator #1/INFO]: com.mojang.authlib.GameProfile@01234567[id=123e4567-e89b-42d3-a456-426614174000,name=E2EPlayer,properties={},legacy=false] (/203.0.113.11:1235) lost connection: Disconnected",
+			"[12:00:08] [Server thread/INFO]: /[2001:db8::1]:1236 lost connection: Disconnected",
+			"[12:00:09] [Server thread/INFO]: <E2EPlayer> chat after failed connections",
+		); err != nil {
+			return err
+		}
+		chat, err := readEvent(ctx, t, connection, "chat", "player_leave")
+		if err != nil {
+			return err
+		}
+		barrierCursor, ok := chat["cursor"].(string)
+		if !ok || chat["message"] != "chat after failed connections" {
+			return fmt.Errorf("missing chat barrier after failed connections: %v", chat)
+		}
+		cursor = barrierCursor
+		var current detail
+		if err := client.JSON(ctx, "GET", "/api/players/uuid/"+playerUUID, nil, &current, 200); err != nil {
+			return err
+		}
+		if !current.Online || current.Sessions != 1 || current.Messages != 2 {
+			return fmt.Errorf("failed connection changed the online session: %+v", current)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	if err = s.append(ctx, "[12:01:00] [Server thread/INFO]: E2EPlayer lost connection: E2E disconnect"); err != nil {
 		return err
 	}
@@ -255,7 +289,7 @@ func tracking(ctx context.Context, t *engine.Scope) error {
 		if err := s.append(ctx, "[12:01:01] [Server thread/INFO]: E2EPlayer lost connection: repeated observation", "[12:01:02] [Server thread/INFO]: <E2EPlayer> second persisted chat"); err != nil {
 			return err
 		}
-		if _, err := waitDetail(ctx, client, playerUUID, func(d detail) bool { return d.Messages == 2 }); err != nil {
+		if _, err := waitDetail(ctx, client, playerUUID, func(d detail) bool { return d.Messages == 3 }); err != nil {
 			return err
 		}
 		if err := client.JSON(ctx, "GET", base+"/sessions", nil, &history, 200); err != nil {

@@ -39,7 +39,11 @@ class LogParserConfig(BaseConfigSchema):
         Field(
             title="玩家离开解析规则",
             description="正则表达式模式，用于解析玩家离开事件",
-            default=r"^(?!.*<).* (\S+) lost connection: (.*)",
+            default=(
+                r"^(?!.*<)(?:\[[^\]\r\n]*\][ \t]*)+:[ \t]*"
+                r"(?!\d{1,3}(?:\.\d{1,3}){3} lost connection: )"
+                r"([^\s()[\]{}:/]+) lost connection: (.*)$"
+            ),
         ),
     ]
 

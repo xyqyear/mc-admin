@@ -25,6 +25,17 @@ When a config row is loaded:
 
 Compatible field changes use Pydantic validation and defaults. Renames or incompatible changes require an explicit compatibility decision; model validation does not infer renamed fields.
 
+Defaults initialize new modules and fill missing fields during validation.
+Changing a schema default does not replace an explicitly stored value, including
+one equal to an earlier default. Schema loading does not automatically adopt
+newer log-parser rules.
+
+To adopt a different `log_parser.leave_pattern`, retain the current module's other
+values, edit only `leave_pattern`, and save the module. Configuration updates
+replace the submitted module data rather than merging individual fields; sending
+only one field can restore omitted settings to their defaults. Resetting a module
+replaces all its settings, including custom parser rules.
+
 ## Using config in code
 
 `get_config()` returns the active runtime’s typed `ConfigProxy` view. The view captures its owning `ConfigManager` when constructed; each property reads that manager’s current cached instance. Holding a view across another runtime’s binding never redirects its reads:
