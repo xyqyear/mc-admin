@@ -14,7 +14,7 @@ const BackgroundTaskList: React.FC = () => {
   const deleteTask = useDeleteTask()
   const clearCompleted = useClearCompletedTasks()
 
-  const tasks = data?.tasks || []
+  const tasks = [...(data?.tasks || [])].sort((a, b) => b.createdAt - a.createdAt)
 
   const activeTasks = tasks.filter(
     (task) => task.status === 'pending' || task.status === 'running'
