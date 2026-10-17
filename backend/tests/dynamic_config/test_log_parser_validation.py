@@ -64,3 +64,37 @@ def test_saved_leave_rule_survives_schema_change(leave_pattern):
 
     assert migrated["leave_pattern"] == leave_pattern
     assert migrated["join_pattern"] == stored["join_pattern"]
+
+
+@pytest.mark.parametrize(
+    "stored_rules",
+    [
+        pytest.param(
+            {
+                "join_pattern": r"^(?!.*<).* (\S+)\[/.*?\] logged in with entity",
+                "chat_pattern": r": (\[Not Secure\] )?<(\S+)> (.*)",
+                "achievement_patterns": [
+                    r"^(?!.*<).*\]: (.+) has made the advancement \[(.*)\]",
+                    r"^(?!.*<).* (\S+) has just earned the achievement \[(.*)\]",
+                ],
+                "server_stop_pattern": r"^(?!.*<).*Stopping server",
+            },
+            id="old-defaults",
+        ),
+        pytest.param(
+            {
+                "join_pattern": r"^JOIN (\S+)$",
+                "chat_pattern": r"^(CUSTOM )?(\S+): (.*)$",
+                "achievement_patterns": [r"^ACH (\S+): (.*)$"],
+                "server_stop_pattern": r"^STOP$",
+            },
+            id="custom",
+        ),
+    ],
+)
+def test_saved_scalar_and_list_rules_survive_schema_change(stored_rules):
+    stored = {**LogParserConfig.model_validate({}).model_dump(), **stored_rules}
+
+    migrated, _ = ConfigMigrator.migrate_config(stored, LogParserConfig, "previous-schema")
+
+    assert migrated == stored

@@ -126,6 +126,39 @@ class TestJoinParsing:
         assert isinstance(event, PlayerJoinedEvent)
         assert event.player_name == "xyqyear"
 
+    @pytest.mark.parametrize(
+        ("address", "location"),
+        [
+            pytest.param("/[2001:db8::1]:25565", " at (0.0, 64.0, 0.0)", id="ipv6"),
+            pytest.param("IP hidden", "", id="hidden-address"),
+            pytest.param("local", " at (0.0, 64.0, 0.0)", id="local"),
+            pytest.param("/192.0.2.4:25565", " in world(0) at (0.0, 64.0, 0.0)", id="sponge-world"),
+            pytest.param("/192.0.2.4:25565", " in DIM-1(-1) at (0.0, 64.0, 0.0)", id="sponge-dimension"),
+        ],
+    )
+    def test_join_supported_connection_forms(self, parser, address, location):
+        log_line = (
+            f"[12:34:56] [Server thread/INFO]: Alex[{address}]"
+            f" logged in with entity id -42{location}"
+        )
+
+        event = parser.parse_line("server", log_line)
+
+        assert isinstance(event, PlayerJoinedEvent)
+        assert event.server_id == "server"
+        assert event.player_name == "Alex"
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "Copied Alex[/192.0.2.4:25565] logged in with entity id 42",
+            "Maple Fox[/192.0.2.4:25565] logged in with entity id 42",
+            "Alex[/192.0.2.4:25565] logged in with entity id 42; historical entry",
+        ],
+    )
+    def test_join_ignores_narrative_and_unsupported_names(self, parser, body):
+        assert parser.parse_line("server", f"[12:34:56] [Server thread/INFO]: {body}") is None
+
 
 class TestLeaveParsing:
     """Test player leave event parsing from real server logs."""
@@ -267,40 +300,113 @@ class TestChatParsing:
         assert event.player_name == "8559re"
         assert event.message == "????"
 
+    @pytest.mark.parametrize(
+        ("body", "player_name"),
+        [
+            pytest.param("<Alex> hello", "Alex", id="ordinary"),
+            pytest.param("[Not Secure] <Alex> hello", "Alex", id="not-secure"),
+            pytest.param("<<>> hello", "<>", id="legacy-name"),
+        ],
+    )
+    def test_chat_with_nested_logger(self, parser, body, player_name):
+        event = parser.parse_line(
+            "server", f"[12:34:56] [Server thread/INFO] [M3[INFO]/]: {body}"
+        )
+
+        assert isinstance(event, PlayerChatMessageEvent)
+        assert event.player_name == player_name
+        assert event.message == "hello"
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "[12:34:56] [main/DEBUG]: Patching method: <init> (<init>)",
+            "[12:34:56] [main/ERROR]: Invalid type override entry: <item:example> ignored",
+            '[12:34:56][DONE][SERVER][INFO] Adding recipe, output: <item:example> * 4',
+            "[12:34:56] [Server thread/INFO]: Copied [Other/INFO]: <Alex> hello",
+        ],
+    )
+    def test_chat_ignores_diagnostic_fragments(self, parser, line):
+        assert parser.parse_line("server", line) is None
+
 
 class TestAchievementParsing:
     """Test achievement event parsing."""
 
-    def test_advancement_pattern(self, parser):
-        """Test advancement pattern."""
-        log_line = "[12:34:56] [Server thread/INFO]: TestPlayer has made the advancement [Stone Age]"
+    @pytest.mark.parametrize(
+        ("verb", "title"),
+        [
+            pytest.param("has made the advancement", "Stone Age", id="task"),
+            pytest.param("has reached the goal", "A Balanced Diet", id="goal"),
+            pytest.param("has completed the challenge", "A Furious Cocktail", id="challenge"),
+            pytest.param("has just earned the achievement", "Getting Wood", id="legacy"),
+        ],
+    )
+    def test_achievement_announcement_forms(self, parser, verb, title):
+        log_line = f"[12:34:56] [Server thread/INFO]: Alex {verb} [{title}]"
 
         event = parser.parse_line("test_server", log_line)
 
-        assert event is not None
         assert isinstance(event, PlayerAchievementEvent)
         assert event.server_id == "test_server"
-        assert event.player_name == "TestPlayer"
-        assert event.achievement_name == "Stone Age"
+        assert event.player_name == "Alex"
+        assert event.achievement_name == title
 
-    def test_achievement_pattern(self, parser):
-        """Test achievement pattern (older format)."""
-        log_line = "[12:34:56] [Server thread/INFO]: TestPlayer has just earned the achievement [Getting Wood]"
+    @pytest.mark.parametrize(
+        ("subject", "title", "expected_title"),
+        [
+            pytest.param(
+                "Alex the Mighty", "[Nested [Title]]", "Nested [Title]", id="display-title"
+            ),
+            pytest.param(
+                "\x1b[32mAlex the Mighty\x1b[0m",
+                "\x1b[35m[Nested [A < B > C]]\x1b[0m",
+                "Nested [A < B > C]",
+                id="boundary-colors",
+            ),
+        ],
+    )
+    def test_achievement_preserves_display_and_title(self, parser, subject, title, expected_title):
+        log_line = (
+            f"[12:34:56] [Server thread/INFO]: {subject}"
+            f" has completed the challenge {title}"
+        )
 
         event = parser.parse_line("test_server", log_line)
 
-        assert event is not None
         assert isinstance(event, PlayerAchievementEvent)
-        assert event.player_name == "TestPlayer"
-        assert event.achievement_name == "Getting Wood"
+        assert event.player_name == "Alex the Mighty"
+        assert event.achievement_name == expected_title
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "Alex has completed the challenge []",
+            "<> has made the advancement [Stone Age]",
+            "Al\x1b[32mex has reached the goal [A Balanced Diet]",
+            "Alex has reached the goal [A \x1b[32mBalanced Diet]",
+        ],
+    )
+    def test_achievement_ignores_empty_fields_and_internal_escapes(self, parser, body):
+        assert parser.parse_line("server", f"[12:34:56] [Server thread/INFO]: {body}") is None
 
 
 class TestServerStopParsing:
     """Test server stop detection."""
 
-    def test_server_stop_pattern(self, parser):
-        """Test server stop pattern."""
-        log_line = "[12:34:56] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: Stopping server"
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param("Stopping server", id="ordinary"),
+            pytest.param(
+                "Stopping server (Ignore any thread death message you see! - DO NOT REPORT THREAD DEATH TO PAPER)",
+                id="paper",
+            ),
+            pytest.param("Startup script './start.sh' does not exist! Stopping server.", id="missing-script"),
+        ],
+    )
+    def test_server_stop_pattern(self, parser, body):
+        log_line = f"[12:34:56] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: {body}"
 
         event = parser.parse_line("test_server", log_line)
 
@@ -317,6 +423,17 @@ class TestServerStopParsing:
         assert event is not None
         assert isinstance(event, ServerStoppingEvent)
 
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "Mod diagnostic: Stopping server",
+            "Stopping server in 30 seconds",
+            "Stopping server (historical entry)",
+        ],
+    )
+    def test_server_stop_ignores_narrative(self, parser, body):
+        assert parser.parse_line("server", f"[12:34:56] [Server thread/INFO]: {body}") is None
+
 
 class TestForgeryPrevention:
     """Test that player forgery attempts are blocked."""
@@ -327,8 +444,9 @@ class TestForgeryPrevention:
 
         event = parser.parse_line("test_server", forged_log)
 
-        # Should not parse UUID from chat message
-        assert event is None or not isinstance(event, PlayerUuidDiscoveredEvent)
+        assert isinstance(event, PlayerChatMessageEvent)
+        assert event.player_name == "EvilPlayer"
+        assert event.message == "UUID of player FakePlayer is 12345678-1234-1234-1234-123456789abc"
 
     def test_join_forgery_with_chat(self, parser):
         """Test that join patterns in chat messages are ignored."""
@@ -336,8 +454,9 @@ class TestForgeryPrevention:
 
         event = parser.parse_line("test_server", forged_log)
 
-        # Should not parse join from chat message
-        assert event is None or not isinstance(event, PlayerJoinedEvent)
+        assert isinstance(event, PlayerChatMessageEvent)
+        assert event.player_name == "EvilPlayer"
+        assert event.message == "FakePlayer[/1.2.3.4:12345] logged in with entity id 123 at (0, 0, 0)"
 
     def test_leave_forgery_with_chat(self, parser):
         """Test that leave patterns in chat messages are ignored."""
@@ -345,8 +464,9 @@ class TestForgeryPrevention:
 
         event = parser.parse_line("test_server", forged_log)
 
-        # Should not parse leave from chat message
-        assert event is None or not isinstance(event, PlayerLeftEvent)
+        assert isinstance(event, PlayerChatMessageEvent)
+        assert event.player_name == "EvilPlayer"
+        assert event.message == "FakePlayer lost connection: Fake disconnection"
 
     def test_server_stop_forgery_with_chat(self, parser):
         """Test that server stop patterns in chat messages are ignored."""
@@ -354,8 +474,28 @@ class TestForgeryPrevention:
 
         event = parser.parse_line("test_server", forged_log)
 
-        # Should not detect server stop from chat message
-        assert event is None or not isinstance(event, ServerStoppingEvent)
+        assert isinstance(event, PlayerChatMessageEvent)
+        assert event.player_name == "EvilPlayer"
+        assert event.message == "Stopping server"
+
+    @pytest.mark.parametrize(
+        "verb",
+        [
+            "has made the advancement",
+            "has reached the goal",
+            "has completed the challenge",
+            "has just earned the achievement",
+        ],
+    )
+    def test_achievement_wording_remains_chat(self, parser, verb):
+        message = f"OtherPlayer {verb} [A < B]"
+        event = parser.parse_line(
+            "server", f"[12:34:56] [Server thread/INFO]: <Alex> {message}"
+        )
+
+        assert isinstance(event, PlayerChatMessageEvent)
+        assert event.player_name == "Alex"
+        assert event.message == message
 
     def test_legitimate_vs_forged_mixed(self, parser):
         """Test that only legitimate patterns are parsed when mixed with forged ones."""
@@ -384,6 +524,18 @@ class TestEdgeCases:
         event = parser.parse_line("test_server", "This is not a valid log line")
 
         assert event is None
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "Alex[/192.0.2.4:25565] logged in with entity id 42",
+            "Diagnostic: <Alex> hello",
+            "Alex has just earned the achievement [Getting Wood]",
+            "Stopping server",
+        ],
+    )
+    def test_default_messages_require_structured_headers(self, parser, line):
+        assert parser.parse_line("server", line) is None
 
     def test_partial_match(self, parser):
         """Test that partial matches don't create events."""

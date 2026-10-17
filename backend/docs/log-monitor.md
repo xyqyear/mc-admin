@@ -46,6 +46,42 @@ The runtime-owned monitor is started from `start_player_system()` (one watcher p
 
 `dynamic_config.log_parser`: `uuid_patterns`, `join_pattern`, `leave_pattern`, `chat_pattern`, `achievement_patterns`, `server_stop_pattern`. Updated at runtime through the dynamic-config UI; the parser reads the current rules for each line.
 
+Default join, chat, achievement and stopping rules match from the start of a
+structured bracketed log header to the end of its message. Shared noncapturing
+header fragments allow one nested bracket level inside logger blocks, such as
+`[M3[INFO]/]`; they do not validate timestamps, log levels or logger identities.
+Custom rules continue to receive the original full line.
+
+Login messages require one name without whitespace, a bracketed slash-prefixed
+address (including IPv6), `IP hidden` or `local`, and the login entity text.
+Optional coordinates and Sponge `in world(number)` / `in DIMnumber(number)`
+variants are supported. Joined-game broadcasts are not a second join source:
+session reuse alone does not suppress duplicate public events or skin work.
+
+Chat must begin directly after the log header, optionally with `[Not Secure]`,
+followed by the existing angle-bracket name and message form. The optional marker,
+name and message remain groups one, two and three. Method/resource/recipe fragments
+inside diagnostic text do not become player messages.
+
+Achievement announcements cover task (`has made the advancement`), goal
+(`has reached the goal`), challenge (`has completed the challenge`) and legacy
+(`has just earned the achievement`) wording. Groups one and two retain full
+player display text for known-player attribution and the nonempty title for
+history. Display text can contain titles and spaces without enabling whitespace
+account names, but cannot contain angle brackets or embedded escape codes. ANSI
+SGR codes surrounding either field are consumed without entering the captures;
+internal escape codes
+are unsupported. Title punctuation, including internal square and angle brackets,
+is preserved. Empty titles and the unusable display text `<>` are ignored. Game
+announcement settings can suppress these observations, so history is not a full
+inventory of in-game achievement awards.
+
+Stopping messages cover `Stopping server`, the observed Paper thread-death
+disclaimer suffix, and missing startup-script messages ending in `Stopping server.`.
+They close that server's sessions through the existing player service; a stopping
+observation does not assert that the process has exited. Chat or narrative quotes
+of these messages do not produce stopping observations.
+
 The default leave rule requires bracketed log headers followed immediately by a
 player name without whitespace and `lost connection: ` with its reason. Capture groups
 one and two retain the player name and complete reason. Connection-address forms,
@@ -56,7 +92,8 @@ formats.
 
 Stored rules retain their values when application defaults change. Existing
 deployments adopt a different rule by retaining the current module's other values,
-editing only `leave_pattern`, and saving the module. See
+editing the intended scalar or pattern list, and saving the module. Values equal
+to earlier defaults are also retained. See
 [dynamic configuration](dynamic-config.md#migration-on-read) for default filling
 and the effect of resetting an entire module.
 

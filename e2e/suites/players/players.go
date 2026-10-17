@@ -23,6 +23,7 @@ const offlineUUID = "123e4567e89b32d3a456426614174002"
 func Cases(r fixtures.Recipes) []engine.Case {
 	return []engine.Case{
 		{ID: "players.tracking-events-and-history", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: tracking},
+		{ID: "players.log-parser-defaults", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: logParserDefaults},
 		{ID: "players.identity-config-and-cleanup", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: identity},
 		{ID: "players.legacy-cleanup-and-cached-profiles", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: legacy},
 		{ID: "players.heartbeat-crash-recovery", Suite: "players", Tags: []string{"regression"}, Recipe: r.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: crashRecovery},

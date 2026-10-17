@@ -30,9 +30,11 @@ Changing a schema default does not replace an explicitly stored value, including
 one equal to an earlier default. Schema loading does not automatically adopt
 newer log-parser rules.
 
-To adopt a different `log_parser.leave_pattern`, retain the current module's other
-values, edit only `leave_pattern`, and save the module. Configuration updates
-replace the submitted module data rather than merging individual fields; sending
+To adopt different log-parser rules, retain the current module's other values,
+edit the intended scalar or pattern list, and save the module. Explicitly stored
+lists such as `achievement_patterns` are not extended with newer defaults.
+Configuration updates replace the submitted module data rather than merging
+individual fields; sending
 only one field can restore omitted settings to their defaults. Resetting a module
 replaces all its settings, including custom parser rules.
 

@@ -12,7 +12,7 @@
 | 部署、身份与系统 | [静态交付、认证、权限、设置、操作历史与恢复](coverage/system.md) |
 | 模板、服务器与 Minecraft | [模板、配置版本、生命周期、调度与迁移](coverage/servers.md) |
 | 文件、归档、任务与快照 | [文件内容、上传发布、任务观察、快照保护与恢复](coverage/files.md) |
-| 世界、地图与玩家 | [布局、恢复、裁剪、缓存、领地、玩家会话、失败连接排除与身份](coverage/world.md) |
+| 世界、地图与玩家 | [布局、恢复、裁剪、缓存、领地、玩家会话、默认日志规则、失败连接排除与身份](coverage/world.md) |
 | 调度、自检与外部集成 | [Cron、自检、资源、DNS/router 和真实供应商](coverage/integrations.md) |
 
 PR、普通自动 CI 和完整 qualification 执行当前 catalog 中除 DNSPod 外的
