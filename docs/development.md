@@ -25,7 +25,7 @@ From `backend/`:
 
 ```bash
 uv sync
-uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload --timeout-graceful-shutdown 2
 ```
 
 Settings load TOML/environment configuration. Directory settings resolve to

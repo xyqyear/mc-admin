@@ -110,6 +110,25 @@ including when a caller supplies a populated staging destination.
 
 ## Event normalization
 
+Manual snapshot creation and restore/rollback safety backups forward live
+`restic backup --json` status through the current accepted task. `backup()` and
+`create_snapshot()` retain their awaited snapshot result and accept an optional
+asynchronous progress callback. Callback-enabled backups set
+`RESTIC_PROGRESS_FPS=1` so piped stdout emits status with the pinned Restic version;
+scheduled backups retain the direct awaited path without UI progress reporting.
+The reported fraction follows Restic's byte progress. Missing, zero or invalid
+byte totals and invalid percentages remain indeterminate rather than estimated.
+The [Restic 0.18.1 producer](https://github.com/restic/restic/blob/v0.18.1/internal/ui/backup/json.go)
+defines these status fields.
+
+Callback-enabled backup has one incremental stdout NDJSON reader and drains
+stderr concurrently with a bounded diagnostic tail. A summary or 100% status is not successful
+completion: the subprocess must exit successfully and owned cleanup must finish
+before the snapshot result is returned. Callback failure or cancellation stops
+and joins the writer before the enclosing task releases its resources. Safety
+backup progress uses its existing phase; restoration writes still wait for the
+committed safety snapshot and retained recovery evidence.
+
 Restore events arrive as NDJSON (`status` / `verbose_status` / `summary`). Restic reports restored/updated items relative to the restore subtree but deleted items as absolute on-disk paths. `ResticClient.restore` normalizes events to absolute execution paths; `SnapshotService` translates file events into the selected logical path space for previews. File restoration translates those items back to execution paths for PNG-tile invalidation. Stderr is drained concurrently to avoid a pipe-buffer deadlock during long restores.
 
 ## Subprocess pattern

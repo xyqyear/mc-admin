@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { queryKeys } from '@/shared/http/api'
@@ -10,7 +11,7 @@ import { taskQueryKeys } from '@/features/tasks/queries'
 import { useCreateSnapshot, useSnapshotOperation } from './commands'
 import type { SnapshotScope } from './contracts'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

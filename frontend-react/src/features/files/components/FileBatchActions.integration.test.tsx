@@ -2,13 +2,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { SnapshotRecoveryContext } from '../snapshotRecoveryContext'
 import { FileBatchActions } from './FileBatchActions'
 import { queryKeys } from '@/shared/http/api'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

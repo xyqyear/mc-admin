@@ -13,6 +13,7 @@ from ..operation_admission import get_server_write_admission
 from ..operations.finalization import finalize
 from ..operations.journal_types import OperationState
 from ..runtime_resources import current_runtime
+from .events import TaskEventStream
 from .models import BackgroundTask
 from .types import TaskProgress, TaskResult, TaskStatus, TaskType
 
@@ -53,6 +54,7 @@ class BackgroundTaskManager:
         self._accepting = True
         self.journal = journal
         self._submission_keys: dict[str, str] = {}
+        self._events = TaskEventStream(self.get_task, self.get_all_tasks)
 
     async def submit_durable(
         self,
@@ -245,6 +247,7 @@ class BackgroundTaskManager:
         for record in records:
             if task := self._task_from_record(record):
                 self._tasks[task.task_id] = task
+                self._events.publish(task.task_id)
 
     @staticmethod
     def _task_from_record(record: "OperationRecord") -> BackgroundTask | None:
@@ -316,10 +319,12 @@ class BackgroundTaskManager:
 
         self._tasks[task.task_id] = task
         self._futures[task.task_id] = future
+        self._events.publish(task.task_id)
 
         async def run_task():
             task.status = TaskStatus.RUNNING
             task.started_at = datetime.now(UTC).astimezone().replace(tzinfo=None)
+            self._events.publish(task.task_id)
             terminal = TaskStatus.COMPLETED
             error: str | None = None
             try:
@@ -334,10 +339,7 @@ class BackgroundTaskManager:
                 async for progress in task_generator:
                     if task.cancel_requested:
                         raise asyncio.CancelledError
-                    task.progress = progress.progress
-                    task.message = progress.message
-                    if progress.result is not None:
-                        task.result = progress.result
+                    self.update_progress(task.task_id, progress)
 
             except asyncio.CancelledError:
                 terminal = TaskStatus.CANCELLED
@@ -394,6 +396,7 @@ class BackgroundTaskManager:
                             data=task.result if terminal is TaskStatus.COMPLETED else None,
                             error=error,
                         ))
+                    self._events.publish(task.task_id)
                     logger.info("Task %s settled: %s", task.task_id, terminal.value)
                 await finalize(publish_result())
 
@@ -408,6 +411,20 @@ class BackgroundTaskManager:
 
         return SubmitResult(task_id=task.task_id, task=task, awaitable=future)
 
+    def events(self) -> AsyncGenerator[bytes]:
+        return self._events.events()
+
+    def update_progress(self, task_id: str, progress: TaskProgress) -> bool:
+        task = self._tasks.get(task_id)
+        if task is None or task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
+            return False
+        task.progress = progress.progress
+        task.message = progress.message
+        if progress.result is not None:
+            task.result = progress.result
+        self._events.publish(task_id)
+        return True
+
     async def cancel(self, task_id: str) -> bool:
         """Request cancellation of a task."""
         logger = get_logger()
@@ -420,6 +437,7 @@ class BackgroundTaskManager:
             return True
         task.cancel_requested = True
         task.message = "正在取消，等待清理完成"
+        self._events.publish(task_id)
         worker = self._asyncio_tasks.get(task_id)
         if task.started_at is not None and worker is not None:
             worker.cancel()
@@ -434,8 +452,11 @@ class BackgroundTaskManager:
             worker = self._asyncio_tasks.get(task.task_id)
             if task.started_at is not None and worker is not None and not worker.done():
                 worker.cancel()
-        if workers:
-            await finalize(asyncio.gather(*workers, return_exceptions=True))
+        try:
+            if workers:
+                await finalize(asyncio.gather(*workers, return_exceptions=True))
+        finally:
+            self._events.close()
 
     def get_task(self, task_id: str) -> BackgroundTask | None:
         return self._tasks.get(task_id)
@@ -474,6 +495,7 @@ class BackgroundTaskManager:
         del self._tasks[task_id]
         self._asyncio_tasks.pop(task_id, None)
         self._futures.pop(task_id, None)
+        self._events.publish(task_id)
         return True
 
     def clear_completed(self) -> int:

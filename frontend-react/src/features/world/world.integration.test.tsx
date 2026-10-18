@@ -2,6 +2,7 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-li
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { queryKeys } from '@/shared/http/api'
@@ -13,7 +14,7 @@ import type L from 'leaflet'
 import type { FtbClusterEntry } from '@/features/world/layers/claims/contracts'
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

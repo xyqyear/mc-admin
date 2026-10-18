@@ -6,7 +6,7 @@ Every domain is a feature under `src/features/`. The application composes featur
 
 - `contracts.ts`: request/response DTOs and domain values. Contracts cannot import behavior or UI.
 - `api.ts`: one raw HTTP operation per function, with no React or cache state. Authentication is the users feature’s additional `auth.ts` transport.
-- `queries.ts`: resource keys, freshness, retries, enabled gates and polling. Shared `queryOptions` factories serve ordinary hooks and dynamic `useQueries` aggregations.
+- `queries.ts`: resource keys, freshness, retries, enabled gates and observation policy. Shared `queryOptions` factories serve ordinary hooks and dynamic `useQueries` aggregations.
 - `commands.ts`: writes and immediate invalidation. Controllers own the interaction’s local draft, selection, confirmation, upload or stream state.
 - Feature screens/UI present these workflows. Reusable business UI is intentionally public under `ui/`; internal controllers, caches, generated files and map layers are private to the feature.
 
@@ -137,4 +137,9 @@ before an explicit terminal event. See [backend authentication](../../backend/do
 | `features/world/restore/selectionStore.ts` | Transient per-server world selection |
 
 Backend tasks and player profiles remain Query data, not mirrored stores.
+Task consumers share one authenticated SSE connection per QueryClient, with
+HTTP recovery while disconnected and full-detail reads before consuming terminal
+results. Reference-counted transport bookkeeping owns connections rather than
+task data; cache clearing invalidates the old connection and in-flight reads.
+The [task center](task-center.md) owns observation and fallback details.
 Browser downloads have their own [task-center lifecycle](task-center.md).

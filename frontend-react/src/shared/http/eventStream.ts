@@ -9,6 +9,8 @@ export interface EventStreamOptions<TEvent> {
   onClose?: () => void
   onError?: (message: string, error?: ApiError) => void
   onResponse?: (res: Response) => void
+  onActivity?: () => void
+  strictJSON?: boolean
 }
 
 const PROTOCOL_RE = /^https?:\/\//i
@@ -52,7 +54,9 @@ export async function readEventStream<TEvent>(
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
+      opts.onActivity?.()
       buffer += decoder.decode(value, { stream: true })
+      buffer = buffer.replace(/\r\n/g, '\n')
       let idx: number
       while ((idx = buffer.indexOf('\n\n')) !== -1) {
         const block = buffer.slice(0, idx)
@@ -67,7 +71,7 @@ export async function readEventStream<TEvent>(
         try {
           event = JSON.parse(payload) as TEvent
         } catch (error) {
-          if (error instanceof SyntaxError) continue
+          if (error instanceof SyntaxError && !opts.strictJSON) continue
           throw error
         }
         opts.onEvent(event)

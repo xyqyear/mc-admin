@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { TooltipProvider } from '@/shared/ui/tooltip'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
@@ -11,7 +12,7 @@ import { taskQueryKeys } from '@/features/tasks/queries'
 import BackgroundTaskList from './BackgroundTaskList'
 import DownloadTaskList from './DownloadTaskList'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 const now = new Date('2026-10-17T08:00:00Z').getTime()
 const minute = 60_000
 let client: ReturnType<typeof createTestClient>
@@ -70,7 +71,7 @@ it('shows newest background tasks first in each group without changing query ord
   expect(screen.getByText('正在进行 (2)')).toBeTruthy()
   expect(screen.getByText('已完成 (2)')).toBeTruthy()
   expect(screen.queryByTitle('后台-过期')).toBeNull()
-  const cached = client.getQueriesData<{ tasks: BackgroundTask[] }>({ queryKey: taskQueryKeys.all })[0][1]
+  const cached = client.getQueryData<{ tasks: BackgroundTask[] }>(taskQueryKeys.list())
   expect(cached?.tasks.map(task => task.name)).toEqual([
     '后台-旧进行', '后台-旧完成', '后台-过期', '后台-新进行', '后台-新完成',
   ])

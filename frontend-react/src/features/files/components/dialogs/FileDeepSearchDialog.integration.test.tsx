@@ -2,13 +2,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import FileDeepSearchDialog from './FileDeepSearchDialog'
 import { FileSnapshotRecovery } from '../FileSnapshotRecovery'
 import { SnapshotRecoveryContext } from '../../snapshotRecoveryContext'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

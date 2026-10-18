@@ -52,7 +52,7 @@ from .planner import (
 )
 from .protection import SnapshotProtection
 from .repository_use import RepositoryUse
-from .restic import ResticClient
+from .restic import BackupProgressCallback, ResticClient
 
 
 class SnapshotService:
@@ -271,6 +271,7 @@ class SnapshotService:
         *,
         protection: SnapshotProtection | None = None,
         tags: Sequence[str] = (),
+        on_progress: BackupProgressCallback | None = None,
     ) -> ResticSnapshotWithSummary:
         """Snapshot the given absolute paths, excluding configured ignores.
 
@@ -324,6 +325,7 @@ class SnapshotService:
                 sorted({item.execution for item in mappings}),
                 backup_excludes([item.execution for item in mappings], excluded),
                 tags=[*tags, *selection_tags(mappings, logical_excluded)],
+                **({"on_progress": on_progress} if on_progress is not None else {}),
             )
 
     async def build_plan(

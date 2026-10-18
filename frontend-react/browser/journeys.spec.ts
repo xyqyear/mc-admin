@@ -5,7 +5,7 @@ import type { BrowserContext, Page, WebSocketRoute } from '@playwright/test'
 import { test, expect, login, editorValue, navigate, type OwnedApi, type OwnedEnvironment } from './fixtures'
 import { interruptRestoreAfterSafetySnapshot } from './streamFault'
 import { withCleanup } from './cleanup'
-import { holdSnapshotBackup } from './snapshotWorker'
+import { holdSnapshotBackup, holdSnapshotRestore } from './snapshotWorker'
 
 test.describe('owned administration journeys', () => {
   const journeys: Array<{ name: string; run: (fixtures: { page: Page; context: BrowserContext; api: OwnedApi; owned: OwnedEnvironment }) => Promise<void> }> = []
@@ -387,6 +387,7 @@ test.describe('owned administration journeys', () => {
     await api.writeFile(marker, 'before-interruption\n')
     const proxy = await interruptRestoreAfterSafetySnapshot(owned.base_url)
     const worker = holdSnapshotBackup(owned)
+    const restoreWorker = holdSnapshotRestore(owned)
     let releaseMapStatus!: () => void
     const mapStatusReleased = new Promise<void>(resolve => { releaseMapStatus = resolve })
     let mapStatusHeld = false
@@ -403,10 +404,17 @@ test.describe('owned administration journeys', () => {
       await page.keyboard.press('Escape')
       await expect(page.getByRole('dialog', { name: '选择快照恢复' })).toBeVisible()
       await worker.release()
+      await restoreWorker.ready
       await proxy.interrupted
+      const active = await api.json<{ restorations: Array<{ operation_id: string }> }>(`/api/snapshots/restorations/active?server_id=${owned.server_id}`)
+      expect(active.restorations).toHaveLength(1)
+      const interruptedTask = await api.json<{ status: string; result?: { safety_snapshot_id?: string } }>(`/api/tasks/${active.restorations[0].operation_id}`)
+      expect(interruptedTask.status).toBe('running')
+      expect(interruptedTask.result?.safety_snapshot_id).toBeTruthy()
       await expect(page.getByText('暂时无法获取任务状态，正在重新连接', { exact: true }).first()).toBeVisible()
       await page.keyboard.press('Escape')
       await expect(page.getByRole('dialog', { name: '选择快照恢复' })).toBeVisible()
+      await restoreWorker.release()
       let history: { id: string; status: string; safety_snapshot_id: string | null; safety_snapshot_exists: boolean } | undefined
       await expect.poll(async () => {
         const data = await api.json<{ restorations: Array<{ id: string; status: string; source_snapshot_id: string; safety_snapshot_id: string | null; safety_snapshot_exists: boolean }> }>(`/api/snapshots/restorations?server_id=${owned.server_id}`)
@@ -446,6 +454,7 @@ test.describe('owned administration journeys', () => {
       expect(await readFile(path.join(owned.server_path, 'data', marker), 'utf8')).toBe('before-interruption\n')
     },
     { label: 'map status route', run: async () => { releaseMapStatus(); await page.unrouteAll({ behavior: 'wait' }) } },
+    { label: 'restore worker', run: () => restoreWorker.release() },
     { label: 'snapshot worker', run: worker.release },
     { label: 'restore proxy', run: proxy.close },
     { label: 'restore marker', run: () => api.deleteFile(marker) },

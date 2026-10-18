@@ -10,7 +10,7 @@ call paths; the examples are alternatives, not a checklist.
 
 ```bash
 uv sync
-uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload
+uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload --timeout-graceful-shutdown 2
 uv run pytest tests/files/test_file_operations.py --require-capabilities
 uv run pytest tests/test_instance.py::test_server_status_lifecycle_with_docker --run-docker --require-capabilities
 uv run pyright

@@ -1212,6 +1212,14 @@
       "path": "/api/tasks"
     },
     {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/tasks/events"
+    },
+    {
       "cookie_csrf": true,
       "declared_authorization": [
         "session_or_master"
@@ -1561,6 +1569,242 @@
         },
         {
           "$ref": "#/$defs/StreamResetFrame"
+        }
+      ]
+    },
+    "task_event": {
+      "$defs": {
+        "BackgroundTaskSummaryResponse": {
+          "description": "Lightweight API response model for task lists.",
+          "properties": {
+            "cancellable": {
+              "title": "Cancellable",
+              "type": "boolean"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "error_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error Code"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "progress": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Progress"
+            },
+            "server_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Server Id"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "status": {
+              "$ref": "#/$defs/TaskStatus"
+            },
+            "task_id": {
+              "title": "Task Id",
+              "type": "string"
+            },
+            "task_type": {
+              "$ref": "#/$defs/TaskType"
+            }
+          },
+          "required": [
+            "task_id",
+            "task_type",
+            "name",
+            "status",
+            "progress",
+            "message",
+            "server_id",
+            "cancellable",
+            "created_at",
+            "started_at",
+            "ended_at",
+            "error"
+          ],
+          "title": "BackgroundTaskSummaryResponse",
+          "type": "object"
+        },
+        "TaskRemoveEvent": {
+          "properties": {
+            "task_id": {
+              "title": "Task Id",
+              "type": "string"
+            },
+            "type": {
+              "const": "remove",
+              "default": "remove",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "TaskRemoveEvent",
+          "type": "object"
+        },
+        "TaskSnapshotEvent": {
+          "properties": {
+            "tasks": {
+              "items": {
+                "$ref": "#/$defs/BackgroundTaskSummaryResponse"
+              },
+              "title": "Tasks",
+              "type": "array"
+            },
+            "type": {
+              "const": "snapshot",
+              "default": "snapshot",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tasks"
+          ],
+          "title": "TaskSnapshotEvent",
+          "type": "object"
+        },
+        "TaskStatus": {
+          "enum": [
+            "pending",
+            "running",
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "title": "TaskStatus",
+          "type": "string"
+        },
+        "TaskType": {
+          "enum": [
+            "server_start",
+            "server_up",
+            "server_restart",
+            "server_stop",
+            "server_down",
+            "server_remove",
+            "server_create",
+            "server_sync",
+            "file_delete",
+            "archive_delete",
+            "map_initialize",
+            "self_check",
+            "dns_update",
+            "archive_hash",
+            "archive_publish",
+            "archive_create",
+            "archive_extract",
+            "file_ownership_repair",
+            "server_rebuild",
+            "world_restore",
+            "snapshot_create",
+            "snapshot_restore",
+            "snapshot_preview",
+            "snapshot_preview_cleanup",
+            "snapshot_delete",
+            "snapshot_unlock",
+            "chunk_prune_preview",
+            "chunk_prune_apply"
+          ],
+          "title": "TaskType",
+          "type": "string"
+        },
+        "TaskUpsertEvent": {
+          "properties": {
+            "task": {
+              "$ref": "#/$defs/BackgroundTaskSummaryResponse"
+            },
+            "type": {
+              "const": "upsert",
+              "default": "upsert",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task"
+          ],
+          "title": "TaskUpsertEvent",
+          "type": "object"
+        }
+      },
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TaskSnapshotEvent"
+        },
+        {
+          "$ref": "#/$defs/TaskUpsertEvent"
+        },
+        {
+          "$ref": "#/$defs/TaskRemoveEvent"
         }
       ]
     },
@@ -6997,6 +7241,59 @@
                   }
                 }
               },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/tasks/events": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
               "description": "Successful Response"
             },
             "422": {

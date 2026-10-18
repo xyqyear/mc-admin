@@ -2,6 +2,7 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-li
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { createOperationFeed } from '@/test/operations'
 import { queryKeys } from '@/shared/http/api'
@@ -11,7 +12,7 @@ import { useSnapshotPreview } from './commands'
 import type { SnapshotPreviewRequest } from './contracts'
 import { SnapshotPreviewDialog } from './ui/SnapshotPreviewDialog'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

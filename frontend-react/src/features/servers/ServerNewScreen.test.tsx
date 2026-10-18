@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { queryKeys } from '@/shared/http/api'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
@@ -22,7 +23,7 @@ vi.mock('@/features/servers/ui/ServerNew/index', () => ({
   </>,
 }))
 vi.mock('@/features/archives/ui/ArchiveSelectionDialog', () => ({ default: () => null }))
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())

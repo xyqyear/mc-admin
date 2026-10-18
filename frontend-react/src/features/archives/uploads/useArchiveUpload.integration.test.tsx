@@ -4,12 +4,13 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 
 const abcSHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 const dom = new JSDOM('', { url: 'http://localhost:3000', pretendToBeVisual: true })
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 let useArchiveUpload: typeof import('./useArchiveUpload').useArchiveUpload
 let queryKeys: typeof import('@/shared/http/api').queryKeys
 let taskQueryKeys: typeof import('@/features/tasks/queries').taskQueryKeys

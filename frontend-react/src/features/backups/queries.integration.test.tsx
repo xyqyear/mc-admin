@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { focusManager, onlineManager } from '@tanstack/react-query'
 import { api, queryKeys } from '@/shared/http/api'
 import { createOperationFeed } from '@/test/operations'
@@ -14,7 +15,7 @@ import { useActiveRestorations, useRestorationHistory } from './queries'
 import { useSnapshotOperation } from './useSnapshotOperation'
 import type { ActiveRestorations, SnapshotScope } from './contracts'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

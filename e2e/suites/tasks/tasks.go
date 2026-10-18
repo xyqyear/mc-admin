@@ -13,6 +13,7 @@ import (
 
 func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "tasks.sse-observation-and-reconnect", Suite: "tasks", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: taskEvents},
 		{ID: "tasks.management-acceptance-and-reconnect", Suite: "tasks", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: management},
 		{ID: "tasks.failure-filter-delete-clear", Suite: "tasks", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: history}}
 }

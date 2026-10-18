@@ -2,13 +2,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import ArchiveManagementScreen from './ArchiveManagementScreen'
 
 vi.mock('./ui/ArchiveUploadDialog', () => ({ default: () => null }))
 vi.mock('./ui/ArchiveRenameDialog', () => ({ default: () => null }))
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())

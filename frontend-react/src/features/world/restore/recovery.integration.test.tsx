@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { readEventStream } from '@/shared/http/eventStream'
@@ -11,7 +12,7 @@ import { useSnapshotPreview } from '@/features/backups/commands'
 import type { RestorationSelection } from '@/features/backups/contracts'
 import type { SnapshotPreviewRequest } from '@/features/backups/contracts'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

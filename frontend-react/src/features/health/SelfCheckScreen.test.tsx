@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { createOperationFeed } from '@/test/operations'
 import { TestProviders } from '@/test/TestProviders'
@@ -9,7 +10,7 @@ import { OperationObserver } from '@/app/operations/OperationObserver'
 import { queryKeys } from '@/shared/http/api'
 import SelfCheckScreen from './SelfCheckScreen'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())

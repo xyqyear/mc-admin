@@ -1,11 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import MapInitDialog from '@/features/world/map/MapInitDialog'
 import { api } from '@/shared/http/api'
 import { createTestClient, httpResponse } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 
 const original = api.defaults.adapter
+const server = setupServer(taskEventsUnavailable)
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterAll(() => server.close())
 afterEach(() => { api.defaults.adapter = original })
 
 it('keeps initialization blocked through a read failure and 100% progress until the task settles', async () => {

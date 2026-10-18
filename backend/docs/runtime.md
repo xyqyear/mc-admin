@@ -28,6 +28,12 @@ After journal recovery, the prune registry starts and world restoration prepares
 
 ## Shutdown
 
+The application image gives Uvicorn a two-second HTTP graceful-shutdown window.
+Open streams are cancelled after that window so lifespan shutdown can enter the
+runtime's owned worker cleanup. This limit applies to HTTP draining, not the
+subsequent resource cleanup; the outer container stop deadline must leave enough
+time for workers, subprocesses and durable settlement to finish.
+
 Shutdown closes admission and stops cron and player producers. It cancels and drains tracked requests/streams and side work, then the task manager. Before deleting temporary artifacts it reads unsettled journal records: a legacy failed task status is not proof that its subprocesses stopped. Residual process identities, unknown ownership, an unconfirmed writer state, or an unreadable journal preserve claims, upload files, previews and runtime scratch. Shutdown still stops preview janitors/render queues, closes DNS pools, login sockets, event subscriptions, the database engine and log handlers, and reports the incomplete cleanup. The writer guard is released last. One close failure does not skip the remaining cleanup callbacks. Repeated cancellation of the shutdown caller cannot interrupt the owned cleanup task.
 
 ## Temporary artifacts
@@ -37,3 +43,6 @@ World-preview, prune-preview and chunk-restore stages live under a stable instal
 ## Verification
 
 `tests/test_runtime.py` exercises two simultaneously running apps with different real temporary databases and JWT keys, isolated configuration/events/durable tasks/log files, concurrent migrations, partial startup failures, repeated shutdown cancellation, cleanup continuation, WebSocket context, stream draining before database close, and artifact preservation for unconfirmed journal writers. Other tests bind a fresh runtime through the autouse fixture in `tests/conftest.py`; explicit factory apps retain their own runtime.
+`tests/test_task_stream_shutdown.py` starts real Uvicorn with the image's command
+options and verifies that SIGTERM drains an open task stream, its subscription
+and an owned task before lifespan shutdown completes.

@@ -63,3 +63,22 @@ it('aborts without a failure or close callback and releases the reader', async (
   expect(cancel).toHaveBeenCalledOnce()
   expect(release).toHaveBeenCalledOnce()
 })
+
+it('reports comment keepalive activity and reads CRLF frames split across chunks', async () => {
+  streamResponse([': keepalive\r', '\n\r\ndata: {"value":1}\r', '\n\r\n'])
+  const activity = vi.fn()
+  const events: unknown[] = []
+  await readEventStream({ url: '/tasks/events', method: 'GET', onActivity: activity, onEvent: event => events.push(event) })
+  expect(activity).toHaveBeenCalledTimes(3)
+  expect(events).toEqual([{ value: 1 }])
+  expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ method: 'GET', credentials: 'same-origin' }))
+})
+
+it('rejects malformed JSON in a strict stream instead of retaining a stale live connection', async () => {
+  streamResponse(['data: {broken}\n\n: keepalive\n\n'])
+  const error = vi.fn()
+  const close = vi.fn()
+  await readEventStream({ url: '/tasks/events', method: 'GET', strictJSON: true, onEvent: vi.fn(), onError: error, onClose: close })
+  expect(error).toHaveBeenCalledOnce()
+  expect(close).not.toHaveBeenCalled()
+})

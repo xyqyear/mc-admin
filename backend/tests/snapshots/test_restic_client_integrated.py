@@ -4,6 +4,8 @@ Every test runs against a throwaway repository and temp directories.
 Requires restic on PATH (CI installs the pinned version).
 """
 
+import asyncio
+import os
 import subprocess
 import tempfile
 from datetime import datetime
@@ -12,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from app.config import get_settings
+from app.operations import processes
 from app.snapshots import NodeKind, ResticClient
 from app.utils.exec import exec_command
 
@@ -78,6 +81,51 @@ async def client(repo_dir):
 
 
 class TestBackup:
+    async def test_backup_reports_real_progress_before_result(self, client, data_dir, monkeypatch):
+        payload = os.urandom(2 * 1024 * 1024)
+        (data_dir / "progress.bin").write_bytes(payload)
+        build_args = client._build_args
+
+        def limited(*args):
+            full = build_args(*args)
+            return full + ["--limit-upload", "512"] if args[0] == "backup" else full
+
+        monkeypatch.setattr(client, "_build_args", limited)
+        spawn = processes.spawn_process
+        writers = []
+
+        async def capture(*args, **kwargs):
+            writer = await spawn(*args, **kwargs)
+            writers.append(writer)
+            return writer
+
+        monkeypatch.setattr(processes, "spawn_process", capture)
+        ready, release = asyncio.Event(), asyncio.Event()
+        observed = []
+
+        async def progress(percent):
+            observed.append(percent)
+            if percent is not None:
+                ready.set()
+                await release.wait()
+
+        backup = asyncio.create_task(client.backup([data_dir], on_progress=progress))
+        try:
+            await asyncio.wait_for(ready.wait(), 15)
+            assert not backup.done()
+            assert writers and writers[0].returncode is None
+            release.set()
+            snapshot = await asyncio.wait_for(backup, 20)
+            assert any(percent is not None and 0 <= percent <= 1 for percent in observed)
+            assert snapshot.summary is not None
+            assert snapshot.summary.total_bytes_processed >= len(payload)
+            assert (data_dir / "progress.bin").read_bytes() == payload
+        finally:
+            release.set()
+            if not backup.done():
+                backup.cancel()
+            await asyncio.gather(backup, return_exceptions=True)
+
     async def test_basic_backup_and_list(self, client, data_dir):
         snapshot = await client.backup([data_dir])
 

@@ -1,5 +1,6 @@
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.background_tasks.api_models import (
     BackgroundTaskListResponse,
@@ -9,6 +10,7 @@ from app.background_tasks.api_models import (
 
 from ..background_tasks import get_task_manager
 from ..dependencies import get_current_user
+from ..utils.sse import sse_response
 
 router = APIRouter(
     prefix="/tasks", tags=["tasks"], dependencies=[Depends(get_current_user)]
@@ -35,6 +37,11 @@ async def get_tasks(
         tasks=[BackgroundTaskSummaryResponse.from_task(t) for t in tasks],
         total=len(tasks),
     )
+
+
+@router.get("/events", response_class=StreamingResponse)
+async def task_events() -> StreamingResponse:
+    return sse_response(get_task_manager().events())
 
 
 @router.get("/{task_id}", response_model=BackgroundTaskResponse)

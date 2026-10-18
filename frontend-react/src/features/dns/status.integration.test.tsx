@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { toast } from 'sonner'
 import DnsManagementScreen from '@/features/dns/DnsManagementScreen'
 import type { DNSStatusResponse } from '@/features/dns/contracts'
@@ -10,7 +11,7 @@ import { useTaskCenterStore } from '@/features/tasks/panelStore'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

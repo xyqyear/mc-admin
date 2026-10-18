@@ -27,9 +27,10 @@ export const taskApi = {
     server_id?: string
     limit?: number
     offset?: number
-  }): Promise<{ tasks: BackgroundTask[]; total: number }> => {
+  }, signal?: AbortSignal): Promise<{ tasks: BackgroundTask[]; total: number }> => {
     const response = await api.get<BackgroundTaskListResponse>('/tasks', {
       params,
+      signal,
     })
     return {
       tasks: response.data.tasks.map(transformTask),
@@ -37,15 +38,16 @@ export const taskApi = {
     }
   },
 
-  getActiveTasks: async (): Promise<BackgroundTask[]> => {
+  getActiveTasks: async (signal?: AbortSignal): Promise<BackgroundTask[]> => {
     const response = await api.get<BackgroundTaskListResponse>('/tasks', {
       params: { active_only: true },
+      signal,
     })
     return response.data.tasks.map(transformTask)
   },
 
-  getTask: async (taskId: string): Promise<BackgroundTask> => {
-    const response = await api.get<BackgroundTaskResponse>(`/tasks/${taskId}`)
+  getTask: async (taskId: string, signal?: AbortSignal): Promise<BackgroundTask> => {
+    const response = await api.get<BackgroundTaskResponse>(`/tasks/${taskId}`, { signal })
     return transformTask(response.data)
   },
 

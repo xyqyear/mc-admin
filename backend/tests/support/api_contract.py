@@ -10,6 +10,7 @@ REPRESENTATIVE_PATHS = {
     "/auth/code/complete",
     "/user/me",
     "/tasks",
+    "/tasks/events",
     "/tasks/{task_id}",
     "/operations/changes",
     "/archive/upload/init",
@@ -54,6 +55,11 @@ def capture() -> dict[str, Any]:
         CSRF_EXEMPT_PATHS,
         CSRF_HEADER_NAME,
         SAFE_METHODS,
+    )
+    from app.background_tasks.api_models import (
+        TaskRemoveEvent,
+        TaskSnapshotEvent,
+        TaskUpsertEvent,
     )
     from app.background_tasks.types import (
         TaskProgress,
@@ -148,6 +154,9 @@ def capture() -> dict[str, Any]:
             "public_event": TypeAdapter(PublicEventFrame).json_schema(),
             "task_progress": TaskProgress.model_json_schema(),
             "task_result": TaskResult.model_json_schema(),
+            "task_event": TypeAdapter(
+                TaskSnapshotEvent | TaskUpsertEvent | TaskRemoveEvent
+            ).json_schema(),
             "task_status": [status.value for status in TaskStatus],
             "task_type": [kind.value for kind in TaskType],
         },

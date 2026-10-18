@@ -29,6 +29,31 @@ A captured `ServerRef` binds delayed work to a registered server generation and
 confined paths. Acquiring an operation lease revalidates that identity before
 execution. Detached work does not inherit its parent's operation ownership.
 
+## Live observation
+
+Authenticated `GET /api/tasks/events` streams the current task summaries as SSE.
+The first JSON data frame is `{"type":"snapshot","tasks":[...]}`. Later frames
+are `{"type":"upsert","task":...}` or `{"type":"remove","task_id":"..."}`.
+Summaries retain nullable fields and exclude detailed results. Progress and result
+changes notify observers; large results remain available from task detail reads.
+Terminal summaries follow the same cleanup and journal confirmation as HTTP
+details. A result-consuming observer must read confirmed terminal detail before
+completing its workflow.
+
+Each connection retains at most 256 dirty task IDs and coalesces intermediate
+updates. Overflow replaces pending updates with a current-state snapshot. The
+publisher never waits for the connection or queries the database. Idle streams
+send a comment keepalive every 15 seconds. Reconnecting starts with a fresh
+snapshot; there is no progress-history cursor. Disconnecting releases only the
+subscription, and runtime shutdown closes subscriptions after draining workers.
+Existing HTTP list, detail, cancellation and dismissal endpoints remain available.
+
+Workers can call synchronous `update_progress(task_id, TaskProgress(...))` for
+progress callbacks. It updates memory and notifies observers, returning false for
+unknown or settled tasks. Callbacks supply progress and message only; generators
+retain the existing durable result-before-publication path. Reporting 100 percent
+does not settle a task.
+
 ## Cancellation and completion
 
 Cancellation sets `cancel_requested` and directly cancels the owned worker, so a

@@ -12,7 +12,8 @@ the subtree root, never against original absolute paths.
 import asyncio
 import json
 import re
-from collections.abc import AsyncGenerator, Sequence
+from collections import deque
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from .models import (
     ResticSnapshotSummary,
     ResticSnapshotWithSummary,
 )
+
+type BackupProgressCallback = Callable[[float | None], Awaitable[None]]
 
 
 def _snapshot_from_json(data: dict) -> ResticSnapshot:
@@ -134,6 +137,7 @@ class ResticClient:
         excludes: Sequence[str] = (),
         *,
         tags: Sequence[str] = (),
+        on_progress: BackupProgressCallback | None = None,
     ) -> ResticSnapshotWithSummary:
         """Capture the given absolute paths into one snapshot.
 
@@ -152,19 +156,20 @@ class ResticClient:
         for tag in tags:
             args.extend(["--tag", tag])
         args.append("--json")
-        result = await self._run(*args)
-
         summary_data = None
-        snapshot_id = None
-        for line in reversed(result.strip().split("\n")):
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if data.get("message_type") == "summary":
-                summary_data = data
-                snapshot_id = data.get("snapshot_id")
-                break
+        if on_progress is None:
+            result = await self._run(*args)
+            for line in reversed(result.strip().split("\n")):
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(data, dict) and data.get("message_type") == "summary":
+                    summary_data = data
+                    break
+        else:
+            summary_data = await self._backup_with_progress(args, on_progress)
+        snapshot_id = summary_data.get("snapshot_id") if summary_data else None
 
         if not summary_data or not snapshot_id:
             raise RuntimeError(
@@ -194,6 +199,68 @@ class ResticClient:
             **snapshot.model_dump(),
             summary=summary,
         )
+
+    async def _backup_with_progress(
+        self, args: Sequence[str], on_progress: BackupProgressCallback
+    ) -> dict | None:
+        from ..operations.finalization import finalize
+        from ..operations.processes import spawn_process, stop_process
+
+        proc = await spawn_process(
+            *self._build_args(*args),
+            env={**self.env, "RESTIC_PROGRESS_FPS": "1"},
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stderr_chunks: deque[bytes] = deque(maxlen=64)
+
+        async def drain_stderr() -> None:
+            assert proc.stderr is not None
+            while chunk := await proc.stderr.read(4096):
+                stderr_chunks.append(chunk)
+
+        drain_task = asyncio.create_task(drain_stderr())
+        summary = None
+        try:
+            assert proc.stdout is not None
+            async for raw in proc.stdout:
+                try:
+                    data = json.loads(raw)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                if data.get("message_type") == "status":
+                    percent = data.get("percent_done")
+                    total = data.get("total_bytes")
+                    normalized = None
+                    if (
+                        type(total) is int
+                        and total > 0
+                        and isinstance(percent, (int, float))
+                        and not isinstance(percent, bool)
+                        and 0 <= percent <= 1
+                    ):
+                        normalized = float(percent)
+                    await on_progress(normalized)
+                elif data.get("message_type") == "summary":
+                    summary = data
+            await proc.wait()
+            await drain_task
+            if proc.returncode != 0:
+                stderr = b"".join(stderr_chunks).decode(errors="replace")
+                raise RuntimeError(
+                    f"restic backup failed (exit {proc.returncode}): {stderr}"
+                )
+        finally:
+            async def cleanup() -> None:
+                if not drain_task.done():
+                    drain_task.cancel()
+                await asyncio.gather(drain_task, return_exceptions=True)
+                await stop_process(proc, grace=5)
+
+            await finalize(cleanup())
+        return summary
 
     async def get_snapshot(self, snapshot_id: str) -> ResticSnapshot:
         result = await self._run("snapshots", snapshot_id, "--json")

@@ -1,27 +1,38 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { taskApi } from '@/features/tasks/api'
-import type { BackgroundTask } from '@/features/tasks/contracts'
+import type { BackgroundTask } from './contracts'
+import { taskQueryKeys } from './queryKeys'
+import { retainTaskStream, streamedTaskList, taskDetailQueryOptions, taskFeedState, type TaskFeedState, type TaskListParams } from './observation'
 
-export const taskQueryKeys = {
-  all: ['tasks'] as const,
-  active: () => [...taskQueryKeys.all, 'active'] as const,
-  detail: (taskId: string) => [...taskQueryKeys.all, taskId] as const,
+export { taskQueryKeys } from './queryKeys'
+
+function useTaskStream(enabled = true) {
+  const client = useQueryClient()
+  useQuery<TaskFeedState>({
+    queryKey: taskQueryKeys.events(),
+    queryFn: () => ({ connected: false }),
+    enabled: false,
+    initialData: { connected: false },
+    gcTime: Infinity,
+  })
+  useEffect(() => enabled ? retainTaskStream(client) : undefined, [client, enabled])
+  return client
 }
-export const useTasks = (params?: {
-  status?: BackgroundTask['status']
-  server_id?: string
-  limit?: number
-  offset?: number
-}) => {
-  const queryClient = useQueryClient()
+
+export const useTasks = (params?: TaskListParams) => {
+  const queryClient = useTaskStream()
   return useQuery({
-    queryKey: [...taskQueryKeys.all, params],
-    queryFn: () => taskApi.getTasks(params),
+    queryKey: taskQueryKeys.list(params),
+    queryFn: async ({ signal }) => {
+      const data = await taskApi.getTasks(params, signal)
+      signal.throwIfAborted()
+      return streamedTaskList(queryClient, params) ?? data
+    },
     staleTime: 1000,
     refetchOnMount: 'always',
-    // Tight 1s polling while any task is active, otherwise back off to 10s
-    // to avoid burning requests on an idle task center.
     refetchInterval: () => {
+      if (taskFeedState(queryClient)?.connected) return false
       const activeTasksData = queryClient.getQueryData<BackgroundTask[]>(
         taskQueryKeys.active()
       )
@@ -32,11 +43,17 @@ export const useTasks = (params?: {
 }
 
 export const useActiveTasks = () => {
+  const client = useTaskStream()
   return useQuery({
     queryKey: taskQueryKeys.active(),
-    queryFn: taskApi.getActiveTasks,
-    // Same back-off rationale as useTasks above.
+    queryFn: async ({ signal }) => {
+      const tasks = await taskApi.getActiveTasks(signal)
+      signal.throwIfAborted()
+      const feed = taskFeedState(client)
+      return feed?.connected && feed.tasks ? feed.tasks.filter(task => task.status === 'pending' || task.status === 'running') : tasks
+    },
     refetchInterval: (query) => {
+      if (taskFeedState(client)?.connected) return false
       const hasActive = query.state.data && query.state.data.length > 0
       return hasActive ? 1000 : 10000
     },
@@ -46,19 +63,6 @@ export const useActiveTasks = () => {
 }
 
 export const useTask = (taskId: string) => {
-  return useQuery({
-    queryKey: taskQueryKeys.detail(taskId),
-    queryFn: () => taskApi.getTask(taskId),
-    enabled: !!taskId,
-    // Stop polling once the task reaches a terminal state.
-    refetchInterval: (query) => {
-      const task = query.state.data
-      if (!task) return 2000
-      if (task.status === 'running' || task.status === 'pending') {
-        return 2000
-      }
-      return false
-    },
-    staleTime: 1000,
-  })
+  const client = useTaskStream(!!taskId)
+  return useQuery(taskDetailQueryOptions(client, taskId))
 }

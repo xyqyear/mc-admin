@@ -19,6 +19,7 @@ from ..files.resources import path_claims
 from ..minecraft import DockerMCManager
 from ..operation_admission import get_server_write_admission
 from ..operations.context import (
+    current_execution,
     record_phase,
     retain_recovery_reference,
 )
@@ -46,6 +47,7 @@ from .planner import TargetIgnoredError
 from .preparation import PreparedSnapshot, SnapshotPlanner
 from .preview_models import PreviewBinding
 from .previews import SnapshotPreviews, get_snapshot_previews
+from .restic import BackupProgressCallback
 from .restoration_models import RestorationStatus, RestorationType
 from .restoration_store import (
     RestorationStore,
@@ -282,7 +284,10 @@ class SnapshotCommands:
                 prepared.protection.select_targets(paths)
                 missing = [path for path in prepared.paths if path not in paths]
                 snapshot = await self.snapshots.create_snapshot(
-                    paths, protection=prepared.protection, tags=absence_tags(missing)
+                    paths,
+                    protection=prepared.protection,
+                    tags=absence_tags(missing),
+                    on_progress=self._backup_progress("正在读取文件并创建快照"),
                 )
                 note_warning = None
                 if note:
@@ -308,6 +313,22 @@ class SnapshotCommands:
             str(path)
             for path in prepared.protection.skipped_under(prepared.resolved.paths)
         ]
+
+    def _backup_progress(self, message: str) -> BackupProgressCallback | None:
+        execution = current_execution()
+        if execution is None or self._tasks.get_task(execution.operation_id) is None:
+            return None
+
+        async def report(percent: float | None) -> None:
+            self._tasks.update_progress(
+                execution.operation_id,
+                TaskProgress(
+                    progress=percent * 100 if percent is not None else None,
+                    message=message,
+                ),
+            )
+
+        return report
 
     async def restore(
         self,
@@ -640,7 +661,9 @@ class SnapshotCommands:
                 (present if exists else missing).append(path)
             if present:
                 safety = await self.snapshots.create_snapshot(
-                    present, protection=prepared.protection
+                    present,
+                    protection=prepared.protection,
+                    on_progress=self._backup_progress("正在创建恢复前的安全快照"),
                 )
             else:
                 async with restore_stage() as stage:
@@ -648,7 +671,9 @@ class SnapshotCommands:
                     async with aiofiles.open(marker, "w") as stream:
                         await stream.write(json.dumps([str(path) for path in missing]))
                     safety = await self.snapshots.create_snapshot(
-                        [marker], protection=prepared.protection
+                        [marker],
+                        protection=prepared.protection,
+                        on_progress=self._backup_progress("正在创建恢复前的安全快照"),
                     )
             with self.snapshots.repository_use.retain([safety.id]):
                 await retain_recovery_reference("safety_snapshot", safety.id)

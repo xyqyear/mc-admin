@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { Route, Routes } from 'react-router'
 import { queryKeys } from '@/shared/http/api'
 import { createTestClient, deferred } from '@/test/http'
@@ -21,7 +22,7 @@ vi.mock('@/shared/forms/rjsfTheme', () => ({ default: ({ formData, onChange }: {
 }) => <input aria-label="模板参数" value={formData.memory ?? ''} onChange={event => onChange({ formData: { memory: event.target.value } })} /> }))
 vi.mock('@/shared/editors/DockerComposeHelpDialog', () => ({ default: () => null }))
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>

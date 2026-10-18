@@ -26,6 +26,17 @@ The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owne
 
 ## Journey coverage
 
+`task-progress.spec.ts` observes the built application's authenticated task SSE
+headers and one shared connection. A verified owned Restic process remains paused
+while the snapshot dialog keeps its close guard and receives no periodic task
+detail reads. A controlled proxy then cuts SSE and this task's detail reads; the
+backend completes the actual backup independently, and reconnecting restores the
+authoritative result.
+Public snapshot listing and source bytes verify the effect separately from UI
+progress. The world recovery fault proxy cuts both SSE and detail observation
+while a paused restore worker is still running with durable safety evidence;
+the journey releases that writer, verifies completion, reconnects and rolls back.
+
 `navigation.spec.ts` verifies native middle/ControlOrMeta navigation from sidebar,
 styled fixed destinations and advanced-search links. Real new pages retain session
 access and reach encoded directory/filter URLs; the source keeps its route,

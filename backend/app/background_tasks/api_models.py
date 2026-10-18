@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel
 
@@ -44,3 +44,18 @@ class BackgroundTaskListResponse(BaseModel):
 
     tasks: list[BackgroundTaskSummaryResponse]
     total: int
+
+
+class TaskSnapshotEvent(BaseModel):
+    type: Literal["snapshot"] = "snapshot"
+    tasks: list[BackgroundTaskSummaryResponse]
+
+
+class TaskUpsertEvent(BaseModel):
+    type: Literal["upsert"] = "upsert"
+    task: BackgroundTaskSummaryResponse
+
+
+class TaskRemoveEvent(BaseModel):
+    type: Literal["remove"] = "remove"
+    task_id: str

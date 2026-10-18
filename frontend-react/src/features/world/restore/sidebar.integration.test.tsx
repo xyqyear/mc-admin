@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { useMapStatus } from '@/features/world/queries'
@@ -9,7 +10,7 @@ import type { MapStatus } from '@/features/world/map/contracts'
 import { WorldRestoreSidebar } from '@/features/world/restore/components/WorldRestoreSidebar'
 import WorldRestoreSelectionPanel from '@/features/world/restore/components/WorldRestoreSelectionPanel'
 
-const server = setupServer()
+const server = setupServer(taskEventsUnavailable)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 const active = http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: 0, restorations: [] }))
 const target = http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 }))
