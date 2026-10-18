@@ -1,5 +1,4 @@
-import React from 'react'
-import { useNavigate } from 'react-router'
+import { Link } from 'react-router'
 import { Badge } from '@/shared/ui/badge'
 
 interface ServerNameTagProps {
@@ -8,23 +7,16 @@ interface ServerNameTagProps {
 }
 
 export const ServerNameTag = ({ serverId, maxLength }: ServerNameTagProps) => {
-  const navigate = useNavigate()
-
   const needsTruncate = maxLength && serverId.length > maxLength
   const displayText = needsTruncate
     ? `${serverId.slice(0, maxLength)}...`
     : serverId
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    navigate(`/server/${serverId}`)
-  }
-
   return (
     <Badge
       variant="secondary"
       className="cursor-pointer hover:bg-secondary/80"
-      onClick={handleClick}
+      render={<Link to={`/server/${serverId}`} onClick={(event) => event.stopPropagation()} />}
       title={serverId}
     >
       {displayText}

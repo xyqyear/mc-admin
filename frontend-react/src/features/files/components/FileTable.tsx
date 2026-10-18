@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react'
+import { Link } from 'react-router'
 import {
   type ColumnDef,
   type SortingState,
@@ -46,6 +47,7 @@ interface FileTableProps {
   setCurrentPage: (page: number) => void
   setPageSize: (size: number) => void
   serverId: string
+  getPathHref: (path: string) => string
   onFileEdit: (file: FileItem) => void
   onFileDelete: (file: FileItem) => void
   onFileDownload: (file: FileItem) => void
@@ -66,6 +68,7 @@ const FileTable: React.FC<FileTableProps> = ({
   setCurrentPage,
   setPageSize,
   serverId,
+  getPathHref,
   onFileEdit,
   onFileDelete,
   onFileDownload,
@@ -121,14 +124,20 @@ const FileTable: React.FC<FileTableProps> = ({
             <Tooltip>
               <TooltipTrigger
                 className="text-left"
-                render={
+                render={isDirectory ? (
+                  <Link to={getPathHref(file.path)} onClick={(event) => {
+                    if (event.defaultPrevented || event.button !== 0
+                      || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+                    event.preventDefault()
+                    onFolderOpen(file)
+                  }} />
+                ) : (
                   <span
                     onClick={() => {
-                      if (isDirectory) onFolderOpen(file)
-                      else if (isEditable) onFileEdit(file)
+                      if (isEditable) onFileEdit(file)
                     }}
                   />
-                }
+                )}
               >
                 <HighlightedFileName
                   name={file.name}
@@ -251,7 +260,7 @@ const FileTable: React.FC<FileTableProps> = ({
         )
       },
     },
-  ], [serverId, onFolderOpen, onFileEdit, onFileDownload, directoryDownloadReason, onFileCompress, onFileRename, onFileDelete, createArchiveMutation, confirm])
+  ], [serverId, getPathHref, onFolderOpen, onFileEdit, onFileDownload, directoryDownloadReason, onFileCompress, onFileRename, onFileDelete, createArchiveMutation, confirm])
 
   const data = fileData?.items || []
 

@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router'
 import {
   FileArchive,
   File,
@@ -15,6 +14,7 @@ import {
 } from '@tanstack/react-table'
 
 import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 import {
   Dialog,
@@ -50,7 +50,6 @@ const ArchiveSelectionDialog: React.FC<ArchiveSelectionDialogProps> = ({
   selectButtonText = '选择文件',
   selectButtonType = 'primary',
 }) => {
-  const navigate = useNavigate()
   const { data: fileData, isLoading } = useArchiveFileList('/', open)
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
@@ -77,11 +76,6 @@ const ArchiveSelectionDialog: React.FC<ArchiveSelectionDialogProps> = ({
   const handleCancel = () => {
     setSelectedFile(null)
     onCancel()
-  }
-
-  const handleGoToArchives = () => {
-    navigate('/archives')
-    handleCancel()
   }
 
   const columns: ColumnDef<ArchiveFileItem, any>[] = [
@@ -188,10 +182,12 @@ const ArchiveSelectionDialog: React.FC<ArchiveSelectionDialogProps> = ({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleGoToArchives}>
+          <ButtonLink variant="outline" to="/archives" onClick={(event) => {
+            if (!event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) handleCancel()
+          }}>
             <Folder className="mr-2 h-4 w-4" />
             压缩包管理
-          </Button>
+          </ButtonLink>
           <Button variant="outline" onClick={handleCancel}>
             取消
           </Button>

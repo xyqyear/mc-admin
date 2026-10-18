@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useParams } from 'react-router'
 
 import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 
 import LoadingSpinner from '@/shared/layout/LoadingSpinner'
@@ -14,8 +15,6 @@ import { composeOptions } from '@/features/configuration/queries'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 
 const ConfigurationEditor: React.FC<{ id: string | undefined }> = ({ id }) => {
-  const navigate = useNavigate()
-
   const { data: templatePreview, isLoading: previewLoading, error: previewError } = useServerTemplatePreview(id || null)
   const remoteMode = templatePreview?.is_template_based
   const [editorMode, setEditorMode] = useState<boolean | undefined>(undefined)
@@ -46,7 +45,7 @@ const ConfigurationEditor: React.FC<{ id: string | undefined }> = ({ id }) => {
           <AlertTitle>参数错误</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             缺少服务器ID参数
-            <Button variant="outline" size="sm" onClick={() => navigate('/overview')}>返回概览</Button>
+            <ButtonLink variant="outline" size="sm" to="/overview">返回概览</ButtonLink>
           </AlertDescription>
         </Alert>
       </div>
@@ -65,7 +64,7 @@ const ConfigurationEditor: React.FC<{ id: string | undefined }> = ({ id }) => {
           <AlertTitle>加载失败</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
             {errorMessage}
-            <Button variant="outline" size="sm" onClick={() => navigate('/overview')}>返回概览</Button>
+            <ButtonLink variant="outline" size="sm" to="/overview">返回概览</ButtonLink>
           </AlertDescription>
         </Alert>
       </div>

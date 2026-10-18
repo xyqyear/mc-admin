@@ -1,14 +1,11 @@
 import React from 'react'
 import { AlertTriangle, ShieldAlert } from 'lucide-react'
-import { useNavigate } from 'react-router'
-
-import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import { useSelfCheckHealth } from '@/features/health/useSelfCheckHealth'
 import { cn } from '@/shared/lib/utils'
 
 export const SelfCheckGlobalIndicator: React.FC = () => {
-  const navigate = useNavigate()
   const { status, issueCount, criticalCount, warningCount, isLoading } =
     useSelfCheckHealth()
 
@@ -47,14 +44,14 @@ export const SelfCheckGlobalIndicator: React.FC = () => {
           </StatusBadge>
         )}
       </div>
-      <Button
+      <ButtonLink
         variant="outline"
         size="sm"
         className="shrink-0 bg-background/80"
-        onClick={() => navigate('/')}
+        to="/"
       >
         查看
-      </Button>
+      </ButtonLink>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router'
+import { Link, useNavigate, useLocation } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ShieldCheck,
@@ -104,7 +104,6 @@ const AppSidebar: React.FC = () => {
   }
 
   const isActive = (path: string) => location.pathname === path
-  const navigateTo = (path: string) => navigate(path)
 
   return (
     <Sidebar collapsible="icon">
@@ -115,7 +114,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/')}
-                  onClick={() => navigateTo('/')}
+                  render={<Link to="/" />}
                   tooltip="系统自检"
                 >
                   <ShieldCheck />
@@ -144,7 +143,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/overview')}
-                  onClick={() => navigateTo('/overview')}
+                  render={<Link to="/overview" />}
                   tooltip="服务器总览"
                 >
                   <LayoutDashboard />
@@ -180,6 +179,7 @@ const AppSidebar: React.FC = () => {
                         >
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton
+                              render={<button type="button" />}
                               onClick={() => toggleKey(server.id)}
                               className="cursor-pointer"
                             >
@@ -197,7 +197,7 @@ const AppSidebar: React.FC = () => {
                                 <SidebarMenuSubItem>
                                   <SidebarMenuSubButton
                                     isActive={isActive(`/server/${server.id}`)}
-                                    onClick={() => navigateTo(`/server/${server.id}`)}
+                                    render={<Link to={`/server/${server.id}`} />}
                                     className="cursor-pointer"
                                   >
                                     <LayoutDashboard />
@@ -207,7 +207,7 @@ const AppSidebar: React.FC = () => {
                                 <SidebarMenuSubItem>
                                   <SidebarMenuSubButton
                                     isActive={isActive(`/server/${server.id}/compose`)}
-                                    onClick={() => navigateTo(`/server/${server.id}/compose`)}
+                                    render={<Link to={`/server/${server.id}/compose`} />}
                                     className="cursor-pointer"
                                   >
                                     <Settings />
@@ -217,7 +217,7 @@ const AppSidebar: React.FC = () => {
                                 <SidebarMenuSubItem>
                                   <SidebarMenuSubButton
                                     isActive={isActive(`/server/${server.id}/files`)}
-                                    onClick={() => navigateTo(`/server/${server.id}/files`)}
+                                    render={<Link to={`/server/${server.id}/files`} />}
                                     className="cursor-pointer"
                                   >
                                     <Folder />
@@ -227,7 +227,7 @@ const AppSidebar: React.FC = () => {
                                 <SidebarMenuSubItem>
                                   <SidebarMenuSubButton
                                     isActive={isActive(`/server/${server.id}/console`)}
-                                    onClick={() => navigateTo(`/server/${server.id}/console`)}
+                                    render={<Link to={`/server/${server.id}/console`} />}
                                     className="cursor-pointer"
                                   >
                                     <Code />
@@ -237,7 +237,7 @@ const AppSidebar: React.FC = () => {
                                 <SidebarMenuSubItem>
                                   <SidebarMenuSubButton
                                     isActive={isActive(`/server/${server.id}/world-restore`)}
-                                    onClick={() => navigateTo(`/server/${server.id}/world-restore`)}
+                                    render={<Link to={`/server/${server.id}/world-restore`} />}
                                     className="cursor-pointer"
                                   >
                                     <MapIcon />
@@ -247,7 +247,7 @@ const AppSidebar: React.FC = () => {
                                 <SidebarMenuSubItem>
                                   <SidebarMenuSubButton
                                     isActive={isActive(`/server/${server.id}/chunk-prune`)}
-                                    onClick={() => navigateTo(`/server/${server.id}/chunk-prune`)}
+                                    render={<Link to={`/server/${server.id}/chunk-prune`} />}
                                     className="cursor-pointer"
                                   >
                                     <Eraser />
@@ -262,7 +262,7 @@ const AppSidebar: React.FC = () => {
                       <SidebarMenuSubItem>
                         <SidebarMenuSubButton
                           isActive={isActive('/server/new')}
-                          onClick={() => navigateTo('/server/new')}
+                          render={<Link to="/server/new" />}
                           className="cursor-pointer"
                         >
                           <Plus />
@@ -277,7 +277,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/templates')}
-                  onClick={() => navigateTo('/templates')}
+                  render={<Link to="/templates" />}
                   tooltip="服务器模板"
                 >
                   <FileText />
@@ -309,7 +309,7 @@ const AppSidebar: React.FC = () => {
                         <SidebarMenuSubItem>
                           <SidebarMenuSubButton
                             isActive={isActive('/admin/users')}
-                            onClick={() => navigateTo('/admin/users')}
+                            render={<Link to="/admin/users" />}
                             className="cursor-pointer"
                           >
                             <UserCog />
@@ -325,7 +325,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/players')}
-                  onClick={() => navigateTo('/players')}
+                  render={<Link to="/players" />}
                   tooltip="玩家管理"
                 >
                   <Users />
@@ -336,7 +336,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/snapshots')}
-                  onClick={() => navigateTo('/snapshots')}
+                  render={<Link to="/snapshots" />}
                   tooltip="快照管理"
                 >
                   <History />
@@ -347,7 +347,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/archives')}
-                  onClick={() => navigateTo('/archives')}
+                  render={<Link to="/archives" />}
                   tooltip="压缩包管理"
                 >
                   <FileArchive />
@@ -358,7 +358,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/config')}
-                  onClick={() => navigateTo('/config')}
+                  render={<Link to="/config" />}
                   tooltip="动态配置"
                 >
                   <Settings />
@@ -369,7 +369,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/dns')}
-                  onClick={() => navigateTo('/dns')}
+                  render={<Link to="/dns" />}
                   tooltip="DNS管理"
                 >
                   <Globe />
@@ -380,7 +380,7 @@ const AppSidebar: React.FC = () => {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isActive('/cron')}
-                  onClick={() => navigateTo('/cron')}
+                  render={<Link to="/cron" />}
                   tooltip="任务管理"
                 >
                   <Calendar />

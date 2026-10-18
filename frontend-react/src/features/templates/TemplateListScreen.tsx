@@ -1,5 +1,4 @@
 import React, { useState } from "react"
-import { useNavigate } from 'react-router'
 import { toast } from "sonner"
 import {
   FileText,
@@ -19,6 +18,7 @@ import {
 } from "@tanstack/react-table"
 
 import { Button } from "@/shared/ui/button"
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Card, CardContent } from "@/shared/ui/card"
 import {
   Tooltip,
@@ -37,7 +37,6 @@ import { useDeleteTemplate } from '@/features/templates/commands';
 import type { TemplateListItem } from '@/features/templates/contracts';
 
 const TemplateList: React.FC = () => {
-  const navigate = useNavigate()
   const { confirm, confirmDialog } = useConfirm()
 
   const {
@@ -60,10 +59,6 @@ const TemplateList: React.FC = () => {
 
   const [sorting, setSorting] = useState<SortingState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
-
-  const handleCreate = () => navigate("/templates/new")
-  const handleCopyCreate = (templateId: number) => navigate(`/templates/new?copyFrom=${templateId}`)
-  const handleEdit = (templateId: number) => navigate(`/templates/${templateId}/edit`)
 
   const handleDelete = (template: TemplateListItem) => {
     confirm({
@@ -117,10 +112,11 @@ const TemplateList: React.FC = () => {
             <TooltipTrigger
               className="inline-flex"
               render={
-                <Button
+                <ButtonLink
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() => handleEdit(row.original.id)}
+                  to={`/templates/${row.original.id}/edit`}
+                  aria-label="编辑"
                 />
               }
             >
@@ -132,10 +128,11 @@ const TemplateList: React.FC = () => {
             <TooltipTrigger
               className="inline-flex"
               render={
-                <Button
+                <ButtonLink
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() => handleCopyCreate(row.original.id)}
+                  to={`/templates/new?copyFrom=${row.original.id}`}
+                  aria-label="复制创建"
                 />
               }
             >
@@ -183,14 +180,14 @@ const TemplateList: React.FC = () => {
       <Card>
         <CardContent>
           <div className="flex items-center gap-2 mb-4">
-            <Button onClick={handleCreate}>
+            <ButtonLink to="/templates/new">
               <Plus className="mr-1 h-4 w-4" />
               新建模板
-            </Button>
-            <Button variant="outline" onClick={() => navigate("/templates/default-variables")}>
+            </ButtonLink>
+            <ButtonLink variant="outline" to="/templates/default-variables">
               <Settings className="mr-1 h-4 w-4" />
               默认变量配置
-            </Button>
+            </ButtonLink>
             <RefreshButton onClick={handleRefresh} isRefreshing={isFetching} />
           </div>
 
@@ -207,7 +204,7 @@ const TemplateList: React.FC = () => {
               emptyMessage={
                 <EmptyState
                   title="暂无模板"
-                  action={<Button onClick={handleCreate}>创建第一个模板</Button>}
+                  action={<ButtonLink to="/templates/new">创建第一个模板</ButtonLink>}
                 />
               }
             />

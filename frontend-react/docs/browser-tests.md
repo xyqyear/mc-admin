@@ -26,6 +26,17 @@ The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owne
 
 ## Journey coverage
 
+`navigation.spec.ts` verifies native middle/ControlOrMeta navigation from sidebar,
+styled fixed destinations and advanced-search links. Real new pages retain session
+access and reach encoded directory/filter URLs; the source keeps its route,
+sidebar expansion, search draft and checked paths. Explicit new-tab links isolate
+their opener. Ordinary result navigation still closes the dialog and creates one
+history entry. Search-file bytes and owned popup/file cleanup are independently
+checked. Breadcrumb, parent-directory and directory-name links also retain source
+selections during new-tab navigation and clear them during ordinary navigation.
+File-tree geometry and Monaco journeys retain their existing action
+assertions while querying navigation entries as links.
+
 Browser journeys cover file read/save failure with exact-byte retry and deliberately empty saves; real Compose version conflicts and background completion after navigation; session retry/logout and actual console commands after reconnection; disconnected world-task observation with retained blocking, successful backend completion and a later edit that rollback must overwrite from the safety snapshot; and server-enforced prune expiry with unchanged region hashes. Transport faults occur in Playwright routing or an owned HTTP proxy. Version changes, task states, restore history and expiry remain real backend decisions. Each case sets its required lifecycle state and restores it in fixture teardown; file/configuration edits have explicit cleanup. Failure does not skip later cases. `BROWSER_REVERSE_ORDER=1` reverses journey registration to verify independence in a second fresh deployment; local runs retain their explicit related-case selection.
 
 ### Editor behavior

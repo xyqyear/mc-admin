@@ -10,10 +10,12 @@ import {
 import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
 import { RefreshButton } from '@/shared/components/RefreshButton'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import FileSnapshotActions from '@/features/files/components/FileSnapshotActions'
 
 interface FileToolbarProps {
   currentPath: string
+  parentHref: string
   serverId: string
   isLoadingFiles: boolean
   createArchiveMutation: { isPending: boolean }
@@ -30,6 +32,7 @@ interface FileToolbarProps {
 
 const FileToolbar: React.FC<FileToolbarProps> = ({
   currentPath,
+  parentHref,
   serverId,
   isLoadingFiles,
   createArchiveMutation,
@@ -46,10 +49,15 @@ const FileToolbar: React.FC<FileToolbarProps> = ({
   return (
     <>
       {currentPath !== '/' && (
-        <Button variant="outline" onClick={onNavigateToParent}>
+        <ButtonLink variant="outline" to={parentHref} onClick={(event) => {
+          if (event.defaultPrevented || event.button !== 0
+            || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+          event.preventDefault()
+          onNavigateToParent()
+        }}>
           <ArrowUp className="mr-2 h-4 w-4" />
           返回上级
-        </Button>
+        </ButtonLink>
       )}
 
       {currentPath === '/' && (

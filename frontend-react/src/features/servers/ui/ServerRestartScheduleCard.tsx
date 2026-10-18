@@ -1,9 +1,9 @@
 import { CronRegistrationStatus } from '@/features/schedules/ui/CronRegistrationStatus'
 import React from 'react'
-import { useNavigate } from 'react-router'
 import { Clock, Settings } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 import { Spinner } from '@/shared/ui/spinner'
 import CronExpressionDisplay from '@/features/schedules/ui/CronExpressionDisplay'
@@ -27,13 +27,8 @@ export const ServerRestartScheduleCard: React.FC<ServerRestartScheduleCardProps>
   error,
   className
 }) => {
-  const navigate = useNavigate()
   const createSchedule = useCreateOrUpdateRestartSchedule()
   const { confirm, confirmDialog } = useConfirm()
-
-  const handleNavigateToCronManagement = () => {
-    navigate(`/cron?job=${encodeURIComponent(restartSchedule!.cronjob_id)}`)
-  }
 
   if (isLoading) {
     return (
@@ -98,15 +93,15 @@ export const ServerRestartScheduleCard: React.FC<ServerRestartScheduleCardProps>
             重启计划
           </div>
         </CardTitle>
-        <Button
+        <ButtonLink
           size="sm"
           variant="outline"
-          onClick={handleNavigateToCronManagement}
+          to={`/cron?job=${encodeURIComponent(restartSchedule.cronjob_id)}`}
           title="定时任务管理"
         >
           <Settings className="mr-1 h-3.5 w-3.5" />
           管理
-        </Button>
+        </ButtonLink>
       </CardHeader>
       <CardContent>
         <div className="space-y-3 text-sm">

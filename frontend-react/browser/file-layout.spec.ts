@@ -136,7 +136,7 @@ test('file selection and delayed ignore feedback preserve table rows and batch t
     expect(checks.posts()).toBe(0)
     expect((await api.file(root + '/allowed.txt')).content).toBe('allowed layout bytes\n')
     expect((await api.file(root + '/ignored/keep.txt')).content).toBe('protected layout bytes\n')
-    await page.getByRole('button', { name: '系统自检', exact: true }).click()
+    await page.getByRole('link', { name: '系统自检', exact: true }).click()
     await expect(page).toHaveURL('/')
     await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), root + '/allowed.txt'] } })
     await page.goBack()

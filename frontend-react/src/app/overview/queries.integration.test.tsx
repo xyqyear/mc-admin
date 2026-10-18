@@ -48,7 +48,7 @@ it('restores lifecycle blocking and explains maintenance in the overview row', a
   for (const action of ['启动服务器', '停止服务器', '重启服务器', '下线服务器', '删除服务器']) {
     expect((screen.getByTitle(action) as HTMLButtonElement).disabled).toBe(true)
   }
-  expect((screen.getByTitle('服务器详情') as HTMLButtonElement).disabled).toBe(false)
+  expect(screen.getByRole('link', { name: '服务器详情' }).getAttribute('href')).toBe('/server/alpha')
   fireEvent.click(screen.getByRole('button', { name: '查看任务' }))
   expect(useTaskCenterStore.getState().isOpen).toBe(true)
   useTaskCenterStore.getState().setOpen(false)

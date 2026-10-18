@@ -20,6 +20,7 @@ Per-server file browser, editor, search, upload, and ownership-repair UI. Reache
 ```
 
 URL is the source of truth: `?path=<dir>&q=<query>&regex=<bool>`. Reload preserves location and search state.
+Breadcrumb ancestors, the parent-directory control and table directory names are links: ordinary navigation clears filters and selection, while native new-tab navigation leaves the source state intact. Editable file names retain their editor action.
 
 Upload, conflict and deep-search trees share the feature's `pathTree.ts` pure
 builder and key traversal. Callers supply their path segments: uploads and
@@ -31,8 +32,16 @@ directories. Search results and changed highlight patterns expand the result
 tree automatically. Deep-search navigation combines the selected path with the
 captured search root; file-name clicks use literal filenames, and virtual directory
 name clicks preserve the search expression. Checkboxes select actual matches;
-group checkboxes aggregate matching descendants without navigating. File icons require only name and
-type, so tree rows do not invent timestamps or other file metadata.
+group checkboxes aggregate matching descendants without navigating. Result names
+are links, with a separate new-tab icon beside each name. Ordinary clicks retain
+navigation, directory expansion and dialog closure; middle-click, modified-click
+and explicit new-tab links preserve the source dialog, checked paths, draft and
+expanded nodes. Names, expanders, checkboxes and new-tab icons are separate
+controls. Links use the same captured destination as ordinary navigation:
+editable and binary files both open their parent directory with a literal name
+filter, without automatically opening an editor or starting a download. File
+icons require only name and type, so tree rows do not invent timestamps or other
+file metadata.
 
 Game-port self-check remediation links to `/server/<encoded-server-id>/files?path=%2F&q=server.properties&regex=false`. `/` is the server data root. The search input and results follow URL changes, including browser back/forward; literal search keeps the dot from acting as a regex wildcard. Users open the file through the normal editor, which retains its Compose-override reminder. The route uses the existing session guard and server/file error handling.
 
@@ -101,7 +110,7 @@ The user can navigate away; the task center continues to display progress and th
 
 ## Feature controllers and completion
 
-`features/files/contracts.ts`, `api.ts`, `queries.ts` and `commands.ts` own the file protocol and server-state behavior. `useFileNavigation` preserves URL path/query/regex navigation and browser history. `useFileEditor` owns draft lifetime; `useFileBrowser` coordinates CRUD, confirmations, directory drag/drop and task presentation. The route and progress dialogs do not own independent task completion.
+`features/files/contracts.ts`, `api.ts`, `queries.ts` and `commands.ts` own the file protocol and server-state behavior. `navigation.ts` builds shared file/search destinations and encoded URLs; `useFileNavigation` applies them while preserving path/query/regex navigation and browser history. `useFileEditor` owns draft lifetime; `useFileBrowser` coordinates CRUD, confirmations, directory drag/drop and task presentation. The route and progress dialogs do not own independent task completion.
 
 `operationResources.ts` registers file/archive terminal effects with the app observer; `features/backups/operationResources.ts` owns snapshot/history refresh. Closing populate progress or leaving a compression/ownership view never cancels its backend task. File recovery uses an independent task through the common backups controller and retains its confirmed scope until a terminal result. Browser-owned upload cancellation preserves earlier writes and refreshes affected directories even after unmount.
 

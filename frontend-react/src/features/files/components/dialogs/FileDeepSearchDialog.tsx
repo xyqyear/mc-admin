@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Search, Loader2 } from 'lucide-react'
+import { useLocation } from 'react-router'
 
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -28,6 +29,7 @@ import { useSearchFiles } from '@/features/files/commands';
 import FileSearchResultTree from '@/features/files/components/FileSearchResultTree'
 import { FileBatchActions } from '@/features/files/components/FileBatchActions'
 import { includesFilePath, searchResultPath } from '@/features/files/selection'
+import { fileNavigationHref, searchResultDestination } from '@/features/files/navigation'
 
 const sizeUnits = [
   { value: '1', label: 'B' },
@@ -52,6 +54,7 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
   currentPath,
   onNavigate
 }) => {
+  const location = useLocation()
   const [regex, setRegex] = useState('')
   const [ignoreCase, setIgnoreCase] = useState(true)
   const [searchSubfolders, setSearchSubfolders] = useState(true)
@@ -81,45 +84,7 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
     if (selectedKeys.length > 0) {
       const selectedKey = selectedKeys[0] as string
       const selectedItem = searchResults.find(result => result.path === selectedKey)
-
-      if (selectedItem) {
-        const isFile = selectedItem.type === 'file'
-
-        if (isFile) {
-          const filePath = selectedItem.path
-          const fileName = selectedItem.name
-          const lastSlashIndex = filePath.lastIndexOf('/')
-          const fileDirPath = lastSlashIndex > 0 ? filePath.substring(0, lastSlashIndex) : '/'
-
-          let absoluteDirPath: string
-          if (searchPath === '/') {
-            absoluteDirPath = fileDirPath
-          } else if (fileDirPath === '/') {
-            absoluteDirPath = searchPath
-          } else {
-            absoluteDirPath = searchPath + (fileDirPath.startsWith('/') ? fileDirPath : '/' + fileDirPath)
-          }
-
-          onNavigate(absoluteDirPath, fileName)
-        } else {
-          let absoluteFolderPath: string
-          if (searchPath === '/') {
-            absoluteFolderPath = selectedItem.path
-          } else {
-            absoluteFolderPath = searchPath + (selectedItem.path.startsWith('/') ? selectedItem.path : '/' + selectedItem.path)
-          }
-          onNavigate(absoluteFolderPath)
-        }
-      } else {
-        let absoluteFolderPath: string
-        if (searchPath === '/') {
-          absoluteFolderPath = selectedKey
-        } else {
-          absoluteFolderPath = searchPath + (selectedKey.startsWith('/') ? selectedKey : '/' + selectedKey)
-        }
-        onNavigate(absoluteFolderPath, currentRegex, true)
-      }
-
+      onNavigate(...searchResultDestination(searchPath, selectedKey, currentRegex, selectedItem))
       handleReset()
     }
   }
@@ -358,6 +323,9 @@ const FileDeepSearchDialog: React.FC<FileDeepSearchDialogProps> = ({
                     searchResults={searchResults}
                     currentRegex={currentRegex}
                     onSelect={handleTreeSelect}
+                    getHref={(key, item) => fileNavigationHref(
+                      location, ...searchResultDestination(searchPath, key, currentRegex, item),
+                    )}
                     selectedPaths={selectedPaths}
                     onSelectionChange={setSelectedPaths}
                   />

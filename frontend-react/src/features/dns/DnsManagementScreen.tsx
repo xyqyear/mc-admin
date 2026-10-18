@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/shared/http/api'
 import {
@@ -21,6 +20,7 @@ import {
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Badge } from '@/shared/ui/badge'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 import { Spinner } from '@/shared/ui/spinner'
@@ -107,8 +107,6 @@ const routerRoutesColumns: ColumnDef<RouterRouteRow, any>[] = [
 ]
 
 const DnsManagement: React.FC = () => {
-  const navigate = useNavigate()
-
   const { data: dnsEnabled, isLoading: enabledLoading } = useDNSEnabled()
   const isDNSEnabled = dnsEnabled?.enabled ?? false
   const { data: dnsStatus, isLoading: statusLoading, error: statusError } = useDNSStatus(isDNSEnabled)
@@ -131,10 +129,6 @@ const DnsManagement: React.FC = () => {
       return
     }
     updateDNSMutation.mutate()
-  }
-
-  const handleGoToSettings = () => {
-    navigate('/config?module=dns')
   }
 
   const routerRoutesData = useMemo(() => {
@@ -421,14 +415,14 @@ const DnsManagement: React.FC = () => {
               }
               更新记录
             </Button>
-            <Button
+            <ButtonLink
               variant="outline"
-              onClick={handleGoToSettings}
+              to="/config?module=dns"
               title="跳转到DNS配置页面"
             >
               <Settings className="mr-2 h-4 w-4" />
               转到设置
-            </Button>
+            </ButtonLink>
           </>
         }
       />
@@ -465,9 +459,9 @@ const DnsManagement: React.FC = () => {
                   <AlertTitle>DNS管理未启用</AlertTitle>
                   <AlertDescription className="flex items-center justify-between">
                     <span>请前往设置页面启用DNS管理功能</span>
-                    <Button size="sm" onClick={handleGoToSettings}>
+                    <ButtonLink size="sm" to="/config?module=dns">
                       前往设置
-                    </Button>
+                    </ButtonLink>
                   </AlertDescription>
                 </Alert>
               ) : recordsError ? (
@@ -503,9 +497,9 @@ const DnsManagement: React.FC = () => {
                   <AlertTitle>DNS管理未启用</AlertTitle>
                   <AlertDescription className="flex items-center justify-between">
                     <span>请前往设置页面启用DNS管理功能</span>
-                    <Button size="sm" onClick={handleGoToSettings}>
+                    <ButtonLink size="sm" to="/config?module=dns">
                       前往设置
-                    </Button>
+                    </ButtonLink>
                   </AlertDescription>
                 </Alert>
               ) : routesError ? (

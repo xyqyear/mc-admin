@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
+import { fileNavigationHref } from './navigation'
 
 export function useFileNavigation(onNavigate: () => void) {
   const navigate = useNavigate()
@@ -12,17 +13,13 @@ export function useFileNavigation(onNavigate: () => void) {
   useEffect(() => setInputSearchTerm(searchQuery), [searchQuery])
 
   const write = (path: string, query: string, regex: boolean, replace: boolean) => {
-    const next = new URLSearchParams(location.search)
-    if (path === '/') next.delete('path'); else next.set('path', path)
-    if (query.trim()) next.set('q', query); else next.delete('q')
-    if (regex) next.set('regex', 'true'); else next.delete('regex')
-    const search = next.toString()
-    navigate(`${location.pathname}${search ? `?${search}` : ''}`, { replace })
+    navigate(fileNavigationHref(location, path, query, regex), { replace })
   }
   const updatePath = (path: string) => { write(path, '', false, false); onNavigate() }
   const updateSearch = (query: string, regex: boolean) => write(currentPath, query, regex, true)
   return {
     currentPath, searchQuery, useRegex, inputSearchTerm, updatePath,
+    getPathHref: (path: string) => fileNavigationHref(location, path),
     handleSearchChange: setInputSearchTerm,
     handleSearch: updateSearch,
     handleRegexChange: (regex: boolean) => updateSearch(inputSearchTerm, regex),

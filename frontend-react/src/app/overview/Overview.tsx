@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router'
 import {
   Play,
   Square,
@@ -14,6 +13,7 @@ import {
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 import { Progress } from '@/shared/ui/progress'
 import { Spinner } from '@/shared/ui/spinner'
@@ -48,8 +48,6 @@ const gradientIndicatorStyle = (percent: number): React.CSSProperties => {
 }
 
 const Overview: React.FC = () => {
-  const navigate = useNavigate()
-
   const {
     enrichedServers,
     systemInfo,
@@ -305,10 +303,10 @@ const Overview: React.FC = () => {
                   与文件系统同步
                 </Button>
               )}
-              <Button onClick={() => navigate('/server/new')}>
+              <ButtonLink to="/server/new">
                 <Plus className="mr-1 h-4 w-4" />
                 创建服务器
-              </Button>
+              </ButtonLink>
             </div>
           </div>
         </CardHeader>
@@ -409,24 +407,24 @@ const Overview: React.FC = () => {
                           >
                             {serverOperationMutation.isPending ? <Spinner className="size-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                           </Button>
-                          <Button
+                          <ButtonLink
                             variant="default"
                             size="icon"
                             className="h-7 w-7"
                             title="服务器详情"
-                            onClick={() => navigate(`/server/${record.id}`)}
+                            to={`/server/${record.id}`}
                           >
                             <LayoutDashboard className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
+                          </ButtonLink>
+                          <ButtonLink
                             variant="outline"
                             size="icon"
                             className="h-7 w-7"
                             title="控制台"
-                            onClick={() => navigate(`/server/${record.id}/console`)}
+                            to={`/server/${record.id}/console`}
                           >
                             <Terminal className="h-3.5 w-3.5" />
-                          </Button>
+                          </ButtonLink>
                           <Button
                             variant="outline"
                             size="icon"

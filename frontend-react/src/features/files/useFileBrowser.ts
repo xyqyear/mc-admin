@@ -286,10 +286,8 @@ export function useFileBrowser(id: string | undefined) {
     }
   }
 
-  const handleNavigateToParent = () => {
-    const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
-    handleNavigateToPath(parentPath)
-  }
+  const parentPath = currentPath.split('/').slice(0, -1).join('/') || '/'
+  const handleNavigateToParent = () => handleNavigateToPath(parentPath)
 
   const handleCompressServer = () => handleCompress(undefined, 'server')
   const handleReplaceServerFiles = () => setIsArchiveDialogOpen(true)
@@ -324,6 +322,8 @@ export function useFileBrowser(id: string | undefined) {
     hasServerInfo,
     serverInfo,
     currentPath,
+    parentPath,
+    getPathHref: navigation.getPathHref,
     selectedFiles,
     isFetchingFiles,
     createArchiveMutation,

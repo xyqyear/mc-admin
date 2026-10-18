@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router'
 import { Eye } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Spinner } from '@/shared/ui/spinner'
 import {
@@ -40,8 +40,6 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
   templateFormData,
   setTemplateFormData,
 }) => {
-  const navigate = useNavigate()
-
   const [previewYaml, setPreviewYaml] = useState<string | null>(null)
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
 
@@ -92,9 +90,9 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
               ) : templates.length === 0 ? (
                 <div className="text-center py-4 space-y-2">
                   <p className="text-sm text-muted-foreground">暂无模板</p>
-                  <Button variant="link" size="sm" onClick={() => navigate('/templates/new')}>
+                  <ButtonLink variant="link" size="sm" to="/templates/new">
                     创建模板
-                  </Button>
+                  </ButtonLink>
                 </div>
               ) : (
                 templates.map((t) => (

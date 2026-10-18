@@ -1,8 +1,8 @@
 import React from 'react'
 import { GitCompareArrows, Loader2 } from 'lucide-react'
-import { useNavigate } from 'react-router'
 
 import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import {
@@ -60,8 +60,6 @@ const FileEditDialog: React.FC<FileEditDialogProps> = ({
   serverId,
   getCurrentFileLanguageConfig
 }) => {
-  const navigate = useNavigate()
-
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent className="sm:max-w-200">
@@ -94,14 +92,14 @@ const FileEditDialog: React.FC<FileEditDialogProps> = ({
                       <AlertDescription>
                         <div className="space-y-2">
                           <p>{composeWarning.message}</p>
-                          <Button
+                          <ButtonLink
                             variant="link"
                             size="sm"
                             className="p-0 h-auto"
-                            onClick={() => navigate(`/server/${serverId}/compose`)}
+                            to={`/server/${serverId}/compose`}
                           >
                             {composeWarning.linkText}
-                          </Button>
+                          </ButtonLink>
                         </div>
                       </AlertDescription>
                     </Alert>

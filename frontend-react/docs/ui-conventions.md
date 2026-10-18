@@ -32,6 +32,24 @@ Shared byte/duration formatting and filesystem-safe browser-local timestamps
 live in `shared/utils/formatUtils.ts`. Callers choose their zero-value, precision,
 unit-range and day/hour policies rather than silently changing the shared helper.
 
+## Navigation links
+
+Fixed destinations use React Router `Link` with a real href. Native middle,
+Ctrl/Cmd and Shift clicks and browser link menus retain their default behavior;
+ordinary clicks continue using client-side routing. Sidebar consumers compose
+links through their existing `render` prop and preserve exact active matching,
+permission gates and pathname-driven expansion.
+
+`shared/components/ButtonLink.tsx` applies the generated button variants directly
+to a link. Base UI Button enforces button semantics and is not the composition
+boundary for navigation. Badge and tooltip presentation can wrap or render links
+without introducing nested interactive controls. Dialog navigation closes its
+source only on an unmodified primary current-page click.
+
+Group expansion, theme changes, logout, mutation completion and history-back
+remain actions. New tabs use the existing session and route guards. File-search
+destination and source-state semantics belong to [file management](file-management.md).
+
 ## Stateful controls
 
 Keep workflow state with its controller and place reusable presentation under

@@ -93,9 +93,9 @@ async function verifyYamlWorker(page: Page) {
 }
 
 async function openTemplateDraft(page: Page) {
-  await page.getByRole('button', { name: '服务器模板', exact: true }).click()
+  await page.getByRole('link', { name: '服务器模板', exact: true }).click()
   await expect(page).toHaveURL(/\/templates$/)
-  await page.getByRole('button', { name: '新建模板', exact: true }).click()
+  await page.getByRole('link', { name: '新建模板', exact: true }).click()
   await expect(page).toHaveURL(/\/templates\/new$/)
 }
 
@@ -131,7 +131,7 @@ test('Compose and template YAML workers validate and complete after navigation',
   await verifyYamlWorker(page)
   await openTemplateDraft(page)
   await verifyYamlWorker(page)
-  await page.getByRole('button', { name: '服务器总览', exact: true }).click()
+  await page.getByRole('link', { name: '服务器总览', exact: true }).click()
   await expect(page).toHaveURL(/\/overview$/)
 
   expect(schemaResponses).toContain(200)

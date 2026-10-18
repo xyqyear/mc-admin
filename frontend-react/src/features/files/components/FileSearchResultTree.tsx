@@ -1,8 +1,10 @@
 import { buildPathTree, treeKeys, type PathTreeNode } from '@/features/files/pathTree'
 import { formatFileSize } from '@/shared/utils/formatUtils'
 import React, { useState, useMemo, useEffect } from 'react'
-import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, Maximize2, Minimize2, ExternalLink } from 'lucide-react'
+import { Link } from 'react-router'
 
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
 import FileIcon from '@/features/files/components/FileIcon'
@@ -16,6 +18,7 @@ interface FileSearchResultTreeProps {
   searchResults: SearchFileItem[]
   currentRegex: string
   onSelect: (selectedKeys: React.Key[]) => void
+  getHref: (key: string, item?: SearchFileItem) => string
   selectedPaths?: string[]
   onSelectionChange?: (paths: string[]) => void
 }
@@ -36,10 +39,11 @@ const TreeNodeRow: React.FC<{
   currentRegex: string
   onToggle: (key: string) => void
   onSelect: (key: string) => void
+  getHref: (key: string, item?: SearchFileItem) => string
   selectedPaths: string[]
   selectedSet: ReadonlySet<string>
   onSelectionChange?: (paths: string[]) => void
-}> = ({ node, level, expandedKeys, resultsByPath, resultPathsByNode, currentRegex, onToggle, onSelect, selectedPaths, selectedSet, onSelectionChange }) => {
+}> = ({ node, level, expandedKeys, resultsByPath, resultPathsByNode, currentRegex, onToggle, onSelect, getHref, selectedPaths, selectedSet, onSelectionChange }) => {
   const isExpanded = expandedKeys.has(node.key)
   const hasChildren = !!node.children?.length
 
@@ -49,6 +53,7 @@ const TreeNodeRow: React.FC<{
   const iconFile = nodeItem ?? { name: node.name, type: hasChildren ? 'directory' as const : 'file' as const }
   const matchResult = currentRegex ? matchRegex(node.name, currentRegex) : undefined
   const size = nodeItem?.type === 'file' ? nodeItem.size : undefined
+  const href = getHref(node.key, nodeItem)
 
   return (
     <>
@@ -79,10 +84,22 @@ const TreeNodeRow: React.FC<{
         <span className="shrink-0">
           <FileIcon file={iconFile} />
         </span>
-        <button type="button" className="text-left hover:underline" onClick={() => {
+        <Link to={href} className="text-left hover:underline" onClick={event => {
+          if (event.defaultPrevented || event.button !== 0
+            || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+          event.preventDefault()
           if (hasChildren) onToggle(node.key)
           onSelect(node.key)
-        }}><HighlightedFileName name={node.name} matchResult={matchResult} /></button>
+        }}><HighlightedFileName name={node.name} matchResult={matchResult} /></Link>
+        <ButtonLink
+          to={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0"
+          aria-label={`在新标签页打开 ${node.key}`}
+        ><ExternalLink className="h-3.5 w-3.5" /></ButtonLink>
         {size != null && (
           <span className="text-xs text-muted-foreground ml-1">
             ({formatFileSize(size, { decimals: 1, zeroValue: "0 B", terabytes: true })})
@@ -100,6 +117,7 @@ const TreeNodeRow: React.FC<{
           currentRegex={currentRegex}
           onToggle={onToggle}
           onSelect={onSelect}
+          getHref={getHref}
           selectedPaths={selectedPaths}
           selectedSet={selectedSet}
           onSelectionChange={onSelectionChange}
@@ -113,6 +131,7 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
   searchResults,
   currentRegex,
   onSelect,
+  getHref,
   selectedPaths = [],
   onSelectionChange,
 }) => {
@@ -195,6 +214,7 @@ const FileSearchResultTree: React.FC<FileSearchResultTreeProps> = ({
             currentRegex={currentRegex}
             onToggle={handleToggle}
             onSelect={handleSelect}
+            getHref={getHref}
             selectedPaths={selectedPaths}
             selectedSet={selectedSet}
             onSelectionChange={onSelectionChange}

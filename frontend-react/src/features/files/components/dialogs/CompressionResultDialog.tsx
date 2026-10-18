@@ -1,8 +1,8 @@
 import React from 'react'
 import { Download, Database, CheckCircle } from 'lucide-react'
-import { useNavigate } from 'react-router'
 
 import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Separator } from '@/shared/ui/separator'
 import {
   Dialog,
@@ -28,13 +28,6 @@ const CompressionResultDialog: React.FC<CompressionResultDialogProps> = ({
   onDownload,
   downloadLoading
 }) => {
-  const navigate = useNavigate()
-
-  const handleNavigateToArchives = () => {
-    onCancel()
-    navigate('/archives')
-  }
-
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent className="sm:max-w-125">
@@ -62,10 +55,12 @@ const CompressionResultDialog: React.FC<CompressionResultDialogProps> = ({
                 <Download className="mr-2 h-4 w-4" />
                 立即下载
               </Button>
-              <Button variant="outline" size="lg" onClick={handleNavigateToArchives}>
+              <ButtonLink variant="outline" size="lg" to="/archives" onClick={(event) => {
+                if (!event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) onCancel()
+              }}>
                 <Database className="mr-2 h-4 w-4" />
                 压缩包管理
-              </Button>
+              </ButtonLink>
             </div>
             <div className="text-muted-foreground text-xs">
               压缩包已保存到系统中，您可以随时在压缩包管理界面找到它

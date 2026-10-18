@@ -1,7 +1,7 @@
 import React from 'react';
 import { openTaskCenter } from '@/features/tasks/commands';
 import { Play, Square, RotateCw, ChevronDown } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { ButtonLink } from '@/shared/components/ButtonLink';
 
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
@@ -26,7 +26,6 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
   showReturnButton = true,
   maintenanceActive = false
 }) => {
-  const navigate = useNavigate();
   const serverOperationMutation = useServerOperation();
   const { showConfirm, confirmDialog } = useServerOperationConfirm();
   const maintenance = useServerMaintenance(serverId);
@@ -109,7 +108,7 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
         下线
       </Button>
       {showReturnButton && (
-        <Button variant="outline" onClick={() => navigate('/overview')}>返回总览</Button>
+        <ButtonLink variant="outline" to="/overview">返回总览</ButtonLink>
       )}
       {reason && (
         <div role="status" className="flex basis-full items-center gap-2 text-sm text-muted-foreground">

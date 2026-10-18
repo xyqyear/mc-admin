@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams } from 'react-router';
 import {
   Terminal,
   RotateCw,
@@ -11,6 +11,7 @@ import {
 
 import { Card, CardHeader, CardContent } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
+import { ButtonLink } from '@/shared/components/ButtonLink';
 import { Spinner } from '@/shared/ui/spinner';
 import { useServerStatus, useServerInfo } from '@/features/servers/queries';
 import { useServerConsoleWebSocket } from '@/features/servers/useServerConsoleWebSocket';
@@ -34,7 +35,6 @@ type ConsoleStatus =
 
 const ServerConsole: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const serverId = id || '';
   const terminalRef = useRef<ServerTerminalRef>(null);
   const [terminalReady, setTerminalReady] = useState(false);
@@ -239,13 +239,13 @@ const ServerConsole: React.FC = () => {
                 </div>
               )}
               {consoleStatus.type === 'error' && (
-                <Button
+                <ButtonLink
                   size="sm"
                   variant="link"
-                  onClick={() => navigate('/overview')}
+                  to="/overview"
                 >
                   返回概览
-                </Button>
+                </ButtonLink>
               )}
             </div>
             <div className="flex items-center space-x-2">

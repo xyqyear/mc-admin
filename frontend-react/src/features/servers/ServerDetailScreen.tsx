@@ -1,8 +1,8 @@
 import React from 'react'
-import { useParams, useNavigate } from 'react-router'
+import { useParams } from 'react-router'
 import { LayoutDashboard } from 'lucide-react'
 import { Card, CardContent } from '@/shared/ui/card'
-import { Button } from '@/shared/ui/button'
+import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 import LoadingSpinner from '@/shared/layout/LoadingSpinner'
 import PageHeader from '@/shared/layout/PageHeader'
@@ -19,7 +19,6 @@ import { useServers } from '@/features/servers/queries';
 
 const ServerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const allServersQuery = useServers()
 
   const {
@@ -51,9 +50,9 @@ const ServerDetail: React.FC = () => {
           <AlertDescription>
             <div className="flex items-center justify-between">
               <span>缺少服务器ID参数</span>
-              <Button size="sm" variant="outline" onClick={() => navigate('/overview')}>
+              <ButtonLink size="sm" variant="outline" to="/overview">
                 返回总览
-              </Button>
+              </ButtonLink>
             </div>
           </AlertDescription>
         </Alert>
@@ -80,15 +79,15 @@ const ServerDetail: React.FC = () => {
                         <p className="font-medium">可用的服务器：</p>
                         <div className="space-y-1">
                           {availableServers.map(server => (
-                            <Button
+                            <ButtonLink
                               key={server.id}
                               variant="link"
                               size="sm"
                               className="block text-left p-0 h-auto"
-                              onClick={() => navigate(`/server/${server.id}`)}
+                              to={`/server/${server.id}`}
                             >
                               {server.name} ({server.id})
-                            </Button>
+                            </ButtonLink>
                           ))}
                         </div>
                       </div>
@@ -100,13 +99,13 @@ const ServerDetail: React.FC = () => {
               </AlertDescription>
             </Alert>
             <div className="flex gap-2 mt-4">
-              <Button size="sm" variant="outline" onClick={() => navigate('/overview')}>
+              <ButtonLink size="sm" variant="outline" to="/overview">
                 返回总览
-              </Button>
+              </ButtonLink>
               {isServerNotFound && availableServers.length > 0 && (
-                <Button size="sm" onClick={() => navigate(`/server/${availableServers[0].id}`)}>
+                <ButtonLink size="sm" to={`/server/${availableServers[0].id}`}>
                   访问 {availableServers[0].name}
-                </Button>
+                </ButtonLink>
               )}
             </div>
           </CardContent>

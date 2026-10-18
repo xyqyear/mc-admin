@@ -39,6 +39,8 @@ const ServerFiles: React.FC = () => {
     hasServerInfo,
     serverInfo,
     currentPath,
+    parentPath,
+    getPathHref,
     selectedFiles,
     isFetchingFiles,
     createArchiveMutation,
@@ -153,6 +155,7 @@ const ServerFiles: React.FC = () => {
         actions={
           <FileToolbar
             currentPath={currentPath}
+            parentHref={getPathHref(parentPath)}
             serverId={id || ''}
             isLoadingFiles={isFetchingFiles}
             createArchiveMutation={createArchiveMutation}
@@ -179,6 +182,7 @@ const ServerFiles: React.FC = () => {
           <div className="flex items-center justify-between gap-4">
             <FileBreadcrumb
               currentPath={currentPath}
+              getPathHref={getPathHref}
               onNavigateToPath={handleNavigateToPath}
             />
             <div className="flex items-center gap-2">
@@ -205,6 +209,7 @@ const ServerFiles: React.FC = () => {
           </div>
 
           <FileTable
+            getPathHref={getPathHref}
             fileData={filteredFileData}
             isLoadingFiles={isLoadingFiles}
             selectedFiles={selectedFiles}

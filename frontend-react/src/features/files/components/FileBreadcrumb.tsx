@@ -1,5 +1,6 @@
 import React from 'react'
 import { Home } from 'lucide-react'
+import { Link } from 'react-router'
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -11,14 +12,22 @@ import {
 
 interface FileBreadcrumbProps {
   currentPath: string
+  getPathHref: (path: string) => string
   onNavigateToPath: (path: string) => void
 }
 
 const FileBreadcrumb: React.FC<FileBreadcrumbProps> = ({
   currentPath,
+  getPathHref,
   onNavigateToPath
 }) => {
   const pathSegments = currentPath.split('/').filter(Boolean)
+  const handleNavigate = (event: React.MouseEvent<HTMLAnchorElement>, path: string) => {
+    if (event.defaultPrevented || event.button !== 0
+      || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    onNavigateToPath(path)
+  }
 
   return (
     <Breadcrumb>
@@ -31,8 +40,9 @@ const FileBreadcrumb: React.FC<FileBreadcrumbProps> = ({
             </BreadcrumbPage>
           ) : (
             <BreadcrumbLink
+              render={<Link to={getPathHref('/')} />}
               className="inline-flex items-center gap-1 cursor-pointer"
-              onClick={() => onNavigateToPath('/')}
+              onClick={(event) => handleNavigate(event, '/')}
             >
               <Home className="h-3.5 w-3.5" />
               根目录
@@ -50,8 +60,9 @@ const FileBreadcrumb: React.FC<FileBreadcrumbProps> = ({
                   <BreadcrumbPage>{segment}</BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink
+                    render={<Link to={getPathHref(path)} />}
                     className="cursor-pointer"
-                    onClick={() => onNavigateToPath(path)}
+                    onClick={(event) => handleNavigate(event, path)}
                   >
                     {segment}
                   </BreadcrumbLink>

@@ -1,9 +1,12 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
+import { MemoryRouter } from 'react-router'
 import { expect, it, vi } from 'vitest'
 import FileUploadTree from './dialogs/FileUploadTree'
 import FileSearchResultTree from './FileSearchResultTree'
 import type { SearchFileItem } from '@/features/files/contracts'
+
+const resultHref = (path: string) => '/server/alpha/files?path=' + encodeURIComponent(path)
 
 it('keeps upload input order, full folder identities and first duplicate metadata while expanding manually', () => {
   const file = (path: string, content: string) => {
@@ -26,10 +29,10 @@ it('auto-expands search paths, preserves directory leaves and highlights, and se
   const select = vi.fn()
   const entry = (path: string, type: SearchFileItem['type'], size = 1): SearchFileItem => ({ path, name: path.split('/').at(-1)!, type, size, modified_at: '2026-10-01T00:00:00Z' })
   const results = [entry('/config', 'directory'), entry('/config/nested/settings.toml', 'file', 5), entry('/other/settings.toml', 'file', 8)]
-  const { rerender } = render(<FileSearchResultTree searchResults={results} currentRegex="settings" onSelect={select} />)
+  const { rerender } = render(<MemoryRouter><FileSearchResultTree searchResults={results} currentRegex="settings" onSelect={select} getHref={resultHref} /></MemoryRouter>)
   expect(screen.getAllByText('settings', { selector: 'mark' })).toHaveLength(2)
   const config = screen.getByText('config')
-  expect(config.closest('button')!.parentElement!.querySelector('svg.lucide-folder')).toBeTruthy()
+  expect(config.closest('a')!.parentElement!.querySelector('svg.lucide-folder')).toBeTruthy()
   fireEvent.click(config)
   expect(select).toHaveBeenLastCalledWith(['/config'])
   expect(screen.queryByText('nested')).toBeNull()
@@ -38,7 +41,7 @@ it('auto-expands search paths, preserves directory leaves and highlights, and se
   expect(select).toHaveBeenLastCalledWith(['/config/nested/settings.toml'])
   fireEvent.click(screen.getByRole('button', { name: '收起所有' }))
   expect(screen.queryByText('settings', { selector: 'mark' })).toBeNull()
-  rerender(<FileSearchResultTree searchResults={results} currentRegex="toml" onSelect={select} />)
+  rerender(<MemoryRouter><FileSearchResultTree searchResults={results} currentRegex="toml" onSelect={select} getHref={resultHref} /></MemoryRouter>)
   expect(screen.getAllByText('toml', { selector: 'mark' })).toHaveLength(2)
 })
 
@@ -47,9 +50,9 @@ it('selects actual directory matches independently from descendants and virtual 
   const entry = (path: string, type: SearchFileItem['type']): SearchFileItem => ({ path, name: path.split('/').at(-1)!, type, size: 1, modified_at: '2026-10-01T00:00:00Z' })
   function Selection() {
     const [paths, setPaths] = useState<string[]>([])
-    return <><output>{JSON.stringify(paths)}</output><FileSearchResultTree searchResults={[entry('/plugins', 'directory'), entry('/plugins/config/a.toml', 'file'), entry('/virtual/b.toml', 'file')]} currentRegex="" onSelect={select} selectedPaths={paths} onSelectionChange={setPaths} /></>
+    return <><output>{JSON.stringify(paths)}</output><FileSearchResultTree searchResults={[entry('/plugins', 'directory'), entry('/plugins/config/a.toml', 'file'), entry('/virtual/b.toml', 'file')]} currentRegex="" onSelect={select} getHref={resultHref} selectedPaths={paths} onSelectionChange={setPaths} /></>
   }
-  render(<Selection />)
+  render(<MemoryRouter><Selection /></MemoryRouter>)
   fireEvent.click(screen.getByRole('checkbox', { name: '选择搜索结果 /plugins' }))
   expect(screen.getByRole('status').textContent).toBe('["/plugins"]')
   expect((screen.getByRole('checkbox', { name: '选择搜索结果 /plugins/config/a.toml' }) as HTMLInputElement).getAttribute('aria-checked')).not.toBe('true')
@@ -63,4 +66,39 @@ it('selects actual directory matches independently from descendants and virtual 
   fireEvent.click(screen.getByRole('button', { name: '收起 /plugins' }))
   expect(select).not.toHaveBeenCalled()
   expect(screen.getByRole('status').textContent).toBe('["/plugins"]')
+})
+
+it('keeps native name and new-tab clicks independent from selection and directory expansion', () => {
+  const select = vi.fn()
+  const changeSelection = vi.fn()
+  render(<MemoryRouter><FileSearchResultTree
+    searchResults={[{ path: '/config/a.toml', name: 'a.toml', type: 'file', size: 5, modified_at: '2026-10-01T00:00:00Z' }]}
+    currentRegex=""
+    onSelect={select}
+    getHref={resultHref}
+    selectedPaths={['/config/a.toml']}
+    onSelectionChange={changeSelection}
+  /></MemoryRouter>)
+  const name = screen.getByRole('link', { name: 'config' })
+  const open = screen.getByRole('link', { name: '在新标签页打开 /config' })
+  expect(open.getAttribute('href')).toBe(name.getAttribute('href'))
+  expect(open.getAttribute('target')).toBe('_blank')
+  expect(open.getAttribute('rel')).toBe('noopener noreferrer')
+  for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }]) {
+    let preventedByComponent = false
+    window.addEventListener('click', event => {
+      preventedByComponent = event.defaultPrevented
+      event.preventDefault()
+    }, { once: true })
+    fireEvent.click(name, modifiers)
+    expect(preventedByComponent).toBe(false)
+  }
+  fireEvent(name, new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))
+  window.addEventListener('click', event => event.preventDefault(), { once: true })
+  fireEvent.click(open)
+  expect(select).not.toHaveBeenCalled()
+  expect(changeSelection).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: '收起 /config' }).getAttribute('aria-expanded')).toBe('true')
+  expect(screen.getByRole('checkbox', { name: '选择搜索结果 /config/a.toml' }).getAttribute('aria-checked')).toBe('true')
+  expect(screen.getByText('a.toml')).toBeTruthy()
 })
