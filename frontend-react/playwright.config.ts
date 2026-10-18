@@ -32,5 +32,5 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     serviceWorkers: 'block',
   },
-  projects: [{ name: 'chromium' }],
+  projects: [{ name: 'chromium', use: { channel: 'chromium' } }],
 })

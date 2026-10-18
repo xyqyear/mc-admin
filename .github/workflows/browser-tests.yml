@@ -56,6 +56,7 @@ jobs:
         run: |
           compatibility=$(uv run --no-project python scripts/ci/timing_history.py fingerprint \
             --file frontend-react/pnpm-lock.yaml --file Dockerfile \
+            --file frontend-react/playwright.config.ts \
             --setting measurement=browser-v2 --setting workers=1 --setting recipe=world-v1 \
             --setting fully_parallel=false)
           echo "compatibility=$compatibility" >> "$GITHUB_OUTPUT"

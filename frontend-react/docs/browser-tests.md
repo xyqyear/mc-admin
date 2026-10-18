@@ -2,6 +2,13 @@
 
 `browser/` drives the built application in Chromium through real routes, Monaco, dialogs, HTTP, WebSockets and Leaflet. No business hook or QueryClient is replaced. `playwright.config.ts` uses one worker, no retries, and retains screenshots/traces for failed tests. The Go runner owns deployment, credentials, resource leases and cleanup; tests cannot attach to an arbitrary application.
 
+The Chromium project uses `channel: 'chromium'` for the full browser's headless
+mode. The default headless shell has an [upstream background-tab initialization
+defect](https://github.com/microsoft/playwright/issues/42142) affecting native
+middle/modifier clicks. New-tab checks still require actual pages, correct
+destinations and preserved source state. Browser configuration participates in
+the timing-history compatibility fingerprint.
+
 ## Local execution
 
 Install Node 24 dependencies with `pnpm install --frozen-lockfile`, then `pnpm exec playwright install --with-deps chromium`. Local checks select only journeys directly related to the change and journeys affected through shared dependencies, with an explicit spec file and title filter. Complete project, component and browser test suites belong to GitHub Actions; do not reconstruct them locally through directory batches or subagents. Run from the frontend directory against the Docker config ID loaded from the release candidate OCI artifact:
