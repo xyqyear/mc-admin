@@ -53,6 +53,10 @@ remain pending until a successful terminal outcome. Lifecycle unit tests retain
 controlled transport and hashing for queue, pause, retry, unmount and close
 boundaries.
 
+The Node/WASM upload fixture installs its JSDOM globals with `vi.hoisted` before
+importing QueryClient providers. This keeps query observation in browser mode,
+including interval-based recovery after a failed task read.
+
 ## Workflow regression owners
 
 The tests use real QueryClient caches and MSW HTTP boundaries. Coverage includes file filtering/drafts/partial batches, prune availability and late rejection, shared world URL selection, task disconnection/reconnection, accepted cancellation while observation still reports running, ready-preview disposal, old-generation history guards and off-page partial-write completion. Server controls retain their status-specific availability and stay blocked by an active task until the maintenance projection clears.

@@ -1,5 +1,4 @@
 // @vitest-environment node
-import { JSDOM } from 'jsdom'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -9,16 +8,21 @@ import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 
 const abcSHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
-const dom = new JSDOM('', { url: 'http://localhost:3000', pretendToBeVisual: true })
+// Query detects browser timers at import time; Node's File remains available for hashing.
+const dom = await vi.hoisted(async () => {
+  const { JSDOM } = await import('jsdom')
+  const browser = new JSDOM('', { url: 'http://localhost:3000', pretendToBeVisual: true })
+  vi.stubGlobal('window', browser.window)
+  vi.stubGlobal('document', browser.window.document)
+  vi.stubGlobal('requestAnimationFrame', browser.window.requestAnimationFrame.bind(browser.window))
+  vi.stubGlobal('cancelAnimationFrame', browser.window.cancelAnimationFrame.bind(browser.window))
+  return browser
+})
 const server = setupServer(taskEventsUnavailable)
 let useArchiveUpload: typeof import('./useArchiveUpload').useArchiveUpload
 let queryKeys: typeof import('@/shared/http/api').queryKeys
 let taskQueryKeys: typeof import('@/features/tasks/queries').taskQueryKeys
 beforeAll(async () => {
-  vi.stubGlobal('window', dom.window)
-  vi.stubGlobal('document', dom.window.document)
-  vi.stubGlobal('requestAnimationFrame', dom.window.requestAnimationFrame.bind(dom.window))
-  vi.stubGlobal('cancelAnimationFrame', dom.window.cancelAnimationFrame.bind(dom.window))
   ;({ useArchiveUpload } = await import('./useArchiveUpload'))
   ;({ queryKeys } = await import('@/shared/http/api'))
   ;({ taskQueryKeys } = await import('@/features/tasks/queries'))
