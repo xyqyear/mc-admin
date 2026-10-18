@@ -9,6 +9,8 @@ Task summary events still trigger HTTP requests for map and self-check progress,
 - **BREAKING**: Replace the frontend operation-change polling loop with cursor-based stream delivery while preserving reset recovery and ordered cache refresh.
 - Expose map stages, self-check findings, hash byte counts, batch deletion counts and chunk-prune counters as structured progress.
 - Preserve durable acceptance, cancellation, real terminal settlement, partial-write evidence, authorization and preview safety checks.
+- Bound runtime history and complete streamed progress payloads, resolve successful historical recovery references, and keep authoritative detail behavior consistent with journal retention.
+- Separate execution completion from result loading, provide explicit same-task recovery and persistent result inspection, and surface unknown/disconnected observation and task-action errors.
 - Non-goals: cron transport changes, old-client compatibility adapters, snapshot lease heartbeat changes, repository usage monitoring, filesystem watchers, releases or deployment changes.
 
 ## Capabilities
@@ -27,4 +29,4 @@ Task summary events still trigger HTTP requests for map and self-check progress,
 - Backend task models, event stream, operation change feed and relevant progress producers; snapshot/prune observation providers and lifecycle notifications.
 - Frontend shared task observation, operation refresh, map/self-check progress, recovery/prune discovery and task progress rendering.
 - Deployed API, frontend and browser behavior coverage plus owning documentation.
-- No persistence migration, configuration migration, Docker lifecycle change or new runtime dependency.
+- Nullable safe task-failure text is persisted through an additive migration; no configuration migration, Docker lifecycle change or new runtime dependency.

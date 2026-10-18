@@ -152,3 +152,37 @@ it('blocks new writes while initial streamed discovery is unavailable', async ()
   expect(submitted).toBe(1)
   expect(result.current.state.active).toBe(true)
 })
+
+it('retries a completed restore result after dismissal without repeating the restore', async () => {
+  const feed = createTaskEvents()
+  let submissions = 0
+  let reads = 0
+  let readable = false
+  server.use(feed.handler,
+    http.post('*/api/snapshots/restorations', () => {
+      submissions++
+      feed.upsert(task('running'))
+      return HttpResponse.json({ task_id: 'restore-task', restoration_id: 'restore-record', skipped_paths: [] }, { status: 202 })
+    }),
+    http.get('*/api/tasks/restore-task', () => {
+      reads++
+      return readable ? HttpResponse.json(task('completed')) : HttpResponse.json({ detail: '暂时不可用' }, { status: 503 })
+    }),
+  )
+  const { result } = renderHook(() => useSnapshotOperation(scope), { wrapper })
+  await waitFor(() => expect(result.current.busy).toBe(false))
+  await act(async () => { await result.current.start('source') })
+  await waitFor(() => expect(result.current.state.active).toBe(true))
+  act(() => feed.upsert({ ...task('completed'), result_included: false }))
+  await waitFor(() => expect(result.current.state.message).toContain('结果读取失败'))
+  expect(result.current.busy).toBe(true)
+  expect(result.current.state.done).toBe(false)
+  act(() => feed.remove('restore-task'))
+  const failedReads = reads
+  readable = true
+  await act(async () => { await result.current.retryResult() })
+  await waitFor(() => expect(result.current.state.done).toBe(true))
+  expect(result.current.busy).toBe(false)
+  expect(reads).toBe(failedReads + 1)
+  expect(submissions).toBe(1)
+})

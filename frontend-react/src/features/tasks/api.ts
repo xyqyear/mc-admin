@@ -49,7 +49,7 @@ export const taskApi = {
 
   getTask: async (taskId: string, signal?: AbortSignal): Promise<BackgroundTask> => {
     const response = await api.get<BackgroundTaskResponse>(`/tasks/${taskId}`, { signal })
-    return transformTask(response.data)
+    return { ...transformTask(response.data), resultReady: ['completed', 'failed', 'cancelled'].includes(response.data.status) }
   },
 
   cancelTask: async (taskId: string): Promise<void> => {

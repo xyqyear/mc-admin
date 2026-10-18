@@ -1,4 +1,5 @@
 import React from 'react'
+import { TaskResultDetails } from './TaskResultDetails'
 import {
   FileArchive,
   Hammer,
@@ -29,6 +30,7 @@ interface BackgroundTaskItemProps {
   task: BackgroundTask
   onCancel: (taskId: string) => void
   onRemove: (taskId: string) => void
+  actionPending?: boolean
 }
 
 const getTaskTypeIcon = (taskType: BackgroundTaskType) => {
@@ -154,6 +156,7 @@ const BackgroundTaskItem: React.FC<BackgroundTaskItemProps> = ({
   task,
   onCancel,
   onRemove,
+  actionPending,
 }) => {
   const isActive = task.status === 'pending' || task.status === 'running'
   const canCancel = isActive && task.cancellable
@@ -271,6 +274,7 @@ const BackgroundTaskItem: React.FC<BackgroundTaskItemProps> = ({
           <PopoverContent side="left" className="w-auto">
             <div className="mb-2 text-sm font-semibold">任务详情</div>
             {taskInfo}
+            {!isActive && <div className="mt-3 max-h-96 max-w-md overflow-y-auto"><TaskResultDetails taskId={task.taskId} /></div>}
           </PopoverContent>
         </Popover>
       </div>
@@ -284,11 +288,13 @@ const BackgroundTaskItem: React.FC<BackgroundTaskItemProps> = ({
                 variant="ghost"
                 size="icon-sm"
                 onClick={handleAction}
+                disabled={actionPending}
+                aria-label={canCancel ? '取消任务' : '移除任务'}
                 className="shrink-0"
               />
             }
           >
-            {canCancel ? <Ban className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+            {actionPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : canCancel ? <Ban className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
           </TooltipTrigger>
           <TooltipContent side="left">
             {canCancel ? '取消任务' : '移除任务'}

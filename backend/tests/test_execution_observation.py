@@ -201,6 +201,32 @@ async def test_eviction_removes_retained_domain_index(domain, monkeypatch):
     assert not domain.service.registry.metadata
 
 
+async def test_prune_index_selects_latest_work_per_server_and_keeps_dismissed_preview(domain):
+    preview = retained_preview(domain)
+    task = preview.task
+    assert task is not None
+    old_apply = BackgroundTask(task_id="old-apply", task_type=TaskType.CHUNK_PRUNE_APPLY,
+                               name="旧裁剪", server_id="survival", status=TaskStatus.COMPLETED,
+                               created_at=task.created_at - timedelta(seconds=1))
+    other_preview = BackgroundTask(task_id="other-preview", task_type=TaskType.CHUNK_PRUNE_PREVIEW,
+                                  name="其它预览", server_id="creative", status=TaskStatus.RUNNING)
+    orphan_apply = BackgroundTask(task_id="orphan-apply", task_type=TaskType.CHUNK_PRUNE_APPLY,
+                                 name="历史裁剪", server_id="orphan", status=TaskStatus.COMPLETED)
+    for item in (old_apply, other_preview, orphan_apply):
+        domain.manager._tasks[item.task_id] = item
+    assert domain.manager.remove_task(task.task_id)
+    states = {state["server_id"]: state for state in await snapshot("prune")}
+    assert states["survival"]["preview_task"]["task_id"] == preview.task_id
+    assert states["survival"]["preview"]["availability"] == "ready"
+    assert states["survival"]["apply_task"] is None
+    assert states["creative"]["preview_task"]["task_id"] == "other-preview"
+    assert states["orphan"]["preview_task"] is None and states["orphan"]["apply_task"] is None
+    latest_apply = old_apply.model_copy(update={"task_id": "latest-apply", "created_at": task.created_at + timedelta(seconds=1)})
+    domain.manager._tasks[latest_apply.task_id] = latest_apply
+    states = {state["server_id"]: state for state in await snapshot("prune")}
+    assert states["survival"]["apply_task"]["task_id"] == latest_apply.task_id
+
+
 async def test_committed_mcmap_config_update_and_reset_rearm_streamed_preview_expiry(domain, monkeypatch):
     manager = domain.runtime.config_manager
     await manager.initialize_all_configs()

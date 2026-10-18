@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog'
 import { useTask } from '@/features/tasks/queries';
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 
 interface RebuildProgressDialogProps {
   open: boolean
@@ -25,10 +26,10 @@ const RebuildProgressDialog: React.FC<RebuildProgressDialogProps> = ({
   onComplete,
 }) => {
   const handledTask = useRef<string | null>(null)
-  const { data: task } = useTask(taskId || '')
+  const { data: task, resultReady, isAwaitingResult } = useTask(taskId || '')
 
   useEffect(() => {
-    if (!open || !task || task.taskId !== taskId || handledTask.current === taskId) return
+    if (!open || !task || !resultReady || task.taskId !== taskId || handledTask.current === taskId) return
     if (task.status !== 'completed' && task.status !== 'failed' && task.status !== 'cancelled') return
     handledTask.current = taskId
 
@@ -40,9 +41,9 @@ const RebuildProgressDialog: React.FC<RebuildProgressDialogProps> = ({
       onFailure?.(task.errorCode)
       onClose()
     }
-  }, [open, taskId, task, onComplete, onClose, onFailure])
+  }, [open, taskId, task, resultReady, onComplete, onClose, onFailure])
 
-  const isActive = task?.status === 'running' || task?.status === 'pending'
+  const isActive = task?.status === 'running' || task?.status === 'pending' || isAwaitingResult
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && !isActive && onClose()}>
@@ -51,6 +52,7 @@ const RebuildProgressDialog: React.FC<RebuildProgressDialogProps> = ({
           <DialogTitle>正在更新服务器配置</DialogTitle>
         </DialogHeader>
         <div className="py-4">
+          <TaskResultFeedback taskId={taskId ?? ''} />
           <Progress value={task?.progress ?? 0} />
           <div className="text-muted-foreground text-sm mt-2 text-center">
             {task?.message || '准备中...'}

@@ -4,3 +4,4 @@ export { default as BackgroundTaskList } from '@/features/tasks/ui/BackgroundTas
 export { default as BackgroundTaskItem } from '@/features/tasks/ui/BackgroundTaskItem'
 export { default as DownloadTaskList } from '@/features/tasks/ui/DownloadTaskList'
 export { default as DownloadTaskItem } from '@/features/tasks/ui/DownloadTaskItem'
+export { TaskResultFeedback } from './TaskResultFeedback'

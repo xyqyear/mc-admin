@@ -5,7 +5,7 @@ import type { BackgroundTask, TaskAccepted } from './contracts'
 import { useTaskCenterStore } from './panelStore'
 import { taskApi } from '@/features/tasks/api'
 import { taskQueryKeys } from './queryKeys'
-import { retainTaskStream, taskDetailQueryOptions, taskFeedState, taskIsTerminal } from './observation'
+import { retainTaskStream, taskDetailQueryOptions, taskFeedState, taskIsTerminal, taskResultReady } from './observation'
 
 export async function waitForTaskResult<T>(
   client: QueryClient,
@@ -42,7 +42,7 @@ export async function waitForTaskResult<T>(
         if (state.isError) {
           if (getErrorStatus(state.error) === 404) {
             reject(new Error('任务记录已过期或不存在，请刷新相关页面确认操作结果', { cause: state.error }))
-          } else toast.warning('暂时无法获取任务状态，正在重新连接', { id: warningId, duration: Infinity })
+          } else toast.warning(taskIsTerminal(state.data) ? '任务已结束，但结果读取失败，请在任务中心重试读取' : '暂时无法获取任务状态，请在任务中心重试', { id: warningId, duration: Infinity, action: { label: '查看任务', onClick: openTaskCenter } })
           return
         }
         const task = state.data
@@ -51,6 +51,7 @@ export async function waitForTaskResult<T>(
         if (feed?.tasks !== undefined && !feed.connected && !taskIsTerminal(task)) showConnection()
         else toast.dismiss(warningId)
         try { options.onProgress?.(task) } catch (error) { reject(error); return }
+        if (!taskResultReady(task)) return
         if (task.status === 'completed') resolve(task.result as T)
         if (task.status === 'failed' || task.status === 'cancelled') reject(Object.assign(new Error(task.error || task.message || '任务未完成'), { code: task.errorCode }))
       }
@@ -76,8 +77,10 @@ export const useCancelTask = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: taskApi.cancelTask,
+    onError: (error: Error) => toast.error(`取消任务失败：${error.message}`),
     onSettled: () => { void queryClient.invalidateQueries({ queryKey: queryKeys.operations.all }) },
     onSuccess: () => {
+      toast.info('已请求取消任务，正在等待执行结束')
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
     },
   })
@@ -87,6 +90,7 @@ export const useDeleteTask = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: taskApi.deleteTask,
+    onError: (error: Error) => toast.error(`移除任务失败：${error.message}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
     },
@@ -97,6 +101,7 @@ export const useClearCompletedTasks = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: taskApi.clearCompletedTasks,
+    onError: (error: Error) => toast.error(`清除任务失败：${error.message}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
     },

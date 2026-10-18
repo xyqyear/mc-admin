@@ -8,6 +8,7 @@ import { taskQueryKeys } from './queryKeys'
 
 export interface TaskFeedState {
   connected: boolean
+  error?: string
   tasks?: TaskEvent[]
   activeRestorations?: unknown[]
   pruneStates?: unknown[]
@@ -30,6 +31,7 @@ const transports = new WeakMap<QueryClient, TaskTransport>()
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled'])
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 
+export const taskResultReady = (task?: BackgroundTask) => taskIsTerminal(task) && task?.resultReady === true
 export const taskIsTerminal = (task?: BackgroundTask) => !!task && terminalStatuses.has(task.status)
 export const taskFeedState = (client: QueryClient) => client.getQueryData<TaskFeedState>(taskQueryKeys.events())
 
@@ -46,7 +48,7 @@ export function parseTaskEvent(value: unknown): TaskEvent {
     || (value.result_included && !terminalStatuses.has(value.status))
     || (!value.result_included && value.result !== null)) throw new Error('任务事件格式无效')
   const event = value as unknown as TaskEventResponse
-  return { ...transformTask(event), resultIncluded: event.result_included }
+  return { ...transformTask(event), resultIncluded: event.result_included, resultReady: event.result_included }
 }
 
 function pruneTasks(states?: unknown[]) {
@@ -78,23 +80,24 @@ export function taskDetailQueryOptions(client: QueryClient, taskId: string) {
     queryKey: taskQueryKeys.detail(taskId),
     queryFn: async ({ signal }) => {
       const retained = client.getQueryData<BackgroundTask>(taskQueryKeys.detail(taskId))
-      if (taskIsTerminal(retained)) return retained!
+      if (taskResultReady(retained)) return retained!
       const summary = observedEvent(client, taskId)
       if (summary && (!taskIsTerminal(summary) || summary.resultIncluded)) return { ...retained, ...summary }
-      if (!summary && retained) return retained
       const task = await taskApi.getTask(taskId, signal)
       signal.throwIfAborted()
       const current = client.getQueryData<BackgroundTask>(taskQueryKeys.detail(taskId))
-      if (taskIsTerminal(current)) return current!
+      if (taskResultReady(current)) return current!
+      if (taskResultReady(task)) return task
       const latest = observedEvent(client, taskId)
       if (latest && (!taskIsTerminal(latest) || latest.resultIncluded)) return { ...task, ...latest }
+      if (latest && taskIsTerminal(latest) && !taskIsTerminal(task)) return latest
       return task
     },
     enabled: !!taskId,
     staleTime: Infinity,
     retry: false,
     refetchInterval: false,
-    refetchOnMount: false,
+    refetchOnMount: query => taskResultReady(query.state.data) ? false : 'always',
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   })
@@ -110,12 +113,16 @@ class TaskTransport {
   private idleTimer?: ReturnType<typeof setTimeout>
   private retryDelay = 1000
   private detailReads = new Set<string>()
+  private listQueries = new Map<string, readonly unknown[]>()
   private subscribers = new Set<{ options: TaskEventSubscriber; controller: AbortController }>()
   private unsubscribe: () => void
 
   constructor(private client: QueryClient) {
     if (!taskFeedState(client)) client.setQueryData<TaskFeedState>(taskQueryKeys.events(), { connected: false })
+    for (const query of client.getQueryCache().findAll({ queryKey: taskQueryKeys.all })) this.trackList(query.queryHash, query.queryKey)
     this.unsubscribe = client.getQueryCache().subscribe(event => {
+      if (event.type === 'added') this.trackList(event.query.queryHash, event.query.queryKey)
+      if (event.type === 'removed') this.listQueries.delete(event.query.queryHash)
       if (event.type === 'removed' && event.query.queryHash === JSON.stringify(taskQueryKeys.events())) this.stop(false)
       if (event.type === 'observerAdded' && this.isDetail(event.query.queryKey)) {
         const task = observedEvent(client, event.query.queryKey[1] as string)
@@ -123,6 +130,19 @@ class TaskTransport {
       }
     })
     window.addEventListener(AUTH_EXPIRED_EVENT, this.onAuthExpired)
+  }
+
+  private trackList(hash: string, key: readonly unknown[]) {
+    if (key.length === 2 && key[0] === 'tasks' && (key[1] === 'active' || typeof key[1] !== 'string')) this.listQueries.set(hash, key)
+  }
+
+  reconnect() {
+    if (this.stopped) return
+    this.reconnectRequested = true
+    this.retryDelay = 1000
+    clearTimeout(this.retryTimer)
+    if (this.controller) this.controller.abort()
+    else void this.connect()
   }
 
   private onAuthExpired = () => this.stop(false)
@@ -203,7 +223,7 @@ class TaskTransport {
     clearTimeout(this.idleTimer)
     if (this.controller === controller) this.controller = undefined
     if (this.stopped) return
-    this.client.setQueryData<TaskFeedState>(taskQueryKeys.events(), current => ({ ...current, connected: false }))
+    this.client.setQueryData<TaskFeedState>(taskQueryKeys.events(), current => ({ ...current, connected: false, error: '任务连接已中断，显示的是上次收到的状态' }))
     const delay = this.reconnectRequested ? 0 : this.retryDelay
     this.retryTimer = setTimeout(() => { void this.connect() }, delay)
     this.retryDelay = Math.min(this.retryDelay * 2, 30000)
@@ -261,10 +281,8 @@ class TaskTransport {
       pruneStates = value.prune_states
     } else throw new Error('任务事件格式无效')
     const retainedTasks = value.type === 'snapshot' || value.type === 'prune_state' ? pruneTasks(pruneStates) : []
-    this.client.setQueryData<TaskFeedState>(taskQueryKeys.events(), { ...previous, connected: true, tasks, activeRestorations, pruneStates })
-    for (const query of this.client.getQueryCache().findAll({ queryKey: taskQueryKeys.all })) {
-      const key = query.queryKey
-      if (key.length !== 2) continue
+    this.client.setQueryData<TaskFeedState>(taskQueryKeys.events(), { ...previous, connected: true, error: undefined, tasks, activeRestorations, pruneStates })
+    for (const key of changed.length || value.type === 'snapshot' || value.type === 'remove' ? this.listQueries.values() : []) {
       if (key[1] === 'active') this.client.setQueryData(key, tasks.filter(task => !taskIsTerminal(task)))
       else if (typeof key[1] !== 'string') this.client.setQueryData(key, streamedTaskList(this.client, key[1] as TaskListParams | undefined))
     }
@@ -273,13 +291,15 @@ class TaskTransport {
 
   private updateDetail(task: TaskEvent) {
     const key = taskQueryKeys.detail(task.taskId)
-    const previous = this.client.getQueryData<BackgroundTask>(key)
-    if (taskIsTerminal(previous)) return
+    const query = this.client.getQueryCache().find({ queryKey: key, exact: true })
+    if (!query) return
+    const previous = query.state.data as BackgroundTask | undefined
+    if (taskResultReady(previous)) return
     if (!taskIsTerminal(task) || task.resultIncluded) {
       this.client.setQueryData<BackgroundTask>(key, task)
       return
     }
-    this.client.setQueryData<BackgroundTask>(key, { ...task, status: previous?.status ?? 'running', result: previous?.result })
+    this.client.setQueryData<BackgroundTask>(key, task)
     if (this.observed(task.taskId)) this.refreshDetail(task.taskId)
   }
 
@@ -290,7 +310,7 @@ class TaskTransport {
     void (async () => {
       try {
         await this.client.fetchQuery({ ...taskDetailQueryOptions(this.client, taskId), staleTime: 0 })
-        if (joined && !this.stopped && this.observed(taskId) && !taskIsTerminal(this.client.getQueryData<BackgroundTask>(taskQueryKeys.detail(taskId)))) {
+        if (joined && !this.stopped && this.observed(taskId) && !taskResultReady(this.client.getQueryData<BackgroundTask>(taskQueryKeys.detail(taskId)))) {
           await this.client.fetchQuery({ ...taskDetailQueryOptions(this.client, taskId), staleTime: 0 })
         }
       } catch { /* Only a later observation or explicit retry reads an excluded result again. */ }
@@ -320,4 +340,8 @@ export function subscribeTaskEvents(client: QueryClient, subscriber: TaskEventSu
   const unsubscribe = transport.subscribe(subscriber)
   const release = retain(transport)
   return () => { unsubscribe(); release() }
+}
+
+export function retryTaskObservation(client: QueryClient) {
+  transportFor(client).reconnect()
 }

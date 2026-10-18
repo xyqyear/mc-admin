@@ -43,8 +43,10 @@ and the backend rechecks current/source/history protection before writing.
 ## Accepted recovery and observation
 
 `useSnapshotOperation` captures an immutable accepted scope and observes the
-task's confirmed terminal result. Read failures show reconnecting and retain
-busy state and closing guards. Navigation detaches observation without cancelling
+task's confirmed terminal result. Execution status and complete result readiness
+are separate: a completed task awaiting its result retains busy state and closing
+guards. Result-read failures expose an explicit same-task retry in the progress
+card or creation status; connection loss is shown separately. Navigation detaches observation without cancelling
 the writer. A disappearing active-list entry is not proof of completion; once
 discovered, the task ID stays latched until its own outcome is read.
 

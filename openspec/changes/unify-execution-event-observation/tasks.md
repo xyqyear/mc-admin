@@ -18,6 +18,17 @@
 - [x] 3.2 Synchronize main specifications and owning documentation; validate OpenSpec and run focused tests plus required static/build/contract checks.
 - [x] 3.3 Prepare delivery metadata and the exact-SHA publish=false qualification invocation.
 
+## 4. Review corrections
+
+- [x] 4.1 Bound runtime task/result retention, release settled execution handles, align expired detail behavior with durable history, and preserve safe authored failures across restart.
+- [x] 4.2 Resolve ordinary successful-restoration history references without weakening unresolved writer and recovery protection; verify bounded journal admission.
+- [x] 4.3 Stop progress-driven full prune-index broadcasts, bound all streamed progress details and terminal summaries, and retain late-observer preview discovery.
+- [x] 4.4 Preserve real execution status independently of result availability; recover excluded results after dismissal and transient failures with explicit same-task retry and no resubmission.
+- [x] 4.5 Show unknown/disconnected task-center state, persistent per-item results and task-action errors; keep task actions reachable inside progress modals.
+- [x] 4.6 Expose result retry in affected workflows, preserve safety guards, and consistently display pending prune work.
+- [x] 4.7 Cover API and browser recovery/retention/transport behavior with focused tests, synchronize specifications/docs and run required static checks.
+- [x] 4.8 Prepare atomic review-correction commits, the push target and the exact-SHA publish=false qualification invocation.
+
 ## Delivery gate
 
 The implementation branch is `feat/150-task-progress-sse`, associated with #150.

@@ -24,7 +24,8 @@ export function useChunkPruneState(serverId: string | undefined, accepted: { pre
     data: state ? { preview: state.preview, previewTask: preview.data ?? null, applyTask: apply.data ?? null } : undefined,
     observedPreviewId: state?.previewTaskId,
     observedApplyId: state?.applyTaskId,
-    checking: !feed.connected || !state || !!(previewId && !preview.data) || !!(applyId && !apply.data),
+    checking: !feed.connected || !state || !!(previewId && !preview.data) || !!(applyId && !apply.data)
+      || preview.isAwaitingResult || apply.isAwaitingResult,
     isError: (!feed.connected && feed.pruneStates !== undefined) || preview.isError || apply.isError,
   }
 }

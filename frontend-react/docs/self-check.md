@@ -21,6 +21,8 @@ Query hooks:
 
 ## Page Behavior
 
+实时 findings 受事件体积预算限制，截断时页面提示累计结果数；终态摘要不清除已经显示的 findings。完整结果读取失败时，“重试读取结果”只重读同一任务，不再次执行自检。依赖结果的操作保持禁用，读取成功后展示完整 findings 并解除忙碌状态。
+
 The dashboard shows:
 
 - summary counts for the displayed run

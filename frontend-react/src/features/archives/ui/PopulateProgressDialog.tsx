@@ -6,6 +6,7 @@ import {
 } from '@/shared/ui/dialog'
 import { Progress } from '@/shared/ui/progress'
 import { useTask } from '@/features/tasks/queries';
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 import React, { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
@@ -24,10 +25,10 @@ const PopulateProgressDialog: React.FC<PopulateProgressDialogProps> = ({
   onComplete,
 }) => {
   const handled = useRef<string | null>(null)
-  const { data: task } = useTask(taskId || '')
+  const { data: task, resultReady } = useTask(taskId || '')
 
   useEffect(() => {
-    if (!open || !task || handled.current === task.taskId || task.status === 'running' || task.status === 'pending') return
+    if (!open || !task || !resultReady || handled.current === task.taskId || task.status === 'running' || task.status === 'pending') return
     handled.current = task.taskId
 
     if (task.status === 'completed') {
@@ -40,7 +41,7 @@ const PopulateProgressDialog: React.FC<PopulateProgressDialogProps> = ({
       toast.info('文件替换已取消')
       onClose()
     }
-  }, [open, task, task?.status, task?.error, onComplete, onClose])
+  }, [open, task, task?.status, task?.error, resultReady, onComplete, onClose])
 
 
   return (
@@ -50,6 +51,7 @@ const PopulateProgressDialog: React.FC<PopulateProgressDialogProps> = ({
           <DialogTitle>正在填充服务器文件</DialogTitle>
         </DialogHeader>
         <div className="py-4">
+          <TaskResultFeedback taskId={taskId ?? ''} />
           <Progress value={task?.progress ?? 0} />
           <div className="text-muted-foreground text-sm mt-2 text-center">
             {task?.message || '准备中...'}

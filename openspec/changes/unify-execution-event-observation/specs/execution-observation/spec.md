@@ -36,3 +36,13 @@ The shared event stream SHALL provide current preview/apply tasks, structured pr
 - **WHEN** a valid preview task has been dismissed from the general task list
 - **THEN** a new prune observer still receives retained preview identity and availability
 - **AND** reconnection does not submit a second preview or apply operation
+
+#### Scenario: Progress without discovery changes
+- **WHEN** an existing prune task reports only updated progress
+- **THEN** task progress updates without retransmitting every server's complete prune discovery state
+- **AND** late observers can still discover current or retained preview identity and availability
+
+#### Scenario: Pending prune work
+- **WHEN** a prune task has been accepted but has not started execution
+- **THEN** the page displays waiting work with consistent active-task controls
+- **AND** it does not permit conflicting submissions or hide cancellation where supported

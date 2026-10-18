@@ -74,16 +74,18 @@ it('keeps running 100-percent progress and disconnect guarded until an authorita
   expect(view.result.current.data?.previewTask?.result).toEqual(result)
 })
 
-it('keeps excluded terminal results active until the one detail read succeeds', async () => {
+it('retains completed status and guards excluded results until the detail read succeeds', async () => {
   const release = deferred<void>()
   const task = record().preview_task
   feed.pruneStates([{ ...record(), preview_task: { ...task, result_included: false, result: null } }])
   server.use(http.get('*/api/tasks/preview', async () => { detailReads++; await release.promise; return HttpResponse.json(taskResponse('preview', { task_type: 'chunk_prune_preview', status: 'completed', result })) }))
   const view = renderHook(() => useChunkPruneState('alpha'), { wrapper })
   await waitFor(() => expect(detailReads).toBe(1))
-  expect(view.result.current.data?.previewTask?.status).toBe('running')
+  expect(view.result.current.data?.previewTask?.status).toBe('completed')
+  expect(view.result.current.data?.previewTask?.resultReady).toBe(false)
+  expect(view.result.current.checking).toBe(true)
   await act(async () => { release.resolve() })
-  await waitFor(() => expect(view.result.current.data?.previewTask?.status).toBe('completed'))
+  await waitFor(() => expect(view.result.current.data?.previewTask?.resultReady).toBe(true))
   expect(view.result.current.data?.previewTask?.result).toEqual(result)
   expect(detailReads).toBe(1)
   expect(stateReads).toBe(0)

@@ -30,6 +30,14 @@ The shared task transport is retained by task consumers, operation observation a
 
 ## Risks / Trade-offs
 
+### Review corrections
+
+Execution status remains authoritative even while its complete result is unavailable. Result consumers independently track result readiness and hold dependent-action guards until a complete result is read. Detail queries for tasks missing from the live feed must still reach retained journal history. Transient result-read failures expose explicit same-task retry in the task center and initiating workflows; retries never repeat the business command. Task dismissal removes list visibility, not result recoverability.
+
+Settled worker/future handles are released, and runtime history uses a bounded recent projection consistent with durable journal retention. Expired durable results cannot remain available only through SSE. Completed restoration history links are distinguished from outstanding recovery obligations so ordinary success cannot permanently consume journal capacity. Uncertain writers, staging and genuine recovery blocks remain protected. Authored safe failure information survives history restoration without persisting raw exceptions.
+
+Progress-only prune changes use task updates; domain discovery updates on identity and availability changes. Domain metadata remains available after generic dismissal. Whole progress payloads have a bounded representation, with terminal details compacted and complete evidence read on demand. Task-center connection state and task-action failures are visible; result details remain reachable after navigation. Task controls opened from a modal must participate in its modal/focus hierarchy. Pending and running prune tasks share active-state controls.
+
 - Large or unavailable terminal results still need HTTP → one-shot reads on terminal observation, retry on subsequent observation or explicit retry; retain guards on failure.
 - Coalesced findings can skip intermediate frames → publish complete current findings and document current-state semantics.
 - Domain acceptance can race journal events → explicitly notify after domain transaction commit and subscribe before initial reads.
@@ -38,4 +46,4 @@ The shared task transport is retained by task consumers, operation observation a
 
 ## Migration Plan
 
-Deploy frontend and backend together with no schema migration or compatibility mode. Rollback replaces the application image; persisted journals and restoration history remain readable. Update the owning task, operation, recovery/prune and testing documents plus API coverage inventory. AGENTS.md does not change because commands and ownership boundaries remain valid. Validate focused behavior locally, then push and qualify the exact SHA with publishing disabled.
+Deploy frontend and backend together without an old-client compatibility mode. Migration `2026101800` adds nullable safe failure text to operation records; upgrade preserves existing results and recovery evidence, and downgrade removes only this optional text. Rollback replaces the application image; persisted journals and restoration history remain readable. Update the owning task, operation, recovery/prune and testing documents plus API coverage inventory. AGENTS.md does not change because commands and ownership boundaries remain valid. Validate focused behavior locally, then push and qualify the exact SHA with publishing disabled.

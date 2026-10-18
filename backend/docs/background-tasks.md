@@ -51,6 +51,16 @@ observer or reconnect does not re-encode an excluded large result. Running and
 unknown results do not populate this cache; loading a different result requires
 a fresh size decision. The cache is absent from persistence and wire schemas.
 
+The entire streamed `progress_details` representation is limited to 8 KiB of
+UTF-8 JSON, independent of the result limit. Settled task details retain at most
+1 KiB of scalar stage/count metadata. A bounded projection uses `truncated=true`
+and keeps complete list items that fit; it never presents partially rewritten
+finding evidence. Self-check progress includes `findings_total` and sets
+`findings_truncated=true` when its streamed list is incomplete. Settled self-check
+progress has an empty findings list; complete findings remain in the authoritative
+task result and retained self-check run. HTTP task details retain the full payload.
+Progress projections are cached until the source details or terminal state changes.
+
 `operation_changes` frames carry the existing bounded journal change batch and
 cursor/reset contract. Subscribers provide their last successfully handled
 cursor on reconnect; notifications wake ring reads after commit without another
@@ -76,7 +86,8 @@ details; generators retain the existing durable result-before-publication path.
 Reporting 100 percent does not settle a task. Domain owners call synchronous
 `notify_observation("restorations" | "prune")` after acceptance and lifecycle
 changes. The manager also notifies restoration start/settlement and prune
-start/progress/settlement; publishers never await domain reads or observers.
+start/settlement. Progress-only updates publish task upserts without rebuilding
+the complete prune index; publishers never await domain reads or observers.
 
 ## Cancellation and completion
 
@@ -109,6 +120,10 @@ are not cancellable through the user API.
 
 ## Durable history and compatibility
 
+Task creation, start and end timestamps are timezone-aware UTC and serialize with
+an explicit UTC offset in HTTP and SSE, preserving history age across client
+timezones. Journal projections use the same UTC timestamp contract.
+
 The public task statuses remain `pending`, `running`, `completed`, `failed` and
 `cancelled`. Startup reconciles interrupted operations before admitting writes,
 then projects task journal records into the existing task center. Interrupted
@@ -116,6 +131,19 @@ work appears as failed with an interruption message and is never replayed.
 Historical progress is not reconstructed. Task details read retained result
 payloads on demand after restart; older records without a saved payload return
 null. The detailed operation API retains the internal state, phase and recovery references.
+
+The live task projection retains active tasks and at most 200 terminal entries
+from the last 30 minutes. It releases settled worker and future handles; callers
+already holding a completion future can still await it. Older detail reads use
+the journal without repopulating the task list. Journal retention removes matching
+live entries after commit and emits task removal events, so an expired task cannot
+remain in an SSE snapshot while its HTTP result has disappeared. Preview owners
+retain their separately bounded task references for the preview lifetime.
+
+Safe authored `PublicOperationError` failures retain a normalized message of at
+most 4096 UTF-8 bytes across restart. Unexpected exception values are never saved;
+legacy and unexpected failures use a generic history message. Original outcomes
+and recovery protection remain independent of this presentation text.
 
 Task detail and summary include optional `error_code` alongside the existing
 string `error`. A configuration version conflict discovered after acceptance

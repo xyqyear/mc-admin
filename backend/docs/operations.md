@@ -67,6 +67,11 @@ only PID, process group, kernel start ticks, boot ID, and process root device an
 inode. The public history omits these process details. Resource paths remain
 relative and confined; Linux backslashes are literal filename characters.
 
+`failure_message` stores only authored public failure text, normalized and limited
+to 4096 UTF-8 bytes. Adapter exception values and stderr never enter this column.
+It preserves actionable task failures across restart without changing recovery
+outcomes or making arbitrary diagnostic text durable.
+
 Configuration operations retain an intended content hash, a baseline version
 and source-metadata hash without retaining the underlying values. Owned staging
 artifacts append a bounded resource path under an already declared server and
@@ -87,6 +92,15 @@ caches and unresolved recovery references are never evicted. When protected
 records fill capacity, new admission returns a safe 503 response. The journal
 does not silently discard safety evidence to make room.
 
+Successful snapshot restorations with confirmed stopped writers, known ownership,
+no retained process, no recovery block and healthy caches resolve their ordinary
+`source_snapshot`, `safety_snapshot` and `restoration` history references. Values
+remain in retained history; they no longer prevent normal retention. Pruning
+applies the same rule to older successful rows. Staging references, failed or
+interrupted recovery, unknown writers and degraded caches remain protected.
+Committed journal eviction synchronously notifies the runtime task projection;
+rolled-back pruning never removes a visible task.
+
 Each short journal call owns its database task through cursor consumption,
 commit or rollback, and session closure. Cancellation waits for that task to
 settle before releasing the write mutex and propagating to the caller. Read
@@ -102,7 +116,9 @@ should describe its global scope rather than enumerate an unbounded server list.
 Bounded metadata cannot be used as a transport for arbitrary task payloads.
 Feature results use the separate nullable `task_result_json` column. Task workers
 save it before exposing results; the ORM defers it for metadata, list and recovery
-reads. Task details load it, including for dismissed or restarted tasks;
+reads. Task details load it, including for dismissed or restarted tasks, together
+with metadata in one database snapshot. Concurrent retention returns a complete
+retained detail or absence, never a falsely known null result;
 already-loaded settled results up to 16 KiB can also accompany task events.
 Structured progress does not load or rewrite journal results.
 Old terminal rows are removed; underlying snapshots, backup repositories and

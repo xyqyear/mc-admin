@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strings"
 
 	"mc-admin/e2e/internal/api"
 	"mc-admin/e2e/internal/engine"
@@ -108,6 +109,16 @@ func validateTaskSummary(task map[string]any) error {
 	included, ok := task["result_included"].(bool)
 	if !ok {
 		return fmt.Errorf("task event omits explicit result inclusion")
+	}
+	if details := task["progress_details"]; details != nil {
+		budget := 1024
+		if task["status"] == "pending" || task["status"] == "running" {
+			budget = 8 * 1024
+		}
+		encoded, err := json.Marshal(details)
+		if err != nil || len(encoded) > budget {
+			return fmt.Errorf("task progress details exceed their JSON bound")
+		}
 	}
 	if task["status"] == "pending" || task["status"] == "running" {
 		if included || task["result"] != nil {
@@ -313,15 +324,23 @@ func taskEvents(ctx context.Context, scope *engine.Scope) error {
 	}
 	findings, ok := details["findings"].([]any)
 	runID, idOK := details["id"].(string)
-	if !ok || len(findings) == 0 || !idOK || runID == "" {
-		return fmt.Errorf("self-check event lacks current findings and run identity")
+	if !ok || len(findings) != 0 || !idOK || runID == "" || details["findings_truncated"] != true {
+		return fmt.Errorf("self-check terminal event lacks its compact findings summary and run identity")
+	}
+	selfCheck, err := owner.Task(ctx, accepted.ID)
+	if err != nil {
+		return err
+	}
+	findings, ok = selfCheck.Result["findings"].([]any)
+	if !ok || len(findings) == 0 || details["findings_total"] != float64(len(findings)) || selfCheck.Result["id"] != runID {
+		return fmt.Errorf("self-check task detail loses complete findings or differs from its streamed summary")
 	}
 	var run map[string]any
 	if err = owner.JSON(ctx, "GET", "/api/self-check/runs/"+url.PathEscape(runID), nil, &run, 200); err != nil {
 		return err
 	}
 	if !reflect.DeepEqual(findings, run["findings"]) {
-		return fmt.Errorf("streamed self-check findings differ from the persisted run")
+		return fmt.Errorf("authoritative self-check findings differ from the persisted run")
 	}
 	invalid := observeTaskEvents(ctx, owner, "broken-cursor")
 	defer invalid.close()
@@ -431,4 +450,80 @@ func taskEvents(ctx context.Context, scope *engine.Scope) error {
 	}
 	uploadCancelled = true
 	return owner.JSON(ctx, "HEAD", uploadPath, nil, nil, 404)
+}
+
+func largeResultDismissal(ctx context.Context, scope *engine.Scope) error {
+	owner, err := fixtures.Session(ctx, scope, "owner")
+	if err != nil {
+		return err
+	}
+	id := fixtures.ServerOf(scope.Env).ID
+	base := "/api/servers/" + id
+	paths := make([]string, 64)
+	for index := range paths {
+		paths[index] = fmt.Sprintf("sse-large-%02d-%s.txt", index, strings.Repeat("x", 173))
+		if err = fixtures.CreateFile(ctx, owner, id, "/"+paths[index], "owned large-result deletion\n"); err != nil {
+			return err
+		}
+	}
+	observer := observeTaskEvents(ctx, owner, "")
+	defer observer.close()
+	if err = currentTaskSnapshot(ctx, observer, ""); err != nil {
+		return err
+	}
+	accepted, err := owner.StartTask(ctx, "POST", base+"/files/delete-batch", map[string]any{"paths": paths})
+	if err != nil {
+		return err
+	}
+	terminal, err := completedTaskEvent(ctx, observer, accepted.ID)
+	if err != nil {
+		return err
+	}
+	if terminal["result_included"] != false || terminal["result"] != nil {
+		return fmt.Errorf("large deletion result was exposed inline")
+	}
+	before, err := owner.Task(ctx, accepted.ID)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(before.Result)
+	if err != nil || len(encoded) <= 16*1024 {
+		return fmt.Errorf("large-result scenario did not produce an excluded-size result")
+	}
+	if before.Result["deleted"] != float64(len(paths)) || before.Result["failed"] != float64(0) || before.Result["pending"] != float64(0) {
+		return fmt.Errorf("large batch deletion has incomplete item outcomes")
+	}
+	selected, selectedOK := before.Result["paths"].([]any)
+	items, itemsOK := before.Result["results"].([]any)
+	if !selectedOK || !itemsOK || len(selected) != len(paths) || len(items) != len(paths) {
+		return fmt.Errorf("large batch deletion loses selected paths or per-item results")
+	}
+	for index, path := range paths {
+		item, ok := items[index].(map[string]any)
+		if !ok || selected[index] != path || item["path"] != path || item["status"] != "deleted" {
+			return fmt.Errorf("large batch deletion reports an incorrect item outcome at %d", index)
+		}
+	}
+	for _, index := range []int{0, len(paths) - 1} {
+		if err = owner.JSON(ctx, "GET", base+"/files/content?path="+url.QueryEscape(paths[index]), nil, nil, 404); err != nil {
+			return err
+		}
+	}
+	observer.close()
+	if err = owner.JSON(ctx, "DELETE", "/api/tasks/"+accepted.ID, nil, nil, 200); err != nil {
+		return err
+	}
+	reconnected := observeTaskEvents(ctx, owner, "")
+	defer reconnected.close()
+	if err = currentTaskSnapshot(ctx, reconnected, accepted.ID); err != nil {
+		return err
+	}
+	after, err := owner.Task(ctx, accepted.ID)
+	if err != nil {
+		return fmt.Errorf("dismissal and reconnect lost the large authoritative result: %w", err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		return fmt.Errorf("dismissal and reconnect changed the large task outcome")
+	}
+	return nil
 }

@@ -44,6 +44,13 @@ progress. The world recovery fault proxy cuts both SSE and detail observation
 while a paused restore worker is still running with durable safety evidence;
 the journey releases that writer, verifies completion, reconnects and rolls back.
 
+The busy snapshot dialog can open a modal task center, inspect a completed task's
+result through its popover, then return through both layers with focus and the
+original closing guard intact. A separate real long-filename batch deletion
+produces a result larger than the event budget; a temporary detail-read failure
+must offer same-task retry and reveal the retained result without another delete
+submission.
+
 Map reload observes real stage payloads through the owned proxy and verifies one
 shared connection, no discovery polling, at most one initial detail read and a
 settled inline result. The final palette status and task result independently

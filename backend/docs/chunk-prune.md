@@ -135,7 +135,7 @@ preview geometry or apply authorization valid after restart.
 Preview and apply share the task event connection with restoration discovery and
 operation refresh:
 
-- live progress comes from task and prune-state events, with structured
+- live progress comes from task upserts, with structured
   `progress_details={kind:"regions",regions_processed,regions_total}` counters;
 - state returns the latest preview task for the server and the latest apply
   task created after that preview, so starting a new preview hides older apply
@@ -155,6 +155,13 @@ Index reads and expiry notifications do not scan world files or claims. External
 changes are detected by the existing input validation after preview preparation
 and before apply execution; observation is not proof that an input version is
 still safe to apply. Geometry remains a separate on-demand request.
+
+The domain index changes on workflow identity and availability transitions,
+including registration, settlement, consumption, invalidation, expiry and
+eviction. Ordinary progress updates do not rebroadcast every server's workflow.
+Index selection groups tasks in one pass and retains the latest preview and its
+subsequent apply per server, including feature-owned tasks dismissed from the
+generic task center. Nested event tasks use the shared progress/result budgets.
 
 ## Dynamic Config
 

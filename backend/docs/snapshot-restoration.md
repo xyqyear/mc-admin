@@ -62,6 +62,10 @@ finalization. Server removal checks these references before cancelling other tas
 and again while frozen/exclusive; completed history does not block repository
 retention. A missing safety snapshot leaves its history readable with an explicit
 unavailable reason. Ordinary file restoration remains available online.
+Safely successful restoration journal entries retain their snapshot/history
+reference values as resolved historical links, allowing ordinary journal retention.
+Failed recovery, staging evidence and unconfirmed writers keep their protection;
+the [journal retention rules](operations.md#durable-state) define those boundaries.
 
 世界执行使用相同的命令、历史和保护规划，mcmap 仅承担区块合并。`preparation.py` 解析目标、实例、缺失范围与源保护，供恢复和预览共用。cron 通过 `SnapshotCommands.backup` 执行同一创建逻辑，不另建手动任务或重复历史；维护冲突记录 `skipped`。备份已完成但保留策略因活动引用被拒绝时，cron 明确记录已创建快照及跳过清理的原因。
 

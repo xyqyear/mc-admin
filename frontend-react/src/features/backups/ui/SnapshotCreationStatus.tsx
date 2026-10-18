@@ -1,5 +1,6 @@
 import type { BackgroundTask } from '@/features/tasks/contracts'
 import { openTaskCenter } from '@/features/tasks/commands'
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 import { Button } from '@/shared/ui/button'
 import { Spinner } from '@/shared/ui/spinner'
 
@@ -10,5 +11,6 @@ export function SnapshotCreationStatus({ pending, task }: { pending: boolean; ta
     <span>{task?.message || '正在提交快照任务'}</span>
     {task?.progress != null && <span>{Math.round(task.progress)}%</span>}
     {task && <Button variant="link" size="sm" onClick={openTaskCenter}>查看任务</Button>}
+    <TaskResultFeedback taskId={task?.taskId ?? ''} />
   </div>
 }

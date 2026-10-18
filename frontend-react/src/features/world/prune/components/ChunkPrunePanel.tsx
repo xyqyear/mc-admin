@@ -25,6 +25,7 @@ import type {
   ChunkPruneResultData,
 } from '@/features/world/prune/contracts'
 import type { BackgroundTaskStatus } from '@/features/tasks/contracts'
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 import type { ThresholdUnit } from '@/features/world/prune/components/thresholdUnits'
 
 const THRESHOLD_UNITS: ReadonlyArray<{ value: ThresholdUnit; label: string }> = [
@@ -40,6 +41,8 @@ export interface ChunkPrunePanelProps {
   mode: ChunkPruneMode
   previewStatus: BackgroundTaskStatus | 'idle'
   previewStarting: boolean
+  previewTaskId?: string | null
+  applyTaskId?: string | null
   previewProgress: number | null
   previewMessage: string | null
   previewResult: ChunkPruneResultData | null
@@ -93,6 +96,8 @@ const ChunkPrunePanel: React.FC<ChunkPrunePanelProps> = ({
   mode,
   previewStatus,
   previewStarting,
+  previewTaskId,
+  applyTaskId,
   previewProgress,
   previewMessage,
   previewResult,
@@ -115,8 +120,8 @@ const ChunkPrunePanel: React.FC<ChunkPrunePanelProps> = ({
   onApply,
   onCancelApply,
 }) => {
-  const previewRunning = previewStarting || previewStatus === 'running'
-  const applyRunning = applyStatus === 'running'
+  const previewRunning = previewStarting || previewStatus === 'pending' || previewStatus === 'running'
+  const applyRunning = applyStatus === 'pending' || applyStatus === 'running'
   const previewPercent = previewProgress ?? 0
   const applyPercent = applyProgress ?? 0
   const thresholdTicks = useMemo(
@@ -207,13 +212,15 @@ const ChunkPrunePanel: React.FC<ChunkPrunePanelProps> = ({
         </Button>
       </div>
 
-      {(previewRunning || previewProgress || previewResult || previewError) && (
+      {(previewTaskId || previewRunning || previewProgress || previewResult || previewError) && (
         <div className="rounded border bg-background p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-sm font-medium">预览进度</span>
             <Badge variant={previewStatus === 'completed' ? 'secondary' : 'outline'}>
               {previewStarting
                 ? '准备中'
+                : previewStatus === 'pending'
+                ? '等待执行'
                 : previewStatus === 'completed'
                 ? '已完成'
                 : previewStatus === 'failed'
@@ -226,7 +233,8 @@ const ChunkPrunePanel: React.FC<ChunkPrunePanelProps> = ({
           <Progress value={previewPercent} className="mb-2" />
           <div className="text-xs text-muted-foreground">
             {previewMessage ||
-              (previewStarting || previewStatus === 'running'
+              (previewStatus === 'pending' ? '预览任务正在等待执行'
+                : previewStarting || previewStatus === 'running'
                 ? '正在准备预览任务...'
                 : phaseLabel('scan'))}
           </div>
@@ -247,6 +255,7 @@ const ChunkPrunePanel: React.FC<ChunkPrunePanelProps> = ({
           {previewError && (
             <div className="mt-2 text-xs text-destructive">{previewError}</div>
           )}
+          <TaskResultFeedback taskId={previewTaskId ?? ''} />
         </div>
       )}
 
@@ -269,12 +278,14 @@ const ChunkPrunePanel: React.FC<ChunkPrunePanelProps> = ({
         删除预览中的服务器区块
       </Button>
 
-      {(applyRunning || applyProgress || applyResult || applyError) && (
+      {(applyTaskId || applyRunning || applyProgress || applyResult || applyError) && (
         <div className="rounded border bg-background p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-sm font-medium">删除进度</span>
             <Badge variant={applyStatus === 'completed' ? 'secondary' : 'outline'}>
-              {applyStatus === 'completed'
+              {applyStatus === 'pending'
+                ? '等待执行'
+                : applyStatus === 'completed'
                 ? '已完成'
                 : applyStatus === 'failed'
                   ? '失败'
@@ -285,7 +296,7 @@ const ChunkPrunePanel: React.FC<ChunkPrunePanelProps> = ({
           </div>
           <Progress value={applyPercent} className="mb-2" />
           <div className="text-xs text-muted-foreground">
-            {applyMessage || phaseLabel('prune')}
+            {applyMessage || (applyStatus === 'pending' ? '删除任务正在等待执行' : phaseLabel('prune'))}
           </div>
           {applyResult && (
             <div className="mt-2 flex items-center gap-1 text-xs text-green-600">
@@ -296,6 +307,7 @@ const ChunkPrunePanel: React.FC<ChunkPrunePanelProps> = ({
           {applyError && (
             <div className="mt-2 text-xs text-destructive">{applyError}</div>
           )}
+          <TaskResultFeedback taskId={applyTaskId ?? ''} />
           {applyRunning && (
             <Button
               variant="outline"

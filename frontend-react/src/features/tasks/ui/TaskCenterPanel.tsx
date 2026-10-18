@@ -1,4 +1,5 @@
 import React from 'react'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/shared/ui/dialog'
 import { X, CloudUpload, Download } from 'lucide-react'
 
 import { Card, CardHeader, CardContent, CardTitle } from '@/shared/ui/card'
@@ -14,6 +15,7 @@ import { getTaskCenterPanelStyle } from '@/features/tasks/layout'
 const TaskCenterPanel: React.FC = () => {
   const {
     isOpen,
+    modal,
     activeTab,
     triggerPosition,
     setOpen,
@@ -47,10 +49,10 @@ const TaskCenterPanel: React.FC = () => {
     return null
   }
 
-  return (
+  const panel = (
     <div
-      className="fixed z-50 w-90 animate-in fade-in slide-in-from-bottom-4 duration-200"
-      style={getTaskCenterPanelStyle(
+      className={modal ? 'w-full' : 'fixed z-50 w-90 animate-in fade-in slide-in-from-bottom-4 duration-200'}
+      style={modal ? undefined : getTaskCenterPanelStyle(
         triggerPosition,
         viewportSize.width,
         viewportSize.height
@@ -64,6 +66,7 @@ const TaskCenterPanel: React.FC = () => {
               variant="ghost"
               size="icon-sm"
               onClick={() => setOpen(false)}
+              aria-label="关闭任务中心"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -105,6 +108,7 @@ const TaskCenterPanel: React.FC = () => {
       </Card>
     </div>
   )
+  return modal ? <Dialog open={isOpen} onOpenChange={setOpen}><DialogContent showCloseButton={false} className="p-0 sm:max-w-lg"><DialogTitle className="sr-only">任务中心</DialogTitle><DialogDescription className="sr-only">查看后台任务、读取结果和取消任务</DialogDescription>{panel}</DialogContent></Dialog> : panel
 }
 
 export default TaskCenterPanel

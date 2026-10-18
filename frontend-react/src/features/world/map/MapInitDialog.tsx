@@ -15,6 +15,7 @@ import { taskApi } from '@/features/tasks/api'
 import type { TaskAccepted } from '@/features/tasks/contracts'
 import { waitForTaskResult } from '@/features/tasks/commands'
 import { useTaskFeed } from '@/features/tasks/queries'
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 
 interface MapInitDialogProps {
   open: boolean
@@ -49,6 +50,7 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
   const feed = useTaskFeed(open)
   const request = useRef<{ key: string; accepted: Promise<TaskAccepted> } | null>(null)
   const [isActive, setIsActive] = useState(true)
+  const [taskId, setTaskId] = useState('')
   const [client, setClient] = useState<StageState>(initialStage)
   const [palette, setPalette] = useState<StageState>(initialStage)
   const [errored, setErrored] = useState<string | null>(null)
@@ -77,6 +79,7 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
     setPalette(initialStage)
     setErrored(null)
     setIsActive(true)
+    setTaskId('')
     const ctrl = new AbortController()
     const key = `${serverId}:${force}`
     if (request.current?.key !== key) {
@@ -88,23 +91,29 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
         }),
       }
     }
-    void request.current.accepted.then(accepted => waitForTaskResult(queryClient, accepted, {
-      signal: ctrl.signal,
-      onProgress: task => {
-        const details = task.progressDetails
-        if (details?.kind !== 'map' || !Array.isArray(details.stages)) return
-        for (const stage of details.stages) {
-          if (!stage || typeof stage !== 'object' || !['client', 'palette'].includes(stage.stage)) continue
-          applyEvent({
-            stage: stage.stage,
-            phase: ['starting', 'downloading', 'verifying', 'pack_loaded', 'resolving', 'done', 'error'].includes(stage.phase) ? stage.phase : undefined,
-            percent: typeof stage.percent === 'number' && Number.isFinite(stage.percent) ? stage.percent : undefined,
-            message: typeof stage.message === 'string' ? stage.message : undefined,
-            cached: typeof stage.cached === 'boolean' ? stage.cached : undefined,
-          })
-        }
-      },
-    })).then(() => {
+    void request.current.accepted.then(accepted => {
+      if (!ctrl.signal.aborted) setTaskId(accepted.task_id)
+      return waitForTaskResult(queryClient, accepted, {
+        signal: ctrl.signal,
+        onProgress: task => {
+          const details = task.progressDetails
+          if (details?.kind !== 'map' || !details.stages || typeof details.stages !== 'object' || Array.isArray(details.stages)) return
+          for (const value of Object.values(details.stages)) {
+            if (!value || typeof value !== 'object') continue
+            const stage = value as Record<string, unknown>
+            const stageName = stage.stage
+            if (stageName !== 'client' && stageName !== 'palette') continue
+            applyEvent({
+              stage: stageName,
+              phase: typeof stage.phase === 'string' && ['starting', 'downloading', 'verifying', 'pack_loaded', 'resolving', 'done', 'error'].includes(stage.phase) ? stage.phase as InitEvent['phase'] : undefined,
+              percent: typeof stage.percent === 'number' && Number.isFinite(stage.percent) ? stage.percent : undefined,
+              message: typeof stage.message === 'string' ? stage.message : undefined,
+              cached: typeof stage.cached === 'boolean' ? stage.cached : undefined,
+            })
+          }
+        },
+      })
+    }).then(() => {
       if (ctrl.signal.aborted) return
       setIsActive(false)
       toast.success('地图初始化完成')
@@ -141,6 +150,7 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
             <div className="text-destructive text-sm">错误: {errored}</div>
           )}
           {isActive && !feed.connected && <div className="text-muted-foreground text-sm">正在重新连接任务进度，后台任务仍在继续</div>}
+          <TaskResultFeedback taskId={taskId} />
         </div>
       </DialogContent>
     </Dialog>

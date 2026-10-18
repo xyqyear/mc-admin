@@ -32,6 +32,7 @@ export interface BackgroundTask {
   startedAt?: number
   endedAt?: number
   result?: Record<string, unknown>
+  resultReady?: boolean
   error?: string
   errorCode?: string
   cancellable: boolean

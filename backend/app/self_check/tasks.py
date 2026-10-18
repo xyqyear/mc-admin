@@ -28,7 +28,7 @@ async def self_check_task(actor_id: int, check_id: str | None) -> AsyncGenerator
                 completed += 1
             details = {
                 "kind": "self_check", "id": event.run_id,
-                "findings": list(findings), "check_id": event.check_id,
+                "findings": list(findings), "findings_total": len(findings), "check_id": event.check_id,
                 "started_at": started_at, "checking": event.type == "check_started",
                 "completed_checks": completed, "total_checks": total,
             }

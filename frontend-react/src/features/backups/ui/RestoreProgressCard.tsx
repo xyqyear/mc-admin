@@ -6,6 +6,7 @@ import { Progress } from '@/shared/ui/progress'
 import { Spinner } from '@/shared/ui/spinner'
 import { Button } from '@/shared/ui/button'
 import { openTaskCenter } from '@/features/tasks/commands'
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 
 import type { RestoreProgressState } from '@/features/backups/contracts'
 
@@ -41,6 +42,7 @@ export const RestoreProgressCard: React.FC<RestoreProgressCardProps> = ({
           {state.error ?? state.message}
         </div>
         {state.taskId && <Button variant="link" size="sm" onClick={openTaskCenter}>查看任务</Button>}
+        <TaskResultFeedback taskId={state.taskId} />
         {state.log.length > 0 && (
           <pre className="mt-2 max-h-40 overflow-auto rounded-md border bg-muted/30 p-2 text-xs leading-relaxed">
             {state.log.join('\n')}

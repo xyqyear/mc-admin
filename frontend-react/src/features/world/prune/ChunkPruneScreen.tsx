@@ -228,6 +228,8 @@ const ServerChunkPrune: React.FC = () => {
                       mode={urlMode}
                       previewStatus={previewStatus}
                       previewStarting={previewStarting}
+                      previewTaskId={previewTask?.taskId}
+                      applyTaskId={applyTask?.taskId}
                       previewProgress={previewTask?.progress ?? null}
                       previewMessage={previewTask?.message ?? null}
                       previewResult={previewResult}

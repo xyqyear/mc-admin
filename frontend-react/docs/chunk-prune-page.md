@@ -50,7 +50,10 @@ backend without storing task ids in the URL.
 
 Preview progress includes nullable percentages and structured region counters.
 Inline settled results populate the shared task cache; excluded large results use
-one detail read while retaining the running guard. The page does not
+one detail read while retaining the dependent-action guard. Task execution status
+remains terminal while its result loads; read failures offer same-task retry.
+Both pending and running work display a progress card, disable input changes and
+expose cancellation where supported. Pending work is labeled “等待执行”. The page does not
 render selected chunks while mcmap is scanning; it waits for a completed task
 result before building any preview geometry.
 

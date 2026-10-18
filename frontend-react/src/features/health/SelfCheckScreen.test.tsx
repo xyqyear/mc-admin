@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { createTaskEvents, taskResponse, taskEventsUnavailable } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { createOperationFeed } from '@/test/operations'
 import { TestProviders } from '@/test/TestProviders'
@@ -77,6 +77,49 @@ it('streams findings and check counters while retaining its guard until a settle
   await waitFor(() => expect(runButton.disabled).toBe(false))
   expect(reads).toBe(initialReads)
   expect(screen.getByText('检测到需要处理的配置')).toBeTruthy()
+  view.unmount()
+  client.clear()
+})
+
+it('shows truncated live findings and retries the same completed result after a read failure', async () => {
+  const client = createTestClient()
+  const feed = createTaskEvents()
+  const task = taskResponse('self-check-retry', { task_type: 'self_check' })
+  const finding = { check_id: 'first', category: 'system', severity: 'warning', status: 'warning', title: '端口检查',
+    message: '检查结果完整保留', evidence: {}, remediation: [], created_at: '2026-10-18T00:00:00Z' }
+  const result = { id: 'run', trigger: 'manual', scope: 'full', status: 'warning', started_at: finding.created_at,
+    finished_at: finding.created_at, duration_ms: 1, findings: [finding],
+    summary: { total: 1, passed: 0, skipped: 0, info: 0, warning: 1, critical: 0, failed: 0, status: 'warning' } }
+  let readable = false
+  let submissions = 0
+  server.use(feed.handler,
+    http.get('*/api/self-check/status', () => HttpResponse.json({ catalog: [], runs: [], total: 0, retention_runs_keep_days: 14 })),
+    http.get('*/api/tasks', () => HttpResponse.json({ tasks: [] })),
+    http.post('*/api/self-check/run', () => {
+      submissions++
+      feed.upsert(task)
+      return HttpResponse.json({ task_id: task.task_id }, { status: 202 })
+    }),
+    http.get('*/api/tasks/self-check-retry', () => readable
+      ? HttpResponse.json({ ...task, status: 'completed', result })
+      : HttpResponse.json({ detail: '结果暂时不可读' }, { status: 503 })),
+  )
+  const view = render(<TestProviders client={client}><SelfCheckScreen /></TestProviders>)
+  const run = await screen.findByRole('button', { name: '立即自检' }) as HTMLButtonElement
+  fireEvent.click(run)
+  await waitFor(() => expect(submissions).toBe(1))
+  act(() => feed.upsert({ ...task, progress_details: { kind: 'self_check', findings: [], findings_total: 100,
+    findings_truncated: true, completed_checks: 1, total_checks: 2 } }))
+  await screen.findByText(/已产生 100 条检查结果/)
+  act(() => feed.upsert({ ...task, status: 'completed', result_included: false }))
+  const retry = await screen.findByRole('button', { name: '重试读取结果' })
+  expect(run.disabled).toBe(true)
+  readable = true
+  fireEvent.click(retry)
+  await screen.findByText('检查结果完整保留')
+  await waitFor(() => expect(run.disabled).toBe(false))
+  expect(screen.queryByText(/已产生 100 条检查结果/)).toBeNull()
+  expect(submissions).toBe(1)
   view.unmount()
   client.clear()
 })

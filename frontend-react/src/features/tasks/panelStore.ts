@@ -9,6 +9,7 @@ import {
 export type TaskCenterTab = 'background' | 'download'
 
 interface TaskCenterState {
+  modal: boolean
   isOpen: boolean
   activeTab: TaskCenterTab
   triggerPosition: TaskCenterTriggerPosition
@@ -22,10 +23,11 @@ export const useTaskCenterStore = create<TaskCenterState>()(
   persist(
     (set) => ({
       isOpen: false,
+      modal: false,
       activeTab: 'background',
       triggerPosition: DEFAULT_TASK_CENTER_TRIGGER_POSITION,
 
-      setOpen: (open) => set({ isOpen: open }),
+      setOpen: (open) => set({ isOpen: open, modal: open && document.activeElement instanceof Element && !!document.activeElement.closest('[role=dialog]') }),
 
       toggleOpen: () => set((state) => ({ isOpen: !state.isOpen })),
 

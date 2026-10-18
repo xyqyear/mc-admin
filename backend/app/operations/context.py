@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from anyio.lowlevel import checkpoint_if_cancelled
 
 from ..db.owned_calls import complete_database_call
+from ..errors import PublicOperationError, public_error_code, public_error_message
 from .journal_types import OperationState, RecoveryReference
 
 if TYPE_CHECKING:
@@ -25,7 +26,15 @@ class OperationExecution:
     cache_degraded: bool = False
     settled: bool = False
     failure_code: str | None = None
+    failure_message: str | None = None
     require_existing_targets: bool = True
+
+    def record_failure(self, error: Exception) -> None:
+        self.failure_code = public_error_code(error)
+        self.failure_message = None
+        if isinstance(error, PublicOperationError):
+            message = "".join(character if ord(character) >= 32 else " " for character in public_error_message(error))
+            self.failure_message = message.encode()[:4096].decode(errors="ignore")
 
 
 _execution: ContextVar[OperationExecution | None] = ContextVar("mc_admin_operation", default=None)

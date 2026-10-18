@@ -35,15 +35,17 @@ export function useSnapshotOperation(scope: SnapshotScope | null, options: {
   const taskId = accepted?.task_id ?? observedId ?? pending?.operation_id ?? ''
   useEffect(() => { if (taskId) setObservedId(taskId) }, [taskId])
   const task = useTask(taskId)
-  const terminal = task.data && ['completed', 'failed', 'cancelled'].includes(task.data.status)
+  const terminal = task.resultReady && task.data && ['completed', 'failed', 'cancelled'].includes(task.data.status)
   useEffect(() => { if (terminal) submittingRef.current = false }, [terminal])
   const checking = discovery.checking
   const state: RestoreProgressState = {
     active: submitting || (!!taskId && !terminal),
     percent: task.data?.progress ?? null,
     taskId,
-    message: task.isError ? '暂时无法获取任务状态，正在重新连接' : task.data?.message || '正在准备任务',
-    done: task.data?.status === 'completed',
+    message: task.resultError ? '任务已结束，完整结果读取失败，请重试读取结果'
+      : task.isAwaitingResult ? '任务已结束，正在读取完整结果'
+        : task.isError ? '暂时无法获取任务状态，正在重新连接' : task.data?.message || '正在准备任务',
+    done: !!terminal && task.data?.status === 'completed',
     error: error ?? (terminal && task.data?.status !== 'completed' ? task.data?.error || task.data?.message || '恢复未完成' : null),
     log: accepted?.skipped_paths.length || (Array.isArray(task.data?.result?.skipped_paths) && task.data.result.skipped_paths.length) ? ['所选范围中的忽略目录将保持不变'] : [],
   }
@@ -76,6 +78,7 @@ export function useSnapshotOperation(scope: SnapshotScope | null, options: {
     taskId,
     busy,
     checking,
+    retryResult: task.retryResult,
     observationMessage: checking ? discovery.isError
       ? '暂时无法确认恢复任务状态，正在重新连接' : '正在检查恢复任务' : null,
     start: (sourceSnapshotId: string, previewId?: string) => scope ? submit(() => snapshotApi.restore({ source_snapshot_id: sourceSnapshotId, preview_id: previewId, scope: structuredClone(scope), entry_point: scope.kind === 'world' ? 'world' : 'files' })) : Promise.resolve(),

@@ -152,6 +152,11 @@ event triggers run as part of this check.
 
 手动全量与单项检查由 `app.self_check.tasks` 提交任务。任务状态表示检查执行结果，健康程度由 result.status/findings 表示；发现警告不等于任务失败。中间结果累积 findings、当前 check_id 和完成数量。自动触发仍使用原有历史和调度路径。
 
+流式进度使用[后台任务](background-tasks.md#live-observation)的整体体积预算。
+`findings_total` 表示当前累计发现数量；`findings_truncated=true` 时事件只含可容纳的完整发现，
+界面应提示当前列表不完整。终态事件压缩进度详情，完整发现从任务 result 或自检历史详情读取，
+不能把空的终态进度列表当成“未发现问题”。
+
 ## API
 
 - `GET /api/self-check/catalog` — configured catalog with enabled flags

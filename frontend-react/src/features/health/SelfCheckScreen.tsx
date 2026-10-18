@@ -35,7 +35,8 @@ import {
 import { useRunSelfCheckItem } from '@/features/health/commands';
 import { selfCheckApi } from '@/features/health/api'
 import { waitForTaskResult } from '@/features/tasks/commands'
-import { useActiveTasks, useTaskFeed } from '@/features/tasks/queries';
+import { useActiveTasks, useTask, useTaskFeed } from '@/features/tasks/queries';
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 import type { SelfCheckCatalogItem, SelfCheckCurrentState, SelfCheckFinding, SelfCheckStatusResponse, SelfCheckRunDetail, SelfCheckRunResult, SelfCheckRunStatus, SelfCheckRunSummaryRecord, SelfCheckSeverity, SelfCheckSummary } from '@/features/health/contracts';
 import { queryKeys } from '@/shared/http/api'
 import { formatDateTime } from '@/shared/utils/formatUtils'
@@ -501,11 +502,13 @@ const SelfCheck: React.FC = () => {
   const activeTasks = useActiveTasks()
   const feed = useTaskFeed()
   const [taskId, setTaskId] = useState<string | null>(null)
+  const taskQuery = useTask(taskId ?? '')
   const [running, setRunning] = useState(false)
   const [taskFindings, setTaskFindings] = useState<DisplayFinding[] | null>(null)
   const [taskResult, setTaskResult] = useState<SelfCheckRunResult | null>(null)
   const [taskStartedAt, setTaskStartedAt] = useState<string | null>(null)
   const [checkProgress, setCheckProgress] = useState<{ completed: number; total: number } | null>(null)
+  const [findingsTotal, setFindingsTotal] = useState<number | null>(null)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [rerunningCheckId, setRerunningCheckId] = useState<string | null>(null)
 
@@ -567,7 +570,11 @@ const SelfCheck: React.FC = () => {
             severity: 'info', status: 'info', title: item?.title ?? '自检项', message: '检测中',
             evidence: {}, remediation: [], created_at: new Date().toISOString(), running: true })
         }
-        setTaskFindings(findings)
+        if (!['completed', 'failed', 'cancelled'].includes(task.status) || details.findings_truncated !== true) {
+          setTaskFindings(findings)
+        }
+        setFindingsTotal(details.findings_truncated === true && typeof details.findings_total === 'number'
+          ? details.findings_total : null)
         setTaskStartedAt(typeof details.started_at === 'string' ? details.started_at : null)
         if (typeof details.completed_checks === 'number' && Number.isInteger(details.completed_checks) && details.completed_checks >= 0
           && typeof details.total_checks === 'number' && Number.isInteger(details.total_checks) && details.total_checks >= details.completed_checks) {
@@ -578,6 +585,7 @@ const SelfCheck: React.FC = () => {
       if (controller.signal.aborted) return
       setTaskResult(result)
       setTaskFindings(result.findings)
+      setFindingsTotal(null)
       setRunning(false)
       void queryClient.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
       if (result.status === 'success') toast.success('自检完成，未发现问题')
@@ -595,6 +603,7 @@ const SelfCheck: React.FC = () => {
     setSelectedRunId(null)
     setTaskResult(null)
     setTaskFindings([])
+    setFindingsTotal(null)
     setRunning(true)
     try {
       const accepted = await selfCheckApi.runSelfCheck()
@@ -672,7 +681,7 @@ const SelfCheck: React.FC = () => {
           {displayRun && 'finished_at' in displayRun && ` · ${formatDateTime(displayRun.finished_at)}`}
           {running && taskStartedAt && ` · 开始于 ${formatDateTime(taskStartedAt)}`}
           {running && checkProgress && ` · 已完成 ${checkProgress.completed}/${checkProgress.total} 项`}
-          {running && !feed.connected && ' · 正在重新连接任务进度'}
+          {running && !taskQuery.isAwaitingResult && !feed.connected && ' · 正在重新连接任务进度'}
           {displayRun && 'duration_ms' in displayRun && ` · ${displayRun.duration_ms}ms`}
         </div>
         {selectedIsHistory && (
@@ -682,6 +691,11 @@ const SelfCheck: React.FC = () => {
           </Button>
         )}
       </div>
+
+      {running && <TaskResultFeedback taskId={taskId ?? ''} />}
+      {running && findingsTotal !== null && <p role="status" className="text-sm text-muted-foreground">
+        已产生 {findingsTotal} 条检查结果，当前仅展示部分实时结果；任务结束后会显示完整结果。
+      </p>}
 
       <SummaryStrip summary={displaySummary} />
 

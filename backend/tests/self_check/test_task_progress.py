@@ -26,3 +26,4 @@ async def test_running_check_exposes_current_findings_without_a_final_result(mon
     assert details["checking"] and details["check_id"] == "two"
     assert details["completed_checks"] == 1 and details["total_checks"] == 2
     assert details["findings"] == [finding.model_dump(mode="json")]
+    assert details["findings_total"] == 1

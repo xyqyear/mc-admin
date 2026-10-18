@@ -78,15 +78,20 @@ class PrunePreviewRegistry:
                  if task.task_type in {TaskType.CHUNK_PRUNE_PREVIEW, TaskType.CHUNK_PRUNE_APPLY}}
         tasks.update({item.task_id: task for item in self.metadata.values()
                       if (task := self.task(item)) is not None})
+        latest: dict[str, dict[TaskType, BackgroundTask]] = {}
+        for task in tasks.values():
+            if task.server_id is None:
+                continue
+            server_tasks = latest.setdefault(task.server_id, {})
+            previous = server_tasks.get(task.task_type)
+            if previous is None or task.created_at > previous.created_at:
+                server_tasks[task.task_type] = task
         result = []
-        for server_id in sorted({task.server_id for task in tasks.values() if task.server_id is not None}):
-            previews = [task for task in tasks.values()
-                        if task.server_id == server_id and task.task_type is TaskType.CHUNK_PRUNE_PREVIEW]
-            preview_task = max(previews, key=lambda task: task.created_at, default=None)
-            applies = [task for task in tasks.values()
-                       if task.server_id == server_id and task.task_type is TaskType.CHUNK_PRUNE_APPLY
-                       and preview_task is not None and task.created_at >= preview_task.created_at]
-            apply_task = max(applies, key=lambda task: task.created_at, default=None)
+        for server_id, server_tasks in sorted(latest.items()):
+            preview_task = server_tasks.get(TaskType.CHUNK_PRUNE_PREVIEW)
+            apply_task = server_tasks.get(TaskType.CHUNK_PRUNE_APPLY)
+            if preview_task is None or (apply_task is not None and apply_task.created_at < preview_task.created_at):
+                apply_task = None
             metadata = self.metadata.get(preview_task.task_id) if preview_task is not None else None
             result.append({
                 "server_id": server_id,

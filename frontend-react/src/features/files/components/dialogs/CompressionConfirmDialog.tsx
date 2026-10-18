@@ -14,6 +14,7 @@ import {
 } from '@/shared/ui/dialog'
 import type { FileItem } from '@/features/files/contracts'
 import type { BackgroundTask } from '@/features/tasks/contracts'
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 
 interface CompressionConfirmDialogProps {
   open: boolean
@@ -103,6 +104,7 @@ const CompressionConfirmDialog: React.FC<CompressionConfirmDialogProps> = ({
           <DialogTitle>创建压缩包</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          <TaskResultFeedback taskId={task?.taskId ?? ''} />
           <Alert>
             <AlertTitle>压缩包创建</AlertTitle>
             <AlertDescription>

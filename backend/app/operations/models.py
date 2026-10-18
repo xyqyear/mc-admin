@@ -36,6 +36,7 @@ class OperationJournalEntry(Base):
     recovery_refs_json: Mapped[str] = mapped_column(TEXT, default="[]")
     has_recovery_refs: Mapped[bool] = mapped_column(Boolean, default=False)
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_message: Mapped[str | None] = mapped_column(String(4096), nullable=True)
     blocked_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     cache_degraded: Mapped[bool] = mapped_column(Boolean, default=False)
     resolved_by: Mapped[int | None] = mapped_column(Integer, nullable=True)

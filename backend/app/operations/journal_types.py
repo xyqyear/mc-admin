@@ -87,6 +87,7 @@ class OperationRecord:
     cache_degraded: bool
     resolved_by: int | None
     resolved_at: datetime | None
+    failure_message: str | None = None
 
 
 @dataclass(frozen=True)

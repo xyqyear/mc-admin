@@ -24,6 +24,11 @@ GET /map/tiles/X/Z.png  →                          │
 
 `useMapStatus.client_jar_present && palette_present && palette_current` gates tile rendering. When false, the page shows the init prompt (`MapInitDialog`) instead of the map; the dialog observes the two-stage initialization task and re-fetches `useMapStatus` on completion.
 
+Map task progress uses `kind="map"` and a `stages` object keyed by `client` and
+`palette`. The dialog reads the validated stage values directly from that object.
+Execution completion and full result readiness are separate; a failed result read
+offers same-task retry while retaining the closing guard.
+
 ## Coordinate model
 
 `features/world/map/coords.ts` owns block/chunk/region conversions. One chunk spans 16 blocks and one region spans 32 chunks or 512 blocks. Division uses `Math.floor`, including for negative coordinates: block X/Z `-1` belongs to chunk `-1`, and chunk `-1` belongs to region `-1`. Pure functions include:

@@ -82,8 +82,8 @@ export function useFileBrowser(id: string | undefined) {
   const compressionSubmitting = React.useRef(false)
   const [ownershipTaskId, setOwnershipTaskId] = useState<string | null>(null)
 
-  const { data: compressionTask } = useTask(compressionTaskId || '')
-  const { data: ownershipTask } = useTask(ownershipTaskId || '')
+  const { data: compressionTask, resultReady: compressionResultReady } = useTask(compressionTaskId || '')
+  const { data: ownershipTask, resultReady: ownershipResultReady } = useTask(ownershipTaskId || '')
 
   const [isDeepSearchDialogOpen, setIsDeepSearchDialogOpen] = useState(false)
   const searchBoxRef = React.useRef<FileSearchBoxRef>(null)
@@ -105,7 +105,7 @@ export function useFileBrowser(id: string | undefined) {
   }, [currentPath])
 
   useEffect(() => {
-    if (!compressionTask || !compressionTaskId) return
+    if (!compressionTask || !compressionTaskId || !compressionResultReady) return
 
     if (compressionTask.status === 'completed' && compressionTask.result) {
       setCompressionResult({
@@ -122,10 +122,10 @@ export function useFileBrowser(id: string | undefined) {
       toast.info('压缩任务已取消')
       setCompressionTaskId(null)
     }
-  }, [compressionTask, compressionTaskId])
+  }, [compressionTask, compressionTaskId, compressionResultReady])
 
   useEffect(() => {
-    if (!ownershipTask || !ownershipTaskId) return
+    if (!ownershipTask || !ownershipTaskId || !ownershipResultReady) return
 
     if (ownershipTask.status === 'completed') {
       const uid = ownershipTask.result?.uid
@@ -142,7 +142,7 @@ export function useFileBrowser(id: string | undefined) {
       toast.info('文件所有权修复已取消')
       setOwnershipTaskId(null)
     }
-  }, [ownershipTask, ownershipTaskId])
+  }, [ownershipTask, ownershipTaskId, ownershipResultReady])
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

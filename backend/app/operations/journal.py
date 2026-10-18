@@ -124,6 +124,7 @@ def _record(row: OperationJournalEntry) -> OperationRecord:
         processes=tuple(ProcessIdentity(**value) for value in json.loads(row.processes_json)),
         recovery_refs=tuple(RecoveryReference(**value) for value in json.loads(row.recovery_refs_json)),
         failure_code=row.failure_code, blocked_reason=row.blocked_reason,
+        failure_message=row.failure_message,
         cache_degraded=row.cache_degraded, resolved_by=row.resolved_by, resolved_at=row.resolved_at,
     )
 
@@ -144,12 +145,19 @@ class OperationJournal:
         self.clock = clock or (lambda: datetime.now(UTC))
         self._lock = asyncio.Lock()
         self.changes = OperationChangeFeed()
+        self._retention_listeners: set[Callable[[frozenset[str]], None]] = set()
+
+    def subscribe_retention(self, listener: Callable[[frozenset[str]], None]) -> Callable[[], None]:
+        self._retention_listeners.add(listener)
+        return lambda: self._retention_listeners.discard(listener)
 
     @asynccontextmanager
     async def _write(self, *, committed: Callable[[], None] | None = None) -> AsyncGenerator[AsyncSession]:
         async with self.session_factory() as session:
             tracked: dict[str, _TrackedOperation] = {}
             session.info["operation_changes"] = tracked
+            evicted: set[str] = set()
+            session.info["operation_evictions"] = evicted
             async with session.begin():
                 if session.get_bind().dialect.name == "sqlite":
                     await session.execute(text("BEGIN IMMEDIATE"))
@@ -165,6 +173,12 @@ class OperationJournal:
                     self.changes.track_state(record)
                     self.changes.reset()
                     log_safe_error(error, "Operation refresh notification failed")
+            if evicted:
+                for listener in tuple(self._retention_listeners):
+                    try:
+                        listener(frozenset(evicted))
+                    except Exception as error:  # noqa: BLE001 - observation cannot undo committed retention
+                        log_safe_error(error, "Task retention notification failed")
             if committed is not None:
                 committed()
 
@@ -322,6 +336,7 @@ class OperationJournal:
     async def finish(
         self, operation_id: str, state: OperationState, *, writers_stopped: bool,
         failure_code: str | None = None, recovery_refs: Sequence[RecoveryReference] = (),
+        failure_message: str | None = None,
         changed: bool = False, cache_degraded: bool = False,
         blocked_reason: str | None = None,
     ) -> OperationRecord:
@@ -329,6 +344,8 @@ class OperationJournal:
             raise InvalidOperationTransition()
         if failure_code is not None:
             _token(failure_code)
+        if failure_message is not None:
+            _bounded_text(failure_message, 4096)
         if blocked_reason is not None:
             _token(blocked_reason)
         async with self._write() as session:
@@ -343,10 +360,24 @@ class OperationJournal:
             row.writers_stopped = writers_stopped
             row.data_changed = row.data_changed or changed
             row.failure_code = failure_code
+            row.failure_message = failure_message if state is OperationState.FAILED else None
             row.blocked_reason = blocked_reason if writers_stopped else "writers_unconfirmed"
             row.cache_degraded = row.cache_degraded or cache_degraded
             self._merge_references(row, recovery_refs)
+            self._resolve_successful_restoration_history(row)
             return _record(row)
+
+    def _resolve_successful_restoration_history(self, row: OperationJournalEntry) -> None:
+        if (row.kind != "snapshot_restore" or row.state != OperationState.SUCCEEDED
+                or not row.writers_stopped or not row.ownership_known or json.loads(row.processes_json)
+                or row.blocked_reason is not None or row.cache_degraded):
+            return
+        historical = {"source_snapshot", "safety_snapshot", "restoration"}
+        references = [RecoveryReference(**value) for value in json.loads(row.recovery_refs_json)]
+        resolved = [RecoveryReference(value.kind, value.value, resolved=True)
+                    for value in references if value.kind in historical and not value.resolved]
+        if resolved:
+            self._merge_references(row, resolved)
 
     @_complete_write
     async def register_process(self, operation_id: str, identity: ProcessIdentity) -> OperationRecord:
@@ -471,6 +502,17 @@ class OperationJournal:
             return json.loads(payload) if payload is not None else None
 
     @_complete_read
+    async def get_with_task_result(self, operation_id: str) -> tuple[OperationRecord, dict[str, Any] | None] | None:
+        async with self.session_factory() as session:
+            snapshot = (await session.execute(select(OperationJournalEntry, OperationJournalEntry.task_result_json).where(
+                OperationJournalEntry.operation_id == operation_id,
+            ))).one_or_none()
+            if snapshot is None:
+                return None
+            row, payload = snapshot
+            return _record(row), json.loads(payload) if payload is not None else None
+
+    @_complete_read
     async def list(
         self, *, limit: int = 100, offset: int = 0, origin: str | None = None,
         legacy_id: str | None = None,
@@ -504,6 +546,17 @@ class OperationJournal:
             )]
 
     async def _prune(self, session: AsyncSession, *, reserve: int = 0) -> int:
+        legacy_history = await session.scalars(select(OperationJournalEntry).where(
+            OperationJournalEntry.kind == "snapshot_restore",
+            OperationJournalEntry.state == OperationState.SUCCEEDED,
+            OperationJournalEntry.has_recovery_refs.is_(True),
+            OperationJournalEntry.writers_stopped.is_(True),
+            OperationJournalEntry.blocked_reason.is_(None),
+            OperationJournalEntry.cache_degraded.is_(False),
+        ))
+        for row in legacy_history:
+            self._resolve_successful_restoration_history(row)
+        await session.flush()
         eligible = (
             OperationJournalEntry.state.in_([state.value for state in TERMINAL_STATES]),
             OperationJournalEntry.writers_stopped.is_(True),
@@ -512,12 +565,17 @@ class OperationJournal:
             OperationJournalEntry.cache_degraded.is_(False),
         )
         expired = delete(OperationJournalEntry).where(*eligible, OperationJournalEntry.ended_at < self.clock() - self.limits.terminal_max_age).returning(OperationJournalEntry.operation_id)
-        removed = len((await session.scalars(expired)).all())
+        evicted = cast(set[str], session.info["operation_evictions"])
+        removed_ids = (await session.scalars(expired)).all()
+        evicted.update(removed_ids)
+        removed = len(removed_ids)
         count = await session.scalar(select(func.count()).select_from(OperationJournalEntry)) or 0
         excess = max(0, count + reserve - self.limits.max_records)
         if excess:
             oldest = select(OperationJournalEntry.operation_id).where(*eligible).order_by(OperationJournalEntry.ended_at, OperationJournalEntry.operation_id).limit(excess)
-            removed += len((await session.scalars(delete(OperationJournalEntry).where(OperationJournalEntry.operation_id.in_(oldest)).returning(OperationJournalEntry.operation_id))).all())
+            removed_ids = (await session.scalars(delete(OperationJournalEntry).where(OperationJournalEntry.operation_id.in_(oldest)).returning(OperationJournalEntry.operation_id))).all()
+            evicted.update(removed_ids)
+            removed += len(removed_ids)
         return removed
 
     @_complete_write

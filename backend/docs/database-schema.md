@@ -213,7 +213,7 @@ Downgrade removes notes while preserving those existing tables and their evidenc
 
 ## Name-based restart schedules
 
-Revision `2026100700` is the current migration head and follows `2026100600`.
+Revision `2026100700` follows `2026100600`.
 It removes `cronjob.managed_server_generation`, `managed_binding_issue`,
 `uq_cronjob_managed_binding` and `ck_cronjob_managed_binding`. The retained
 `managed_purpose` distinguishes server-managed schedules from independent jobs.
@@ -231,3 +231,12 @@ target does not prove a historical instance binding. With no managed plans, the
 old nullable columns, index and check constraint can be restored without changing
 independent jobs. A production rollback must use a schema-compatible build or a
 separately reviewed database recovery.
+
+## Retained authored task failures
+
+Revision `2026101800` is the current migration head and follows `2026100700`.
+It adds nullable `operation_journal.failure_message` for safe authored failures,
+limited by the journal to 4096 UTF-8 bytes. Legacy rows remain null. Unknown
+exception values are not retained. Upgrade preserves operation outcomes, results,
+ownership and recovery evidence. Downgrade removes this presentation column and
+its messages while preserving the existing journal data and recovery protections.

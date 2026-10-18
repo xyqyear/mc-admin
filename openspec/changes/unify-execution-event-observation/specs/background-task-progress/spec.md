@@ -61,3 +61,54 @@ and repeated events SHALL NOT resubmit work.
 - **WHEN** the connection fails or the authenticated session ends
 - **THEN** recoverable failures use bounded reconnect without periodic HTTP progress fallback
 - **AND** an ended session closes observation and cannot write late updates into a replacement session's cache
+
+#### Scenario: Result read retry after dismissal
+- **WHEN** a completed task excludes its result and its list entry is dismissed before complete result retrieval
+- **THEN** a result consumer can explicitly retry reading the same retained task
+- **AND** the client preserves the true execution status and does not resubmit the operation
+
+#### Scenario: Result retrieval temporarily fails
+- **WHEN** an authoritative terminal result cannot be read
+- **THEN** the task center and initiating workflow expose a retry action and a result-read failure state
+- **AND** actions requiring the complete result remain guarded until successful retrieval
+
+## ADDED Requirements
+
+### Requirement: Bounded task history and progress
+
+Runtime task history and streamed progress details SHALL have bounded retention or size. Completed execution handles SHALL be released. Live and HTTP observations SHALL agree on retained result availability; absent or expired history SHALL have an explicit consistent outcome. Successful historical restoration associations SHALL NOT indefinitely prevent journal retention, while genuine unresolved recovery obligations SHALL remain protected.
+
+#### Scenario: Repeated completed work
+- **WHEN** successful tasks exceed the recent-history capacity
+- **THEN** runtime handles and streamed history remain bounded
+- **AND** authoritative retained details remain readable until durable expiration
+
+#### Scenario: Large cumulative progress
+- **WHEN** cumulative progress evidence grows beyond the event budget
+- **THEN** current progress remains bounded and complete evidence is available through result reads after settlement
+- **AND** reconnect does not retransmit unbounded terminal evidence
+
+### Requirement: Recoverable task-center presentation
+
+The task center SHALL distinguish confirmed empty state from unknown or disconnected observation, expose task-command failures, and provide retained per-item result inspection after navigation. Task actions opened from a modal SHALL remain operable within modal focus and interaction constraints. Safe authored task failure information SHALL survive restart without exposing raw internal errors.
+
+Task timestamps SHALL identify an unambiguous instant so recent-history visibility
+and ordering remain correct when the browser and server use different timezones.
+
+#### Scenario: Observation unavailable
+- **WHEN** initial task observation fails or an established connection is lost
+- **THEN** the task center reports unavailable or stale state and provides recovery
+- **AND** it does not present unknown state as a confirmed empty list
+
+#### Scenario: Partial operation results after navigation
+- **WHEN** an operation completes with per-item failures and the initiating page is left
+- **THEN** its retained task result still provides the failed items and authored error descriptions
+
+#### Scenario: Task command fails
+- **WHEN** cancellation or task dismissal is rejected or cannot be delivered
+- **THEN** the user receives failure feedback and can retry
+- **AND** cancellation acceptance alone does not establish terminal completion
+
+#### Scenario: Client timezone differs
+- **WHEN** a recently completed task is observed from a browser in a different timezone
+- **THEN** it remains visible within the same retention window and its elapsed time is correct

@@ -2,10 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { taskApi } from '@/features/tasks/api'
 import { taskQueryKeys } from './queryKeys'
-import { retainTaskStream, streamedTaskList, taskDetailQueryOptions, taskFeedState, taskIsTerminal, type TaskFeedState, type TaskListParams } from './observation'
+import { retainTaskStream, streamedTaskList, taskDetailQueryOptions, taskFeedState, taskIsTerminal, taskResultReady, type TaskFeedState, type TaskListParams } from './observation'
 
 export { taskQueryKeys } from './queryKeys'
-export { parseTaskEvent, subscribeTaskEvents } from './observation'
+export { parseTaskEvent, subscribeTaskEvents, retryTaskObservation } from './observation'
 export type { TaskFeedState, TaskEventSubscriber } from './observation'
 
 function useTaskStream(enabled = true) {
@@ -68,5 +68,8 @@ export const useTask = (taskId: string) => {
   const { client, feed } = useTaskStream(!!taskId)
   const query = useQuery(taskDetailQueryOptions(client, taskId))
   const reconnecting = !!taskId && feed.tasks !== undefined && !feed.connected && !taskIsTerminal(query.data)
-  return { ...query, reconnecting, isError: query.isError || reconnecting }
+  const resultReady = taskResultReady(query.data)
+  const isAwaitingResult = taskIsTerminal(query.data) && !resultReady
+  const resultError = isAwaitingResult && query.isError ? query.error : null
+  return { ...query, reconnecting, resultReady, resultError, isAwaitingResult, retryResult: query.refetch, isError: query.isError || reconnecting }
 }

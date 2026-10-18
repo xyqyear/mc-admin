@@ -8,6 +8,7 @@ import { fileSnapshotScope } from '@/features/backups/commands'
 import { useSnapshotTarget } from '@/features/backups/queries'
 import { useCreateArchive, useArchiveDownload } from '@/features/archives/commands'
 import { useTask } from '@/features/tasks/queries'
+import { TaskResultFeedback } from '@/features/tasks/ui/TaskResultFeedback'
 import { useBulkDeleteFiles } from '../commands'
 import { useDirectoryDownload } from '../useDirectoryDownload'
 import { useFileSnapshotRecovery } from '../snapshotRecoveryContext'
@@ -34,14 +35,14 @@ export function FileBatchActions({ serverId, paths, basePath, onDeleted }: {
   const packSubmitting = useRef(false)
   const [archive, setArchive] = useState<string | null>(null)
   const [failures, setFailures] = useState<{ path: string; message: string }[]>([])
-  const { data: task } = useTask(packTaskId ?? '')
+  const { data: task, resultReady } = useTask(packTaskId ?? '')
   const packBusy = packing.isPending || !!packTaskId
   const details = deletion.task?.progressDetails
   const deletionProgress = details?.kind === 'items'
     && ['processed', 'total', 'deleted', 'failed', 'pending'].every(key => typeof details[key] === 'number' && Number.isFinite(details[key]) && details[key] >= 0)
     ? details as Record<'processed' | 'total' | 'deleted' | 'failed' | 'pending', number> : null
   useEffect(() => {
-    if (!task || !packTaskId) return
+    if (!task || !packTaskId || !resultReady) return
     if (task.status === 'completed') {
       const filename = task.result?.filename
       if (typeof filename === 'string') setArchive(filename)
@@ -51,7 +52,7 @@ export function FileBatchActions({ serverId, paths, basePath, onDeleted }: {
       toast.error(task.error || '打包任务未完成')
       setPackTaskId(null)
     }
-  }, [task, packTaskId])
+  }, [task, packTaskId, resultReady])
   const snapshotNotice = target.isError ? '暂时无法检查忽略规则'
     : target.isPending ? '正在检查忽略规则'
       : target.data?.reason ?? (target.data?.skipped_count ? '所选范围包含忽略目录，创建与恢复会跳过这些内容' : null)
@@ -81,6 +82,7 @@ export function FileBatchActions({ serverId, paths, basePath, onDeleted }: {
     {deletion.isPending && deletionProgress && <p role="status" className="text-sm text-muted-foreground">
       已处理 {deletionProgress.processed}/{deletionProgress.total} 项，已删除 {deletionProgress.deleted} 项，失败 {deletionProgress.failed} 项，待处理 {deletionProgress.pending} 项
     </p>}
+    <TaskResultFeedback taskId={deletion.task?.taskId ?? ''} />
     {failures.length > 0 && <ul role="status" className="text-sm text-destructive">{failures.map(item => <li key={item.path}>{item.path}：{item.message}</li>)}</ul>}
     <DirectoryDownloadDialog key={downloadRequest?.paths.join('\0') ?? 'closed'} serverId={serverId} request={downloadRequest} onClose={() => setDownloadRequest(null)} />
     <CompressionConfirmDialog open={!!packPaths} onCancel={() => setPackPaths(null)} onOk={async () => {

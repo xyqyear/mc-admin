@@ -10,7 +10,7 @@ from anyio.lowlevel import checkpoint_if_cancelled
 
 from ..config import get_settings
 from ..db.database import get_async_session
-from ..errors import PublicOperationError, public_error_code
+from ..errors import PublicOperationError
 from ..operation_admission import get_server_write_admission
 from ..runtime_resources import current_runtime
 from ..servers.references import resolve_server_ref
@@ -84,6 +84,7 @@ async def settle_execution(execution: OperationExecution, state: OperationState)
         record = await execution.journal.finish(
             execution.operation_id, state, writers_stopped=stopped,
             failure_code=execution.failure_code,
+            failure_message=execution.failure_message,
             cache_degraded=execution.cache_degraded,
             blocked_reason="configuration_reconciliation_required" if reconcile else None,
         )
@@ -118,7 +119,7 @@ async def settle_before_release() -> AsyncGenerator[None]:
         execution = current_execution()
         if execution is not None:
             if isinstance(failure, Exception):
-                execution.failure_code = public_error_code(failure)
+                execution.record_failure(failure)
             async def settle_failure(error: BaseException) -> None:
                 record = await execution.journal.get(execution.operation_id)
                 cancelled = isinstance(error, (asyncio.CancelledError, GeneratorExit))
@@ -192,7 +193,7 @@ async def operation_scope(
             state = OperationState.INTERRUPTED if origin == "request" else OperationState.CANCELLED
             raise
         except Exception as error:
-            execution.failure_code = public_error_code(error)
+            execution.record_failure(error)
             raise
         finally:
             await finalize(settle_execution(execution, state))

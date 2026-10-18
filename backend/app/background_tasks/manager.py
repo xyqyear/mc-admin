@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -47,14 +47,49 @@ class SubmitResult(BaseModel):
 
 
 class BackgroundTaskManager:
+    RECENT_TASK_LIMIT: int = 200
+    RECENT_TASK_AGE = timedelta(minutes=30)
+
     def __init__(self, journal: "OperationJournal | None" = None):
         self._tasks: dict[str, BackgroundTask] = {}
         self._asyncio_tasks: dict[str, asyncio.Task] = {}
         self._futures: dict[str, asyncio.Future[TaskResult]] = {}
         self._accepting = True
-        self.journal = journal
+        self._journal: OperationJournal | None = None
+        self._unlisten_retention: Callable[[], None] | None = None
+        self._expired_tasks: set[str] = set()
         self._submission_keys: dict[str, str] = {}
         self._events = TaskEventStream(self.get_task, self.get_all_tasks)
+        self.journal = journal
+
+    @property
+    def journal(self) -> "OperationJournal | None":
+        return self._journal
+
+    @journal.setter
+    def journal(self, journal: "OperationJournal | None") -> None:
+        if self._unlisten_retention is not None:
+            self._unlisten_retention()
+        self._journal = journal
+        self._unlisten_retention = journal.subscribe_retention(self._history_expired) if journal is not None else None
+
+    def _history_expired(self, task_ids: frozenset[str]) -> None:
+        for task_id in task_ids:
+            task = self._tasks.get(task_id)
+            if task is not None and task.status in (TaskStatus.PENDING, TaskStatus.RUNNING):
+                self._expired_tasks.add(task_id)
+            else:
+                self.remove_task(task_id)
+
+    def _prune_recent_tasks(self) -> None:
+        cutoff = datetime.now(UTC).timestamp() - self.RECENT_TASK_AGE.total_seconds()
+        settled = sorted(
+            (task for task in self._tasks.values() if task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING)),
+            key=lambda task: (task.ended_at or task.created_at).timestamp(), reverse=True,
+        )
+        for index, task in enumerate(settled):
+            if index >= self.RECENT_TASK_LIMIT or (task.ended_at or task.created_at).timestamp() < cutoff:
+                self.remove_task(task.task_id)
 
     async def submit_durable(
         self,
@@ -184,15 +219,17 @@ class BackgroundTaskManager:
                     state = OperationState.CANCELLED
                     raise
                 except Exception as error:
-                    execution.failure_code = public_error_code(error)
+                    execution.record_failure(error)
                     raise
                 finally:
                     async def cleanup() -> None:
                         nonlocal state
                         try:
                             await task_generator.aclose()
-                        except BaseException:
+                        except BaseException as cleanup_error:
                             state = OperationState.FAILED
+                            if isinstance(cleanup_error, Exception):
+                                execution.record_failure(cleanup_error)
                             raise
                         finally:
                             from ..operations.execution import settle_execution
@@ -200,8 +237,10 @@ class BackgroundTaskManager:
                             try:
                                 if on_finished is not None:
                                     await on_finished(execution.outcome or state)
-                            except BaseException:
+                            except BaseException as history_error:
                                 state = OperationState.FAILED
+                                if isinstance(history_error, Exception):
+                                    execution.record_failure(history_error)
                                 raise
                             finally:
                                 await settle_execution(execution, state)
@@ -212,12 +251,15 @@ class BackgroundTaskManager:
                 await task_generator.aclose()
                 if on_finished is not None:
                     await on_finished(OperationState.CANCELLED)
-            except BaseException:
+            except BaseException as error:
+                if isinstance(error, Exception):
+                    execution.record_failure(error)
                 try:
                     if on_finished is not None:
                         await on_finished(OperationState.FAILED)
                 finally:
-                    await execution.journal.finish(record.operation_id, OperationState.FAILED, writers_stopped=True)
+                    await execution.journal.finish(record.operation_id, OperationState.FAILED, writers_stopped=True,
+                                                   failure_code=execution.failure_code, failure_message=execution.failure_message)
                 raise
 
         try:
@@ -227,6 +269,8 @@ class BackgroundTaskManager:
                                on_cancelled_before_start=cancelled_before_start)
         except BaseException as failure:
             rejected_state = OperationState.CANCELLED if isinstance(failure, (asyncio.CancelledError, GeneratorExit)) else OperationState.FAILED
+            if isinstance(failure, Exception):
+                execution.record_failure(failure)
 
             async def reject_submission() -> None:
                 try:
@@ -236,7 +280,8 @@ class BackgroundTaskManager:
                         if on_finished is not None:
                             await on_finished(rejected_state)
                     finally:
-                        await execution.journal.finish(record.operation_id, rejected_state, writers_stopped=True)
+                        await execution.journal.finish(record.operation_id, rejected_state, writers_stopped=True,
+                                                       failure_code=execution.failure_code, failure_message=execution.failure_message)
             try:
                 await finalize(reject_submission())
             except BaseException as cleanup_failure:
@@ -248,6 +293,7 @@ class BackgroundTaskManager:
             if task := self._task_from_record(record):
                 self._tasks[task.task_id] = task
                 self._events.publish(task.task_id)
+        self._prune_recent_tasks()
 
     @staticmethod
     def _task_from_record(record: "OperationRecord") -> BackgroundTask | None:
@@ -267,7 +313,7 @@ class BackgroundTaskManager:
             task_id=record.legacy_id, task_type=task_type, name=record.name,
             server_id=next((resource.server_id for resource in record.resources if resource.server_id), None),
             status=state, message=message, created_at=record.created_at,
-            ended_at=record.ended_at, error=message if state is TaskStatus.FAILED else None,
+            ended_at=record.ended_at, error=(record.failure_message or message) if state is TaskStatus.FAILED else None,
             error_code=record.failure_code, cancellable=False, result_known=False,
         )
 
@@ -275,12 +321,16 @@ class BackgroundTaskManager:
         task = self.get_task(task_id)
         if self.journal is None:
             return task
+        task = task.model_copy() if task is not None else None
+        snapshot = await self.journal.get_with_task_result(task_id)
+        if snapshot is None:
+            if task is not None and task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
+                self.remove_task(task_id)
+            return None
+        record, result = snapshot
         if task is None:
-            record = await self.journal.get(task_id)
-            if record is not None:
-                task = self._task_from_record(record)
+            task = self._task_from_record(record)
         if task is not None and task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
-            result = await self.journal.get_task_result(task_id)
             return task.model_copy(update={"result": result, "result_known": True})
         return task
 
@@ -323,7 +373,7 @@ class BackgroundTaskManager:
 
         async def run_task():
             task.status = TaskStatus.RUNNING
-            task.started_at = datetime.now(UTC).astimezone().replace(tzinfo=None)
+            task.started_at = datetime.now(UTC)
             self._events.publish(task.task_id)
             self._notify_task_observation(task)
             terminal = TaskStatus.COMPLETED
@@ -385,12 +435,13 @@ class BackgroundTaskManager:
                             elif error is None or error == "已取消":
                                 error = "操作未完成，请查看操作历史中的恢复说明"
                     task.status = terminal
-                    task.ended_at = datetime.now(UTC).astimezone().replace(tzinfo=None)
+                    task.ended_at = datetime.now(UTC)
                     task.error = error if terminal is TaskStatus.FAILED else None
                     if terminal is TaskStatus.CANCELLED:
                         task.message = "已取消"
                     if terminal is TaskStatus.COMPLETED and task.progress is not None:
                         task.progress = 100
+                    self._futures.pop(task.task_id, None)
                     if not future.done():
                         future.set_result(TaskResult(
                             success=terminal is TaskStatus.COMPLETED,
@@ -399,6 +450,10 @@ class BackgroundTaskManager:
                         ))
                     self._events.publish(task.task_id)
                     self._notify_task_observation(task)
+                    if task.task_id in self._expired_tasks:
+                        self._expired_tasks.discard(task.task_id)
+                        self.remove_task(task.task_id)
+                    self._prune_recent_tasks()
                     logger.info("Task %s settled: %s", task.task_id, terminal.value)
                 await finalize(publish_result())
 
@@ -407,6 +462,12 @@ class BackgroundTaskManager:
         with bind_execution(None):
             asyncio_task = asyncio.create_task(run_task())
         self._asyncio_tasks[task.task_id] = asyncio_task
+
+        def release_worker(completed: asyncio.Task) -> None:
+            if self._asyncio_tasks.get(task.task_id) is completed:
+                self._asyncio_tasks.pop(task.task_id, None)
+
+        asyncio_task.add_done_callback(release_worker)
         logger.info(
             f"Task {task.task_id} ({task.name}) submitted, type={task_type.value}, server_id={server_id}"
         )
@@ -424,9 +485,11 @@ class BackgroundTaskManager:
         self._events.notify_observation(domain)
 
     def _notify_task_observation(self, task: BackgroundTask, *, progress: bool = False) -> None:
+        if progress:
+            return
         if task.task_type in (TaskType.CHUNK_PRUNE_PREVIEW, TaskType.CHUNK_PRUNE_APPLY):
             self.notify_observation("prune")
-        elif task.task_type is TaskType.SNAPSHOT_RESTORE and not progress:
+        elif task.task_type is TaskType.SNAPSHOT_RESTORE:
             self.notify_observation("restorations")
 
     def update_progress(self, task_id: str, progress: TaskProgress) -> bool:
@@ -475,11 +538,15 @@ class BackgroundTaskManager:
                 await finalize(asyncio.gather(*workers, return_exceptions=True))
         finally:
             self._events.close()
+            if self._unlisten_retention is not None:
+                self._unlisten_retention()
+                self._unlisten_retention = None
 
     def get_task(self, task_id: str) -> BackgroundTask | None:
         return self._tasks.get(task_id)
 
     def get_all_tasks(self) -> list[BackgroundTask]:
+        self._prune_recent_tasks()
         return list(self._tasks.values())
 
     def get_active_tasks(self) -> list[BackgroundTask]:
@@ -501,7 +568,16 @@ class BackgroundTaskManager:
 
     def get_future(self, task_id: str) -> asyncio.Future[TaskResult] | None:
         """Get the Future for a task, allowing external code to await completion."""
-        return self._futures.get(task_id)
+        if future := self._futures.get(task_id):
+            return future
+        task = self.get_task(task_id)
+        if task is None or task.status in (TaskStatus.PENDING, TaskStatus.RUNNING) or not task.result_known:
+            return None
+        future = asyncio.get_running_loop().create_future()
+        future.set_result(TaskResult(success=task.status is TaskStatus.COMPLETED,
+                                     data=task.result if task.status is TaskStatus.COMPLETED else None,
+                                     error=task.error or ("已取消" if task.status is TaskStatus.CANCELLED else None)))
+        return future
 
     def remove_task(self, task_id: str) -> bool:
         """Remove a completed task."""
@@ -511,7 +587,9 @@ class BackgroundTaskManager:
         if task.status in (TaskStatus.PENDING, TaskStatus.RUNNING):
             return False
         del self._tasks[task_id]
-        self._asyncio_tasks.pop(task_id, None)
+        worker = self._asyncio_tasks.get(task_id)
+        if worker is not None and worker.done():
+            self._asyncio_tasks.pop(task_id, None)
         self._futures.pop(task_id, None)
         self._events.publish(task_id)
         if task.task_type in (TaskType.CHUNK_PRUNE_PREVIEW, TaskType.CHUNK_PRUNE_APPLY):

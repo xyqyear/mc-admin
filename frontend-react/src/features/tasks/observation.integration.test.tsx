@@ -67,7 +67,7 @@ it('keeps the guard until terminal detail is readable and returns its complete r
   )
   const view = renderHook(() => {
     const task = useTask('backup')
-    return { data: task.data, isError: task.isError }
+    return task
   }, { wrapper })
   let settled = false
   const waiting = waitForTaskResult<{ snapshot: { short_id: string }; skipped_paths: string[] }>(client, { task_id: 'backup' }).then(result => { settled = true; return result })
@@ -76,13 +76,15 @@ it('keeps the guard until terminal detail is readable and returns its complete r
   completed = true
   act(() => feed.upsert({ ...task, status: 'completed', progress: 100, result_included: false }))
   await waitFor(() => expect(finalReads).toBe(1))
-  expect(view.result.current.data?.status).toBe('running')
+  expect(view.result.current.data?.status).toBe('completed')
+  expect(view.result.current.resultReady).toBe(false)
+  expect(view.result.current.isAwaitingResult).toBe(true)
   expect(settled).toBe(false)
   await act(async () => { finalRead.resolve() })
   await waitFor(() => expect(view.result.current.isError).toBe(true))
   expect(settled).toBe(false)
   failDetail = false
-  await act(async () => { await client.invalidateQueries({ queryKey: taskQueryKeys.detail('backup'), exact: true }) })
+  await act(async () => { await view.result.current.retryResult() })
   expect(await waiting).toEqual({ snapshot: { short_id: 'real-result' }, skipped_paths: ['protected'] })
   await waitFor(() => expect(view.result.current.data?.status).toBe('completed'))
 })
@@ -193,7 +195,8 @@ it('does not repeatedly hydrate an excluded prune result on unrelated task progr
   act(() => { feed.upsert(taskResponse('other', { progress: 20 })); feed.upsert(taskResponse('other', { progress: 40 })) })
   await waitFor(() => expect(client.getQueryData<{ tasks: BackgroundTask[] }>(taskQueryKeys.events())?.tasks[0].progress).toBe(40))
   expect(reads).toBe(initialReads)
-  expect(view.result.current.data?.status).toBe('running')
+  expect(view.result.current.data?.status).toBe('completed')
+  expect(view.result.current.resultReady).toBe(false)
 })
 
 it('serializes operation batches and reconnects from the last acknowledged cursor', async () => {
@@ -347,4 +350,60 @@ it('announces a lost stream to detail views and waiters without releasing their 
   act(() => feed.close())
   await waitFor(() => expect(client.getQueryData<{ connected: boolean }>(taskQueryKeys.events())?.connected).toBe(false))
   expect(view.result.current.isError).toBe(false)
+})
+
+
+it('does not preallocate task detail queries for unobserved snapshot history', async () => {
+  const rows = Array.from({ length: 150 }, (_, index) => taskResponse(`history-${index}`, { status: 'completed', result: { preserved: index } }))
+  const feed = createTaskEvents(rows)
+  server.use(feed.handler, http.get('*/api/tasks', () => HttpResponse.json({ tasks: rows, total: rows.length })))
+  const view = renderHook(useTasks, { wrapper })
+  await waitFor(() => expect(view.result.current.data?.total).toBe(150))
+  expect(client.getQueryCache().findAll({ queryKey: taskQueryKeys.all }).map(query => query.queryKey)).toEqual(expect.arrayContaining([taskQueryKeys.events(), taskQueryKeys.list()]))
+  expect(client.getQueryCache().findAll({ queryKey: taskQueryKeys.all })).toHaveLength(2)
+})
+
+it('retries the same excluded terminal result after dismissal without resubmitting work', async () => {
+  const row = { ...taskResponse('dismissed-result', { status: 'completed' }), result_included: false }
+  const feed = createTaskEvents([row])
+  let reads = 0
+  let writes = 0
+  let available = false
+  server.use(feed.handler,
+    http.get('*/api/tasks/dismissed-result', () => { reads++; return available ? HttpResponse.json({ ...row, result: { preserved: true } }) : new HttpResponse(null, { status: 503 }) }),
+    http.post('*/api/*', () => { writes++; return HttpResponse.json({}) }),
+  )
+  const view = renderHook(() => useTask('dismissed-result'), { wrapper })
+  await waitFor(() => expect(view.result.current.resultError).toBeTruthy())
+  expect(view.result.current.data?.status).toBe('completed')
+  expect(view.result.current.resultReady).toBe(false)
+  act(() => feed.remove('dismissed-result'))
+  await waitFor(() => expect(client.getQueryData<{ tasks: unknown[] }>(taskQueryKeys.events())?.tasks).toEqual([]))
+  available = true
+  const before = reads
+  await act(async () => { await view.result.current.retryResult() })
+  expect(reads).toBe(before + 1)
+  await waitFor(() => expect(view.result.current.resultReady).toBe(true))
+  expect(view.result.current.data?.result).toEqual({ preserved: true })
+  expect(writes).toBe(0)
+})
+
+it('retains an authoritative terminal HTTP result when an older running frame arrives during the read', async () => {
+  const row = taskResponse('terminal-race')
+  const feed = createTaskEvents()
+  const gate = deferred<void>()
+  let reads = 0
+  server.use(feed.handler, http.get('*/api/tasks/terminal-race', async () => {
+    reads++
+    await gate.promise
+    return HttpResponse.json({ ...row, status: 'completed', result: { final: true } })
+  }))
+  const waiting = waitForTaskResult(client, { task_id: row.task_id })
+  await waitFor(() => expect(reads).toBe(1))
+  await waitFor(() => expect(feed.activeConnections).toBe(1))
+  act(() => feed.upsert(row))
+  await waitFor(() => expect(client.getQueryData<BackgroundTask>(taskQueryKeys.detail(row.task_id))?.status).toBe('running'))
+  await act(async () => { gate.resolve() })
+  expect(await waiting).toEqual({ final: true })
+  expect(client.getQueryData<BackgroundTask>(taskQueryKeys.detail(row.task_id))?.status).toBe('completed')
 })

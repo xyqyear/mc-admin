@@ -1,8 +1,8 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { createTaskEvents, taskEventsUnavailable, taskResponse } from '@/test/taskEvents'
 import { TooltipProvider } from '@/shared/ui/tooltip'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
@@ -97,4 +97,86 @@ it('shows newest downloads first in each group without changing stored order or 
   expect(useDownloadStore.getState().tasks.map(task => task.fileName)).toEqual([
     '下载-旧进行', '下载-旧完成', '下载-过期', '下载-新进行', '下载-新完成',
   ])
+})
+
+
+it('distinguishes an unavailable task list from an empty list and retries explicitly', async () => {
+  let available = false
+  server.use(http.get('*/api/tasks', () => available ? HttpResponse.json({ tasks: [], total: 0 }) : HttpResponse.json({ detail: '服务暂不可用' }, { status: 503 })))
+  render(<TestProviders client={client}><TooltipProvider><BackgroundTaskList /></TooltipProvider></TestProviders>)
+  expect((await screen.findByRole('alert')).textContent).toContain('无法读取后台任务')
+  expect(screen.queryByText('暂无后台任务')).toBeNull()
+  available = true
+  fireEvent.click(screen.getByRole('button', { name: '重试连接' }))
+  expect(await screen.findByText('暂无后台任务')).toBeTruthy()
+})
+
+it('shows stale task state during a stream interruption', async () => {
+  const task = taskResponse('断线中的任务')
+  const feed = createTaskEvents([task])
+  server.use(feed.handler, http.get('*/api/tasks', () => HttpResponse.json({ tasks: [task], total: 1 })))
+  render(<TestProviders client={client}><TooltipProvider><BackgroundTaskList /></TooltipProvider></TestProviders>)
+  await screen.findByTitle('断线中的任务')
+  feed.close()
+  expect(await screen.findByText('任务连接已中断，显示的是上次收到的状态。')).toBeTruthy()
+  expect(screen.getByTitle('断线中的任务')).toBeTruthy()
+  expect(screen.getByRole('button', { name: '重试连接' })).toBeTruthy()
+})
+
+it('reads retained partial results on demand and retries the same result after a transient error', async () => {
+  const errors = [{ server_id: '需检查的服务器', error: '目录仍被占用' }]
+  const task = { ...taskResponse('partial-sync', { name: '同步部分失败', task_type: 'server_sync', status: 'completed' }), result_included: false }
+  const feed = createTaskEvents([task])
+  let available = false
+  let reads = 0
+  server.use(feed.handler, http.get('*/api/tasks', () => HttpResponse.json({ tasks: [task], total: 1 })),
+    http.get(`*/api/tasks/${task.task_id}`, () => { reads++; return available ? HttpResponse.json({ ...task, result: { errors, applied: true } }) : HttpResponse.json({ detail: '结果暂不可读' }, { status: 503 }) }),
+  )
+  render(<TestProviders client={client}><TooltipProvider><BackgroundTaskList /></TooltipProvider></TestProviders>)
+  fireEvent.click(await screen.findByTitle('同步部分失败'))
+  expect(reads).toBe(0)
+  fireEvent.click(await screen.findByRole('button', { name: '查看结果' }))
+  const retry = await screen.findByRole('button', { name: '重试读取结果' })
+  expect(screen.getByText('任务已结束，但完整结果读取失败。请重试读取，无需重新执行任务。')).toBeTruthy()
+  available = true
+  const before = reads
+  fireEvent.click(retry)
+  expect(await screen.findByText('逐项失败结果（1）')).toBeTruthy()
+  expect(screen.getByText('需检查的服务器')).toBeTruthy()
+  expect(screen.getByText('目录仍被占用')).toBeTruthy()
+  expect(reads).toBe(before + 1)
+})
+
+it('reports cancellation failure and releases its action button for retry', async () => {
+  const { toast } = await import('sonner')
+  const showError = vi.spyOn(toast, 'error')
+  const task = taskResponse('cancel-failure', { name: '不能取消的任务' })
+  server.use(http.get('*/api/tasks', () => HttpResponse.json({ tasks: [task], total: 1 })), http.post(`*/api/tasks/${task.task_id}/cancel`, () => HttpResponse.json({ detail: '任务正在收尾' }, { status: 409 })))
+  render(<TestProviders client={client}><TooltipProvider><BackgroundTaskList /></TooltipProvider></TestProviders>)
+  fireEvent.click(await screen.findByRole('button', { name: '取消任务' }))
+  await waitFor(() => expect(showError).toHaveBeenCalledWith(expect.stringContaining('取消任务失败')))
+  expect((screen.getByRole('button', { name: '取消任务' }) as HTMLButtonElement).disabled).toBe(false)
+})
+
+it.each([
+  ['移除任务', '移除任务失败'],
+  ['清除', '清除任务失败'],
+])('keeps %s pending and reports a failed command without erasing the task', async (label, errorPrefix) => {
+  const { toast } = await import('sonner')
+  const showError = vi.spyOn(toast, 'error')
+  const task = taskResponse('retained-on-error', { name: '应保留的任务', status: 'completed' })
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  server.use(http.get('*/api/tasks', () => HttpResponse.json({ tasks: [task], total: 1 })),
+    http.delete('*/api/tasks/:id', async () => { await gate; return HttpResponse.json({ detail: '暂时无法修改记录' }, { status: 503 }) }),
+    http.delete('*/api/tasks', async () => { await gate; return HttpResponse.json({ detail: '暂时无法修改记录' }, { status: 503 }) }),
+  )
+  render(<TestProviders client={client}><TooltipProvider><BackgroundTaskList /></TooltipProvider></TestProviders>)
+  const action = await screen.findByRole('button', { name: label })
+  fireEvent.click(action)
+  await waitFor(() => expect((action as HTMLButtonElement).disabled).toBe(true))
+  release()
+  await waitFor(() => expect(showError).toHaveBeenCalledWith(expect.stringContaining(errorPrefix)))
+  expect(screen.getByTitle('应保留的任务')).toBeTruthy()
+  expect((action as HTMLButtonElement).disabled).toBe(false)
 })

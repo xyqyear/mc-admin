@@ -17,7 +17,8 @@ import { ScrollArea } from '@/shared/ui/scroll-area'
 import { Separator } from '@/shared/ui/separator'
 import { Spinner } from '@/shared/ui/spinner'
 import { useSyncServers } from '@/features/servers/commands';
-import type { SyncDryRunEntry, SyncEntryError } from '@/features/servers/lifecycleContracts'
+import type { SyncDryRunEntry, SyncEntryError, SyncResult } from '@/features/servers/lifecycleContracts'
+import { openTaskCenter } from '@/features/tasks/commands'
 
 interface SyncWithFilesystemDialogProps {
   open: boolean
@@ -35,6 +36,7 @@ const SyncWithFilesystemDialog: React.FC<SyncWithFilesystemDialogProps> = ({
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [needsForce, setNeedsForce] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
+  const [appliedResult, setAppliedResult] = useState<SyncResult | null>(null)
 
   const adoptEntries = useMemo(
     () => preview.filter((p) => p.action === 'adopt'),
@@ -72,22 +74,28 @@ const SyncWithFilesystemDialog: React.FC<SyncWithFilesystemDialogProps> = ({
       setPreviewError(null)
       setNeedsForce(false)
       setHasLoaded(false)
+      setAppliedResult(null)
       fetchPreview()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const handleApply = async (force = false) => {
+    if (syncMutation.isPending || appliedResult) return
     try {
       const result = await syncMutation.mutateAsync({ dry_run: false, force })
       const adopted = result.adopted.length
       const removed = result.removed.length
       const errored = result.errors.length
-      toast.success(
-        `同步完成：导入 ${adopted}，停用 ${removed}` +
-          (errored > 0 ? `，${errored} 个失败` : ''),
-      )
-      onClose()
+      const message = `同步完成：导入 ${adopted}，停用 ${removed}`
+      if (errored > 0) {
+        setAppliedResult(result)
+        setErrors(result.errors)
+        toast.warning(`${message}，${errored} 个失败，请查看逐项结果`)
+      } else {
+        toast.success(message)
+        onClose()
+      }
     } catch (e: any) {
       if (e?.code === 'sync_empty_directory') {
         setNeedsForce(true)
@@ -170,7 +178,7 @@ const SyncWithFilesystemDialog: React.FC<SyncWithFilesystemDialogProps> = ({
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
           <AlertTriangle className="h-4 w-4" />
-          <span>验证失败 ({errors.length})</span>
+          <span>{appliedResult ? '同步失败' : '验证失败'} ({errors.length})</span>
         </div>
         <div className="space-y-1 pl-6">
           {errors.map((e, idx) => (
@@ -209,7 +217,18 @@ const SyncWithFilesystemDialog: React.FC<SyncWithFilesystemDialogProps> = ({
         </DialogHeader>
 
         <div className="space-y-4">
-          {syncMutation.isPending && !hasLoaded ? (
+          {appliedResult ? (
+            <div className="space-y-4">
+              <Alert>
+                <AlertTitle>同步已结束，部分条目失败</AlertTitle>
+                <AlertDescription>
+                  已导入 {appliedResult.adopted.length} 个，已停用 {appliedResult.removed.length} 个。失败条目如下，也可在任务中心查看完整结果。
+                </AlertDescription>
+              </Alert>
+              {renderErrors()}
+              <Button variant="outline" onClick={openTaskCenter}>查看任务</Button>
+            </div>
+          ) : syncMutation.isPending && !hasLoaded ? (
             <div className="flex justify-center py-8">
               <Spinner className="size-6" />
             </div>
@@ -258,9 +277,9 @@ const SyncWithFilesystemDialog: React.FC<SyncWithFilesystemDialogProps> = ({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            取消
+            {appliedResult ? '关闭' : '取消'}
           </Button>
-          {needsForce ? (
+          {appliedResult ? null : needsForce ? (
             <Button
               variant="destructive"
               onClick={() => handleApply(true)}

@@ -12,6 +12,11 @@ Server creation, removal and filesystem↔DB sync submit feature-owned backgroun
 
 The sync trigger in `Overview.tsx` is rendered only when `useCurrentUser().role === UserRole.OWNER`. The backend re-enforces the role guard regardless.
 
+An applied synchronization with per-server errors keeps the dialog open and shows
+the failed server identities and authored error messages. It cannot be applied
+again from that completed preview. The task center provides the retained result
+after navigation; an entirely successful synchronization closes normally.
+
 ## Types
 
 `src/features/servers/contracts.ts` owns `CreateServerRequest` and its optional `RestartScheduleRequest`. API transport and creation commands use this single request shape.

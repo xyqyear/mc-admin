@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, PrivateAttr
@@ -21,7 +21,7 @@ class BackgroundTask(BaseModel):
     progress_details: dict[str, Any] | None = None
     server_id: str | None = None
     cancellable: bool = True
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     ended_at: datetime | None = None
     result: dict[str, Any] | None = None
@@ -31,8 +31,11 @@ class BackgroundTask(BaseModel):
     cancel_requested: bool = Field(default=False, exclude=True)
     result_known: bool = Field(default=True, exclude=True)
     _event_result_cache: tuple[dict[str, Any] | None, bool] | None = PrivateAttr(default=None)
+    _event_progress_cache: tuple[dict[str, Any], bool, dict[str, Any]] | None = PrivateAttr(default=None)
 
     def __setattr__(self, name: str, value: Any) -> None:
         super().__setattr__(name, value)
         if name == "result":
             self._event_result_cache = None
+        elif name == "progress_details":
+            self._event_progress_cache = None

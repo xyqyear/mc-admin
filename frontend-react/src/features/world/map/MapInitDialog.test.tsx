@@ -17,10 +17,10 @@ it('shows streamed stages and remains blocked through disconnect and running 100
   let reads = 0
   let submissions = 0
   const feed = createTaskEvents()
-  const stages = [
-    { stage: 'client', phase: 'done', percent: 100, cached: true },
-    { stage: 'palette', phase: 'resolving', percent: 35, message: '正在解析方块颜色' },
-  ]
+  const stages = {
+    client: { stage: 'client', phase: 'done', percent: 100, cached: true },
+    palette: { stage: 'palette', phase: 'resolving', percent: 35, message: '正在解析方块颜色' },
+  }
   const task = taskResponse('initialization', { task_type: 'map_initialize', progress: 67.5,
     progress_details: { kind: 'map', stages },
   })
@@ -43,7 +43,7 @@ it('shows streamed stages and remains blocked through disconnect and running 100
   expect(screen.getByText('35%')).toBeTruthy()
   expect(screen.getByText('100%（已缓存）')).toBeTruthy()
   const initialReads = reads
-  const done = { ...task, progress: 100, progress_details: { kind: 'map', stages: [stages[0], { stage: 'palette', phase: 'done', percent: 100 }] } }
+  const done = { ...task, progress: 100, progress_details: { kind: 'map', stages: { client: stages.client, palette: { stage: 'palette', phase: 'done', percent: 100 } } } }
   act(() => feed.upsert(done))
   await screen.findByText('100%')
   expect(screen.queryByRole('button', { name: /close/i })).toBeNull()
@@ -78,5 +78,37 @@ it('reattaches an existing task and makes a confirmed failure dismissible', asyn
   expect(screen.getByRole('button', { name: /close/i })).toBeTruthy()
   expect(requests).toEqual(['/tasks', '/tasks/existing'])
   expect(onComplete).not.toHaveBeenCalled()
+  client.clear()
+})
+
+it('allows retrying an unavailable final result without reinitializing the map', async () => {
+  const feed = createTaskEvents()
+  const task = taskResponse('retry-map', { task_type: 'map_initialize' })
+  let readable = false
+  let submissions = 0
+  server.use(feed.handler)
+  api.defaults.adapter = async config => {
+    if (config.url === '/tasks') return httpResponse(config, { tasks: [], total: 0 })
+    if (config.url?.endsWith('/initialize')) {
+      submissions++
+      feed.upsert(task)
+      return httpResponse(config, { task_id: task.task_id }, 202)
+    }
+    return readable ? httpResponse(config, { ...task, status: 'completed', result: { stages: {} } })
+      : httpResponse(config, { detail: '结果暂时不可读' }, 503)
+  }
+  const onComplete = vi.fn()
+  const client = createTestClient()
+  const view = render(<TestProviders client={client}><MapInitDialog open serverId="server" onClose={vi.fn()} onComplete={onComplete} /></TestProviders>)
+  await waitFor(() => expect(submissions).toBe(1))
+  act(() => feed.upsert({ ...task, status: 'completed', result_included: false }))
+  const retry = await screen.findByRole('button', { name: '重试读取结果' })
+  expect(onComplete).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button', { name: /close/i })).toBeNull()
+  readable = true
+  fireEvent.click(retry)
+  await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
+  expect(submissions).toBe(1)
+  view.unmount()
   client.clear()
 })
