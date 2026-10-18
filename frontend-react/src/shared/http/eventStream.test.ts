@@ -24,7 +24,7 @@ it('skips malformed JSON while dispatching valid events split across chunks', as
   const events: unknown[] = []
   const close = vi.fn()
   const error = vi.fn()
-  await readEventStream({ url: '/players/profiles/stream', onEvent: event => events.push(event), onClose: close, onError: error })
+  await readEventStream({ url: '/players/profiles/stream', onEvent: event => { events.push(event) }, onClose: close, onError: error })
   expect(events).toEqual([{ value: 1 }, { value: 2 }])
   expect(close).toHaveBeenCalledOnce()
   expect(error).not.toHaveBeenCalled()
@@ -68,7 +68,7 @@ it('reports comment keepalive activity and reads CRLF frames split across chunks
   streamResponse([': keepalive\r', '\n\r\ndata: {"value":1}\r', '\n\r\n'])
   const activity = vi.fn()
   const events: unknown[] = []
-  await readEventStream({ url: '/tasks/events', method: 'GET', onActivity: activity, onEvent: event => events.push(event) })
+  await readEventStream({ url: '/tasks/events', method: 'GET', onActivity: activity, onEvent: event => { events.push(event) } })
   expect(activity).toHaveBeenCalledTimes(3)
   expect(events).toEqual([{ value: 1 }])
   expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ method: 'GET', credentials: 'same-origin' }))

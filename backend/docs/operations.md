@@ -102,7 +102,9 @@ should describe its global scope rather than enumerate an unbounded server list.
 Bounded metadata cannot be used as a transport for arbitrary task payloads.
 Feature results use the separate nullable `task_result_json` column. Task workers
 save it before exposing results; the ORM defers it for metadata, list and recovery
-reads. Only task details load it, including for dismissed or restarted tasks.
+reads. Task details load it, including for dismissed or restarted tasks;
+already-loaded settled results up to 16 KiB can also accompany task events.
+Structured progress does not load or rewrite journal results.
 Old terminal rows are removed; underlying snapshots, backup repositories and
 restored data are never deleted by journal retention.
 
@@ -152,7 +154,12 @@ Only nonterminal operation IDs are retained for active counting, bounded by
 journal admission capacity. Startup initializes them from persisted nonterminal
 rows before recovery; committed acceptance and completion update the set. Runtime
 shutdown clears the feed after writers have stopped. Browsers retain their own
-cursor and process bounded batches; the backend stores no subscriber state.
+processed cursor and process bounded batches. `/api/tasks/events` accepts
+`operation_cursor` and sends `operation_changes` frames from the same ring;
+synchronous listeners only wake subscriptions after commit. Each open subscription
+retains its read position and dirty flag, with no duplicate history queue or
+periodic database read. Retention gaps and instance changes use the same explicit
+reset contract. Disconnect and shutdown remove wake listeners.
 
 ### Historical reads and recovery resolution
 

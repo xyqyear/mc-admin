@@ -84,6 +84,39 @@ async def test_cancel_waits_for_hash_cleanup_before_removing_input(tmp_path, mon
     assert task is not None and task.status.value == 'cancelled'
 
 
+async def test_hash_reports_bytes_before_result_and_preserves_digest(tmp_path, monkeypatch):
+    session = pending_upload(tmp_path)
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = uploads._iter_file_sha256_events
+
+    async def hash_file(*args):
+        async for event in original(*args):
+            yield event
+            if event.event_type == 'progress':
+                entered.set()
+                await release.wait()
+
+    monkeypatch.setattr(uploads, '_iter_file_sha256_events', hash_file)
+    accepted = await uploads.submit_archive_hash(session.upload_id, 1)
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        task = get_task_manager().get_task(accepted.task_id)
+        assert task is not None and task.status.value == 'running'
+        assert task.result is None
+        assert task.progress_details == {
+            'kind': 'bytes', 'loaded': session.size, 'total': session.size, 'filename': session.filename,
+        }
+        assert session.state == 'uploaded'
+    finally:
+        release.set()
+    future = get_task_manager().get_future(accepted.task_id)
+    assert future is not None
+    terminal = await asyncio.wait_for(future, 2)
+    assert terminal.success and terminal.data
+    assert terminal.data['sha256'] == hashlib.sha256(session.temp_path.read_bytes()).hexdigest()
+    assert session.state == 'hashed'
+
+
 async def test_publication_retains_association_and_rejects_cancel_during_copy(tmp_path, monkeypatch):
     session = pending_upload(tmp_path)
     async for _ in uploads.iter_archive_upload_sha256_events(session.upload_id):

@@ -61,7 +61,12 @@ an explicitly bound runtime; subsequent property reads use its captured manager.
 After structural validation, `BaseConfigSchema.validate_update()` checks domain rules for newly submitted settings before persistence. Log-parser settings compile each pattern and require the capture groups used by the parser: UUID and achievement need two, join and leave need one, chat needs three, and stop needs none. Invalid submissions preserve the existing cache and stored configuration. The write-only check leaves legacy loading unchanged, so an administrator can still open settings to repair previously stored invalid rules.
 
 Runtime-tunable values are read at the point of behavior. Subsystems that cache
-derived state use an explicit refresh/rebuild path.
+derived state use an explicit refresh/rebuild path. `ConfigManager.listen()`
+registers a synchronous, module-scoped notification after a successful update or
+reset has committed and replaced the cache. The owner detaches the returned
+subscription when it closes; notification failures cannot undo a committed save.
+The chunk-prune registry uses this notification to rearm preview expiry without
+reading world files.
 
 ## Registered modules
 

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import path from 'node:path'
 import type { BrowserContext, Page, WebSocketRoute } from '@playwright/test'
 import { test, expect, login, editorValue, navigate, type OwnedApi, type OwnedEnvironment } from './fixtures'
-import { interruptRestoreAfterSafetySnapshot } from './streamFault'
+import { createTaskObservationFault, interruptRestoreAfterSafetySnapshot } from './streamFault'
 import { withCleanup } from './cleanup'
 import { holdSnapshotBackup, holdSnapshotRestore } from './snapshotWorker'
 
@@ -15,40 +15,34 @@ test.describe('owned administration journeys', () => {
   journey('lifecycle acceptance stays blocked until task status confirms completion', async ({ page, api, owned }) => {
     await api.stopped()
     await api.operation('down')
-    let release!: () => void
-    const gate = new Promise<void>(resolve => { release = resolve })
+    const proxy = await createTaskObservationFault(owned.base_url)
     let taskId = ''
-    let observed = false
     await page.route('**/api/servers/*/operations', async route => {
       const response = await route.fetch()
       expect(response.status()).toBe(202)
       taskId = (await response.json()).task_id
-      await route.fulfill({ response })
-    })
-    await page.route('**/api/tasks/*', async route => {
-      if (route.request().method() !== 'GET' || !taskId || !route.request().url().endsWith('/' + taskId)) return route.continue()
-      const response = await route.fetch()
-      observed = true
-      await gate
+      proxy.disconnect(taskId)
       await route.fulfill({ response })
     })
     try {
-      await page.goto(`/server/${owned.server_id}/console`)
+      await page.goto(`${proxy.url}/server/${owned.server_id}/console`)
       const start = page.getByRole('button', { name: '启动', exact: true })
       await expect(start).toBeEnabled()
       await start.click()
-      await expect.poll(() => observed).toBe(true)
+      await proxy.interrupted
       await expect(page.getByRole('status').filter({ hasText: /正在/ }).first()).toBeVisible()
       await expect(start).toBeDisabled()
       await expect(page.getByRole('button', { name: '下线', exact: true })).toBeDisabled()
       await page.getByRole('button', { name: '查看任务', exact: true }).click()
       await expect(page.getByText('任务中心', { exact: true }).first()).toBeVisible()
-      release()
       await api.task(taskId)
+      await expect(page.getByRole('button', { name: '下线', exact: true })).toBeDisabled()
+      proxy.resume()
       await expect(page.getByRole('button', { name: '下线', exact: true })).toBeEnabled()
     } finally {
-      release()
+      proxy.resume()
       await page.unrouteAll({ behavior: 'wait' })
+      await proxy.close()
       await api.running()
     }
   })
@@ -470,15 +464,22 @@ test.describe('owned administration journeys', () => {
     const hashes = async () => Object.fromEntries(await Promise.all((await readdir(region)).filter(name => name.endsWith('.mca')).sort().map(async name => [name, createHash('sha256').update(await readFile(path.join(region, name))).digest('hex')])))
     const before = await hashes()
     expect(Object.keys(before).length).toBeGreaterThan(0)
+    let stateReads = 0
+    const observe = (request: { method(): string; url(): string }) => {
+      if (request.method() === 'GET' && new URL(request.url()).pathname.endsWith('/chunk-prune/state')) stateReads++
+    }
+    page.on('request', observe)
     try {
       await page.goto(`/server/${owned.server_id}/chunk-prune`)
       await page.getByRole('button', { name: '预览', exact: true }).click()
-      const apply = page.getByRole('button', { name: '删除预览中的服务器区块' })
+      const apply = page.getByRole('button', { name: '删除预览中的服务器区块', includeHidden: true })
       await expect(apply).toBeEnabled({ timeout: 60_000 })
       await apply.click()
       const confirmation = page.getByRole('alertdialog', { name: '删除预览中的区块' })
       await expect(confirmation).toBeVisible()
       await expect.poll(async () => (await api.json<{ preview: { availability: string } }>(api.server('/chunk-prune/state'))).preview.availability, { timeout: 30_000 }).toBe('expired')
+      await expect(apply).toBeDisabled()
+      expect(stateReads).toBe(0)
       const rejected = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/chunk-prune/apply'))
       await confirmation.getByRole('button', { name: '删除区块', exact: true }).click()
       const response = await rejected
@@ -490,6 +491,7 @@ test.describe('owned administration journeys', () => {
       expect(state.apply_task).toBeNull()
       expect(await hashes()).toEqual(before)
     } finally {
+      page.off('request', observe)
       await api.json('/api/config/modules/mcmap', 'PUT', config)
     }
   })

@@ -99,6 +99,10 @@ class FileApplication:
                 **{status: sum(result["status"] == status for result in results) for status in ("deleted", "failed", "pending")},
             }
 
+        def progress_details() -> dict:
+            counts = {status: sum(result["status"] == status for result in results) for status in ("deleted", "failed", "pending")}
+            return {"kind": "items", "processed": len(results) - counts["pending"], "total": len(results), **counts}
+
         async def persist() -> None:
             execution = current_execution()
             if execution is not None:
@@ -124,7 +128,7 @@ class FileApplication:
             await persist()
 
         async def run() -> AsyncGenerator[TaskProgress]:
-            yield TaskProgress(message="正在准备批量删除", result=outcome())
+            yield TaskProgress(message="正在准备批量删除", progress_details=progress_details(), result=outcome())
             async with get_operation_coordinator().acquire(claims, policy=ConflictPolicy.REJECT), settle_before_release():
                 require_same_claims(claims, await self.claims(targets))
                 for path in roots:
@@ -132,10 +136,10 @@ class FileApplication:
                 await record_phase("deleting_files", changed=True)
                 for index, result in enumerate(results):
                     await finalize(remove(result))
-                    yield TaskProgress(progress=(index + 1) * 100 / len(results), message=f"已处理 {index + 1}/{len(results)} 项", result=outcome())
+                    yield TaskProgress(progress=(index + 1) * 100 / len(results), message=f"已处理 {index + 1}/{len(results)} 项", progress_details=progress_details(), result=outcome())
             if any(result["status"] == "failed" for result in results):
                 raise PublicOperationError("部分文件删除失败，请查看逐项结果")
-            yield TaskProgress(progress=100, message="批量删除完成", result=outcome())
+            yield TaskProgress(progress=100, message="批量删除完成", progress_details=progress_details(), result=outcome())
 
         submitted = await get_task_manager().submit_durable(
             TaskType.FILE_DELETE, f"批量删除 {self.server_id} 的 {len(roots)} 项", run(),

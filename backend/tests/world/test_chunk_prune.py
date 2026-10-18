@@ -19,6 +19,7 @@ from app.chunk_prune.service import (
 from app.mcmap.events import (
     MCMapChunksPrunedEvent,
     MCMapPrunedChunk,
+    MCMapPruneProgressEvent,
     MCMapPruneResultEvent,
 )
 from app.minecraft import MCServerStatus
@@ -91,6 +92,7 @@ async def test_preview_collects_chunks_pruned_region_event(tmp_path, monkeypatch
         returncode = 0
 
         async def events(self, adapter):
+            yield MCMapPruneProgressEvent(type="progress", phase="scan", regions_processed=1, regions_total=2)
             yield MCMapChunksPrunedEvent(
                 type="chunks_pruned",
                 region="world/region/r.0.0.mca",
@@ -143,6 +145,8 @@ async def test_preview_collects_chunks_pruned_region_event(tmp_path, monkeypatch
     async with aclosing(run_prune(metadata, dry_run=True)) as events:
         progress = [item async for item in events]
 
+    assert progress[0].progress == 50
+    assert progress[0].progress_details == {"kind": "regions", "regions_processed": 1, "regions_total": 2}
     assert progress[-1].result is not None
     assert progress[-1].result["affected_region_counts_by_dimension"] == {
         "world/region": 1

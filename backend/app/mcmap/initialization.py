@@ -288,7 +288,11 @@ async def initialize_task(server_id: str, force: bool, actor_id: int) -> AsyncGe
                 stages[event.stage] = event.model_dump(mode="json")
                 label = "正在准备地图客户端" if event.stage == "client" else "正在生成地图调色板"
                 progress = ((event.percent or 0) / 2 + (50 if event.stage == "palette" else 0)) if event.percent is not None else None
-                yield TaskProgress(progress=progress, message=event.message or label, result={"stages": dict(stages)})
+                yield TaskProgress(
+                    progress=progress,
+                    message=event.message or label,
+                    progress_details={"kind": "map", "stages": dict(stages)},
+                )
 
 
 async def submit_initialization(server_id: str, force: bool, actor_id: int) -> TaskAccepted:

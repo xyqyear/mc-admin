@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { createTaskEvents, taskResponse } from '@/test/taskEvents'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { readEventStream } from '@/shared/http/eventStream'
@@ -12,11 +12,12 @@ import { useSnapshotPreview } from '@/features/backups/commands'
 import type { RestorationSelection } from '@/features/backups/contracts'
 import type { SnapshotPreviewRequest } from '@/features/backups/contracts'
 
-const server = setupServer(taskEventsUnavailable)
+const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
-beforeEach(() => { client = createTestClient() })
+let events: ReturnType<typeof createTaskEvents>
+beforeEach(() => { client = createTestClient(); events = createTaskEvents(); server.use(events.handler) })
 afterEach(() => { client.clear(); server.resetHandlers(); vi.restoreAllMocks() })
 const wrapper = ({ children }: { children: React.ReactNode }) => <TestProviders client={client}>{children}</TestProviders>
 
@@ -24,12 +25,12 @@ it('latches world selection and leaves the accepted task running when its observ
   const bodies: unknown[] = []
   let cancellations = 0
   server.use(
-    http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: 0, restorations: [] })),
     http.post('*/api/snapshots/restorations', async ({ request }) => {
       bodies.push(await request.json())
+      events.upsert(taskResponse('restore', { task_type: 'snapshot_restore', message: '正在创建安全快照' }))
       return HttpResponse.json({ task_id: 'restore', skipped_paths: [] }, { status: 202 })
     }),
-    http.get('*/api/tasks/restore', () => HttpResponse.json({ task_id: 'restore', status: 'running', message: '正在创建安全快照' })),
+    http.get('*/api/tasks/restore', () => HttpResponse.json(taskResponse('restore', { task_type: 'snapshot_restore', message: '正在创建安全快照' }))),
     http.post('*/api/tasks/restore/cancel', () => { cancellations++; return HttpResponse.json({}) }),
   )
   const selection: RestorationSelection = { type: 'regions', region_dir_relpath: 'world/region', regions: [[0, 0]] }
@@ -63,11 +64,11 @@ it('ends a ready preview session when its owner unmounts and shows heartbeat exp
   })
   const ended: string[] = []
   server.use(
-    http.post('*/api/snapshots/previews', () => HttpResponse.json({ task_id: 'prepare' }, { status: 202 })),
-    http.get('*/api/tasks/prepare', () => HttpResponse.json({ task_id: 'prepare', task_type: 'snapshot_preview', status: 'completed', result: { preview_id: 'session', kind: 'map' } })),
+    http.post('*/api/snapshots/previews', () => { events.upsert(taskResponse('prepare', { task_type: 'snapshot_preview', status: 'completed', result: { preview_id: 'session', kind: 'map' } })); return HttpResponse.json({ task_id: 'prepare' }, { status: 202 }) }),
+    http.get('*/api/tasks/prepare', () => HttpResponse.json(taskResponse('prepare', { task_type: 'snapshot_preview', status: 'completed', result: { preview_id: 'session', kind: 'map' } }))),
     http.post('*/api/snapshots/previews/session/heartbeat', () => HttpResponse.json({ detail: '预览会话已过期' }, { status: 404 })),
-    http.delete('*/api/snapshots/previews/:session', ({ params }) => { ended.push(String(params.session)); return HttpResponse.json({ task_id: 'cleanup' }, { status: 202 }) }),
-    http.get('*/api/tasks/cleanup', () => HttpResponse.json({ task_id: 'cleanup', status: 'completed', result: {} })),
+    http.delete('*/api/snapshots/previews/:session', ({ params }) => { ended.push(String(params.session)); events.upsert(taskResponse('cleanup', { task_type: 'snapshot_preview_cleanup', status: 'completed', result: {} })); return HttpResponse.json({ task_id: 'cleanup' }, { status: 202 }) }),
+    http.get('*/api/tasks/cleanup', () => HttpResponse.json(taskResponse('cleanup', { task_type: 'snapshot_preview_cleanup', status: 'completed', result: {} }))),
   )
   const request: SnapshotPreviewRequest = { source_snapshot_id: 'snapshot', scope: { kind: 'world', server_id: 'alpha', selection: { type: 'regions', region_dir_relpath: 'world/region', regions: [[0, 0]] } } }
   const view = renderHook(() => useSnapshotPreview(request), { wrapper })

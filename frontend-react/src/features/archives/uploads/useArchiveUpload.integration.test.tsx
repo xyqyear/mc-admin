@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { taskEventsUnavailable, createTaskEvents, taskResponse } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 
@@ -71,23 +71,38 @@ function showUpload(content = 'abc') {
 }
 
 it('hashes actual abc bytes and waits through a disconnect and running 100% before publishing', async () => {
-  const terminal = deferred<void>()
-  server.use(http.get('*/api/tasks/publish', async () => {
-    publishReads++
-    if (publishReads === 1) return HttpResponse.json({ detail: '暂时不可用' }, { status: 503 })
-    if (publishReads === 2) return HttpResponse.json(task('publish', 'running'))
-    await terminal.promise
-    return HttpResponse.json(task('publish', 'completed', { path: '/fixture.zip' }))
-  }))
+  const feed = createTaskEvents()
+  const hashing = taskResponse('hash', { task_type: 'archive_hash', progress: 0 })
+  const publishing = taskResponse('publish', { task_type: 'archive_publish', progress: 100, message: '正在发布' })
+  server.use(feed.handler,
+    http.get('*/api/tasks/hash', () => { hashReads++; return HttpResponse.json(hashing) }),
+    http.get('*/api/tasks/publish', () => { publishReads++; return HttpResponse.json({ detail: '暂时不可用' }, { status: 503 }) }),
+  )
   const { result } = showUpload()
-  await waitFor(() => expect(publishReads).toBeGreaterThanOrEqual(2), { timeout: 4000 })
+  await waitFor(() => expect(hashReads).toBe(1))
+  await waitFor(() => expect(feed.activeConnections).toBe(1))
+  act(() => feed.upsert({ ...hashing, progress: 67, progress_details: { kind: 'bytes', loaded: 2, total: 3, filename: 'fixture.zip' } }))
+  await waitFor(() => expect(result.current.detailText).toContain('服务器 67%（2 B / 3 B）'))
+  expect(verifyBodies).toEqual([])
+  act(() => feed.upsert({ ...hashing, progress: 100 }))
+  await waitFor(() => expect(result.current.progress).toBe(100))
+  expect(verifyBodies).toEqual([])
+  act(() => feed.upsert({ ...hashing, status: 'completed', progress: 100, result: { sha256: abcSHA256 } }))
+  await waitFor(() => expect(publishReads).toBe(1))
+  await waitFor(() => expect(feed.connections).toBe(2))
+  act(() => feed.upsert(publishing))
+  await waitFor(() => expect(result.current.statusText).toBe('正在发布'))
   expect(chunkBytes).toEqual(['ab', 'c'])
   expect(verifyBodies).toEqual([{ sha256: abcSHA256 }])
   expect(result.current.phase).toBe('verifying')
   expect(result.current.progress).toBe(100)
   expect(result.current.isWorking).toBe(true)
   expect(client.getQueryState(queryKeys.archive.files('/'))?.isInvalidated).toBe(false)
-  await act(async () => terminal.resolve())
+  act(() => feed.close())
+  await waitFor(() => expect(feed.connections).toBe(3), { timeout: 2500 })
+  expect(result.current.isWorking).toBe(true)
+  expect(publishReads).toBe(1)
+  act(() => feed.upsert({ ...publishing, status: 'completed', result: { path: '/fixture.zip' } }))
   await waitFor(() => expect(result.current.phase).toBe('complete'), { timeout: 4000 })
   expect(result.current.isWorking).toBe(false)
   expect(client.getQueryState(queryKeys.archive.files('/'))?.isInvalidated).toBe(true)

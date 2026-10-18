@@ -138,8 +138,10 @@ before an explicit terminal event. See [backend authentication](../../backend/do
 
 Backend tasks and player profiles remain Query data, not mirrored stores.
 Task consumers share one authenticated SSE connection per QueryClient, with
-HTTP recovery while disconnected and full-detail reads before consuming terminal
-results. Reference-counted transport bookkeeping owns connections rather than
+structured progress, current execution indexes and operation notifications.
+Reconnect uses SSE snapshots and acknowledged operation cursors. Small settled
+results travel with events; excluded final results use one detail read before
+result consumers complete. Reference-counted transport bookkeeping owns connections rather than
 task data; cache clearing invalidates the old connection and in-flight reads.
-The [task center](task-center.md) owns observation and fallback details.
+The [task center](task-center.md) owns observation and result recovery details.
 Browser downloads have their own [task-center lifecycle](task-center.md).

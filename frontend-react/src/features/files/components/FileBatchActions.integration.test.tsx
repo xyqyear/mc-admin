@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { taskEventsUnavailable, createTaskEvents, taskResponse } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { SnapshotRecoveryContext } from '../snapshotRecoveryContext'
@@ -66,4 +66,46 @@ it('keeps packing blocked between acceptance and the first confirmed task observ
   observed.resolve()
   const completed = await screen.findByRole('dialog', { name: '压缩完成' })
   expect(within(completed).getByText('selection.7z')).toBeTruthy()
+})
+
+it('shows streamed deletion counters after confirmation and retains captured paths and partial results', async () => {
+  client.setQueryData(queryKeys.serverInfos.detail('alpha'), { id: 'alpha', serverGeneration: 1 })
+  const feed = createTaskEvents()
+  const writes: unknown[] = []
+  let cancellations = 0
+  let reads = 0
+  const task = taskResponse('batch-delete', { task_type: 'file_delete', progress: 100,
+    progress_details: { kind: 'items', processed: 1, total: 2, deleted: 1, failed: 0, pending: 1 } })
+  server.use(feed.handler,
+    http.get('*/api/snapshots/targets/rules', () => HttpResponse.json({ server_id: 'alpha', server_generation: 1, ignored_paths: [], rules_version: 'v1' })),
+    http.post('*/api/servers/alpha/files/delete-batch', async ({ request }) => {
+      writes.push(await request.json())
+      feed.upsert(task)
+      return HttpResponse.json({ task_id: task.task_id }, { status: 202 })
+    }),
+    http.get('*/api/tasks/batch-delete', () => { reads++; return HttpResponse.json(task) }),
+    http.post('*/api/tasks/batch-delete/cancel', () => { cancellations++; return HttpResponse.json({}) }),
+  )
+  const deleted = vi.fn()
+  const controls = (paths: string[]) => <TestProviders client={client}><SnapshotRecoveryContext.Provider value={{ busy: false, create: vi.fn(), restore: vi.fn(), history: vi.fn() }}><FileBatchActions serverId="alpha" paths={paths} basePath="/" onDeleted={deleted} /></SnapshotRecoveryContext.Provider></TestProviders>
+  const view = render(controls(['/a.txt', '/locked']))
+  fireEvent.click(screen.getByRole('button', { name: /^批量删除$/ }))
+  const confirmation = await screen.findByRole('alertdialog', { name: '确认批量删除' })
+  fireEvent.click(within(confirmation).getByRole('button', { name: /^删除$/ }))
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+  await screen.findByText('已处理 1/2 项，已删除 1 项，失败 0 项，待处理 1 项')
+  const initialReads = reads
+  expect((screen.getByRole('button', { name: /^批量删除$/ }) as HTMLButtonElement).disabled).toBe(true)
+  view.rerender(controls(['/different-selection']))
+  expect((screen.getByRole('button', { name: /^批量删除$/ }) as HTMLButtonElement).disabled).toBe(true)
+  expect(writes).toEqual([{ paths: ['/a.txt', '/locked'] }])
+  expect(deleted).not.toHaveBeenCalled()
+  expect(cancellations).toBe(0)
+  const outcome = { paths: ['/a.txt', '/locked'], results: [{ path: 'a.txt', status: 'deleted' }, { path: 'locked', status: 'failed', message: '权限不足' }], deleted: 1, failed: 1, pending: 0 }
+  act(() => feed.upsert({ ...task, status: 'failed', error: '部分条目删除失败', result: outcome }))
+  await screen.findByText('locked：权限不足')
+  await waitFor(() => expect(deleted).toHaveBeenCalledWith(['/a.txt']))
+  expect((screen.getByRole('button', { name: /^批量删除$/ }) as HTMLButtonElement).disabled).toBe(false)
+  expect(reads).toBe(initialReads)
+  expect(cancellations).toBe(0)
 })

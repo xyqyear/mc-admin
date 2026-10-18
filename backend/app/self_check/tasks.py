@@ -26,8 +26,9 @@ async def self_check_task(actor_id: int, check_id: str | None) -> AsyncGenerator
                 findings.extend(finding.model_dump(mode="json") for finding in event.findings)
             if event.type == "check_finished":
                 completed += 1
-            result = event.result.model_dump(mode="json") if event.result else {
-                "id": event.run_id, "findings": list(findings), "check_id": event.check_id,
+            details = {
+                "kind": "self_check", "id": event.run_id,
+                "findings": list(findings), "check_id": event.check_id,
                 "started_at": started_at, "checking": event.type == "check_started",
                 "completed_checks": completed, "total_checks": total,
             }
@@ -35,7 +36,8 @@ async def self_check_task(actor_id: int, check_id: str | None) -> AsyncGenerator
             yield TaskProgress(
                 progress=100 if event.result else completed / total * 100,
                 message="自检完成，请查看检查结果" if event.result else f"正在检查：{title}",
-                result=result,
+                progress_details=details,
+                result=event.result.model_dump(mode="json") if event.result else None,
             )
 
 

@@ -16,7 +16,7 @@ GET /world-restore/layout
 GET /world-restore/dimension-labels
                          →   useWorldLayout / useWorldDimensionLabels
 GET /map/regions        →   useMapRegions          ┐
-POST /map/initialize    →   202 task acceptance + task status polling
+POST /map/initialize    →   202 task acceptance + shared task SSE
 GET /map/tiles/X/Z.png  →                          │
                                                     └──→  ServerMap
                                                           ServerMapTileLayer
@@ -63,7 +63,7 @@ Leaflet creates normal `<img>` elements. When panning or zooming removes a tile,
 
 ## Init dialog
 
-`features/world/map/MapInitDialog.tsx` 接收任务 ID，并从 `result.stages` 更新 client 和 palette 进度。重新进入可接上同服务器的活跃初始化任务。组件卸载只中止观察；显式任务取消由后台等待子进程和缓存清理。即使两个阶段均为 100%，弹窗也等待任务终态才允许关闭。读取失败保持阻塞并提示重连；成功后执行原有 onComplete。force=true 的缓存重建语义保持一致。
+`features/world/map/MapInitDialog.tsx` 接收任务 ID，并从事件 `progress_details={kind:"map",stages:[...]}` 直接更新 client 和 palette 进度，不再逐帧请求任务详情。重新进入可接上同服务器的活跃初始化任务。组件卸载只中止观察；显式任务取消由后台等待子进程和缓存清理。即使两个阶段均为 100%，弹窗也等待任务终态才允许关闭。断流保持阻塞并提示重连，恢复连接后用最新快照继续观察；成功后执行原有 onComplete。force=true 的缓存重建语义保持一致。
 
 ## Shared feature controller
 

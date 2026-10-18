@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -67,6 +68,28 @@ class RestorationQueries:
     def __init__(self, sessions: SessionFactory, snapshots: SnapshotService | None = None) -> None:
         self._sessions = sessions
         self._snapshots = snapshots
+
+    async def observation_index(self, active_tasks: dict[str, str]) -> list[dict[str, Any]]:
+        query = _query(None).where(
+            OperationJournalEntry.operation_id.is_not(None),
+            or_(
+                OperationJournalEntry.state.in_([state.value for state in OperationState
+                                                if restoration_status(state) in (RestorationStatus.PENDING, RestorationStatus.RUNNING)]),
+                OperationJournalEntry.operation_id.in_(active_tasks),
+            ),
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(
+                query.add_columns(OperationJournalEntry.state)
+                .order_by(Restoration.started_at.desc(), Restoration.id)
+            )).all()
+        return [{
+            "id": row.id,
+            "operation_id": row.operation_id,
+            "scope": scope.model_dump(mode="json") if (scope := _scope(row)) else None,
+            "status": active_tasks.get(row.operation_id, restoration_status(OperationState(state)).value),
+            "targets": json.loads(row.targets_json or "[]"),
+        } for row, state in rows]
 
     async def history(
         self, server_id: str | None, limit: int, offset: int,

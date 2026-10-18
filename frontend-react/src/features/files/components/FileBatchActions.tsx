@@ -36,6 +36,10 @@ export function FileBatchActions({ serverId, paths, basePath, onDeleted }: {
   const [failures, setFailures] = useState<{ path: string; message: string }[]>([])
   const { data: task } = useTask(packTaskId ?? '')
   const packBusy = packing.isPending || !!packTaskId
+  const details = deletion.task?.progressDetails
+  const deletionProgress = details?.kind === 'items'
+    && ['processed', 'total', 'deleted', 'failed', 'pending'].every(key => typeof details[key] === 'number' && Number.isFinite(details[key]) && details[key] >= 0)
+    ? details as Record<'processed' | 'total' | 'deleted' | 'failed' | 'pending', number> : null
   useEffect(() => {
     if (!task || !packTaskId) return
     if (task.status === 'completed') {
@@ -66,15 +70,17 @@ export function FileBatchActions({ serverId, paths, basePath, onDeleted }: {
       <Button variant="outline" disabled={packBusy} onClick={() => setPackPaths([...paths])}><Archive className="mr-2 size-4" />打包所选</Button>
       <Button variant="destructive" disabled={deletion.isPending} onClick={() => {
         const acceptedPaths = [...paths]
-        confirm({ title: '确认批量删除', description: `将删除 ${acceptedPaths.length} 个条目及所选目录的全部内容，此操作不可撤销。`, variant: 'destructive', confirmText: '删除', onConfirm: async () => {
-          try {
-          const result = await deletion.mutateAsync(acceptedPaths)
-          setFailures(result.results.filter(item => item.status !== 'deleted').map(item => ({ path: item.path, message: item.message || '未执行' })))
-          onDeleted?.(result.results.filter(item => item.status === 'deleted').map(item => '/' + item.path.replace(/^\/+/, '')))
-          } catch { /* The mutation displays the failure. */ }
+        confirm({ title: '确认批量删除', description: `将删除 ${acceptedPaths.length} 个条目及所选目录的全部内容，此操作不可撤销。`, variant: 'destructive', confirmText: '删除', onConfirm: () => {
+          void deletion.mutateAsync(acceptedPaths).then(result => {
+            setFailures(result.results.filter(item => item.status !== 'deleted').map(item => ({ path: item.path, message: item.message || '未执行' })))
+            onDeleted?.(result.results.filter(item => item.status === 'deleted').map(item => '/' + item.path.replace(/^\/+/, '')))
+          }).catch(() => { /* The mutation displays the failure. */ })
         } })
       }}><Trash2 className="mr-2 size-4" />批量删除</Button>
     </div>
+    {deletion.isPending && deletionProgress && <p role="status" className="text-sm text-muted-foreground">
+      已处理 {deletionProgress.processed}/{deletionProgress.total} 项，已删除 {deletionProgress.deleted} 项，失败 {deletionProgress.failed} 项，待处理 {deletionProgress.pending} 项
+    </p>}
     {failures.length > 0 && <ul role="status" className="text-sm text-destructive">{failures.map(item => <li key={item.path}>{item.path}：{item.message}</li>)}</ul>}
     <DirectoryDownloadDialog key={downloadRequest?.paths.join('\0') ?? 'closed'} serverId={serverId} request={downloadRequest} onClose={() => setDownloadRequest(null)} />
     <CompressionConfirmDialog open={!!packPaths} onCancel={() => setPackPaths(null)} onOk={async () => {

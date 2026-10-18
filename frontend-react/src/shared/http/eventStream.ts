@@ -5,7 +5,7 @@ export interface EventStreamOptions<TEvent> {
   method?: 'GET' | 'POST'
   body?: unknown
   signal?: AbortSignal
-  onEvent: (event: TEvent) => void
+  onEvent: (event: TEvent) => void | Promise<void>
   onClose?: () => void
   onError?: (message: string, error?: ApiError) => void
   onResponse?: (res: Response) => void
@@ -74,7 +74,7 @@ export async function readEventStream<TEvent>(
           if (error instanceof SyntaxError && !opts.strictJSON) continue
           throw error
         }
-        opts.onEvent(event)
+        await opts.onEvent(event)
       }
     }
     if (!opts.signal?.aborted) opts.onClose?.()

@@ -1,5 +1,5 @@
 import L from 'leaflet'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import { setupServer } from 'msw/node'
 import { createTestClient } from '@/test/http'
@@ -32,8 +32,8 @@ function operation(id: string, state: string, time: string, global = false): Ope
     updated_at: time, ended_at: state === 'running' ? null : time,
     resources: [{ kind: 'files', server_id: global ? null : 'alpha', generation: global ? null : 1, path: '' }] }
 }
-async function poll() { await act(async () => { await client.refetchQueries({ queryKey: queryKeys.operations.session('owner'), exact: true }) }) }
-async function ready() { await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('owner'))).toBeTruthy()) }
+async function poll() { await waitFor(() => expect(client.getQueryData(queryKeys.operations.checkpoint('owner'))).toEqual({ cursor: feed.cursor, active_count: 0 })) }
+async function ready() { await poll() }
 
 it.each(['succeeded', 'failed', 'cancelled'])('refreshes same-mtime tiles after an unmounted restore becomes %s, without changing other servers', async state => {
   const view = render(<Shell />); await ready()

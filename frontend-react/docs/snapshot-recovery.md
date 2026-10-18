@@ -49,11 +49,12 @@ the writer. A disappearing active-list entry is not proof of completion; once
 discovered, the task ID stays latched until its own outcome is read.
 
 Database-only active restoration discovery works even when repository history
-is unavailable and includes global work affecting the selected server. One
-feature-owned observer per QueryClient/server serves file, world and history
-consumers. Successful empty results poll every 30 seconds; active, unknown and
-failed results every two seconds. Entry/re-enabling performs a fresh check and
-keeps submission blocked until it succeeds. The last consumer stops the timer.
+is unavailable and includes global work affecting the selected server. The shared
+task event snapshot and `restoration_index` frames contain all active restorations
+and their target server identities. File, world and history consumers filter that
+same cached index without discovery polling. An absent snapshot, invalid index or
+disconnected stream keeps submission blocked; an authoritative empty index permits
+new work. Late consumers reuse the current session snapshot and connection.
 
 `FileSnapshotRecovery` owns one file-page recovery session, independent of rows
 and pagination. A history dialog owns progress while open so rollback does not

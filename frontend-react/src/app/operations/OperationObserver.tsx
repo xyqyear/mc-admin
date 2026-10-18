@@ -1,5 +1,6 @@
-import { useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
-import { api, queryKeys } from '@/shared/http/api'
+import { useEffect } from 'react'
+import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
+import { queryKeys } from '@/shared/http/api'
 import { isTerminalOperation, type Operation, type OperationChanges } from '@/shared/operations/contracts'
 import { configurationOperationResources } from '@/features/configuration/operationResources'
 import { filesOperationResources } from '@/features/files/operationResources'
@@ -8,7 +9,7 @@ import { serversOperationResources } from '@/features/servers/operationResources
 import { healthOperationResources } from '@/features/health/operationResources'
 import { dnsOperationResources } from '@/features/dns/operationResources'
 import { backupsOperationResources } from '@/features/backups/operationResources'
-import { taskQueryKeys } from '@/features/tasks/queries'
+import { subscribeTaskEvents, taskQueryKeys } from '@/features/tasks/queries'
 
 const resourceRegistrations: ((operation: Operation) => QueryKey[])[] = [configurationOperationResources, filesOperationResources, worldOperationResources, serversOperationResources, healthOperationResources, dnsOperationResources, backupsOperationResources]
 const resetResources: QueryKey[] = [
@@ -22,13 +23,7 @@ const resetResources: QueryKey[] = [
 
 interface Checkpoint { cursor: string; active_count: number }
 
-async function readChanges(client: QueryClient, sessionId: string, signal: AbortSignal): Promise<Checkpoint> {
-  client.setQueryDefaults(queryKeys.operations.all, { gcTime: Infinity })
-  const checkpointKey = queryKeys.operations.checkpoint(sessionId)
-  let checkpoint = client.getQueryData<Checkpoint>(checkpointKey)
-  for (;;) {
-    signal.throwIfAborted()
-    const { data } = await api.get<OperationChanges>('/operations/changes', { params: { cursor: checkpoint?.cursor, limit: 200 }, signal })
+async function processChanges(client: QueryClient, sessionId: string, data: OperationChanges, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted()
     const keys = new Map<string, QueryKey>()
     if (data.reset_required) {
@@ -46,24 +41,18 @@ async function readChanges(client: QueryClient, sessionId: string, signal: Abort
     await Promise.all([...keys.values()].map(queryKey => client.cancelQueries({ queryKey })))
     signal.throwIfAborted()
     for (const key of keys.values()) void client.invalidateQueries({ queryKey: key })
-    checkpoint = { cursor: data.next_cursor, active_count: data.active_count }
-    // Cancellation can roll back the observing query, so keep processed progress separately.
-    client.setQueryData(checkpointKey, checkpoint)
-    if (!data.has_more) return checkpoint
-  }
+    signal.throwIfAborted()
+    client.setQueryData<Checkpoint>(queryKeys.operations.checkpoint(sessionId), { cursor: data.next_cursor, active_count: data.active_count })
 }
 
 export function OperationObserver({ sessionId }: { sessionId: string }) {
   const client = useQueryClient()
-  useQuery<Checkpoint | null>({
-    queryKey: queryKeys.operations.session(sessionId),
-    queryFn: ({ signal }) => readChanges(client, sessionId, signal),
-    initialData: null,
-    staleTime: 0,
-    refetchOnReconnect: 'always',
-    refetchOnWindowFocus: 'always',
-    refetchInterval: query => query.state.status === 'error' || !query.state.data || query.state.data.active_count > 0 ? 2000 : 30000,
-    refetchIntervalInBackground: false,
-  })
+  useEffect(() => {
+    client.setQueryDefaults(queryKeys.operations.all, { gcTime: Infinity })
+    return subscribeTaskEvents(client, {
+      getOperationCursor: () => client.getQueryData<Checkpoint>(queryKeys.operations.checkpoint(sessionId))?.cursor,
+      onOperations: (changes, signal) => processChanges(client, sessionId, changes, signal),
+    })
+  }, [client, sessionId])
   return null
 }

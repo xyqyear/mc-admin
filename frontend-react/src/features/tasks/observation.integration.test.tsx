@@ -7,7 +7,7 @@ import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { createTaskEvents, taskResponse } from '@/test/taskEvents'
 import { useCancelTask, waitForTaskResult } from './commands'
-import { taskQueryKeys, useActiveTasks, useTask, useTasks } from './queries'
+import { taskQueryKeys, useActiveTasks, useTask, useTasks, useTaskFeed, subscribeTaskEvents } from './queries'
 import type { BackgroundTask } from './contracts'
 
 const server = setupServer()
@@ -74,7 +74,7 @@ it('keeps the guard until terminal detail is readable and returns its complete r
   void waiting.catch(() => {})
   await waitFor(() => expect(view.result.current.data?.status).toBe('running'))
   completed = true
-  act(() => feed.upsert({ ...task, status: 'completed', progress: 100 }))
+  act(() => feed.upsert({ ...task, status: 'completed', progress: 100, result_included: false }))
   await waitFor(() => expect(finalReads).toBe(1))
   expect(view.result.current.data?.status).toBe('running')
   expect(settled).toBe(false)
@@ -87,75 +87,136 @@ it('keeps the guard until terminal detail is readable and returns its complete r
   await waitFor(() => expect(view.result.current.data?.status).toBe('completed'))
 })
 
-it('recovers through HTTP after EOF and replaces stale lists with the next snapshot without submitting work', async () => {
+it('retains guarded state after EOF and recovers only through the next snapshot without HTTP polling', async () => {
   const task = taskResponse('backup', { progress: 10 })
   const feed = createTaskEvents([task])
-  let current = task
   let reads = 0
   let writes = 0
   server.use(feed.handler,
-    http.get('*/api/tasks', () => { reads++; return HttpResponse.json({ tasks: [current], total: 1 }) }),
+    http.get('*/api/tasks', () => { reads++; return HttpResponse.json({ tasks: [task], total: 1 }) }),
     http.post('*/api/*', () => { writes++; return HttpResponse.json({}) }),
   )
-  const view = renderHook(useTasks, { wrapper })
-  await waitFor(() => expect(view.result.current.data?.tasks[0].progress).toBe(10))
+  const view = renderHook(() => ({ list: useTasks(), feed: useTaskFeed() }), { wrapper })
+  await waitFor(() => expect(view.result.current.feed.connected).toBe(true))
   const initialReads = reads
-  current = { ...task, progress: 35 }
   feed.replace([{ ...task, progress: 70 }])
   act(() => feed.close())
-  await waitFor(() => expect(reads).toBeGreaterThan(initialReads))
-  await waitFor(() => expect(view.result.current.data?.tasks[0].progress).toBe(35))
+  await waitFor(() => expect(view.result.current.feed.connected).toBe(false))
+  expect(view.result.current.list.data?.tasks[0].progress).toBe(10)
   await waitFor(() => expect(feed.connections).toBe(2), { timeout: 2500 })
-  await waitFor(() => expect(view.result.current.data?.tasks[0].progress).toBe(70))
+  await waitFor(() => expect(view.result.current.list.data?.tasks[0].progress).toBe(70))
+  expect(reads).toBe(initialReads)
   expect(writes).toBe(0)
 })
 
-it('recovers a lost terminal frame even when malformed JSON is followed by keepalive activity', async () => {
+it('recovers a lost terminal frame from a new snapshot when malformed JSON is followed by keepalive', async () => {
   const task = taskResponse('backup')
   const feed = createTaskEvents([task])
-  let completed = false
-  server.use(feed.handler, http.get('*/api/tasks/backup', () => HttpResponse.json({ ...task,
-    status: completed ? 'completed' : 'running', result: completed ? { snapshot: 'committed' } : undefined,
-  })))
+  let reads = 0
+  server.use(feed.handler, http.get('*/api/tasks/backup', () => { reads++; return HttpResponse.json(task) }))
   const progress = vi.fn()
   const waiting = waitForTaskResult(client, { task_id: 'backup' }, { onProgress: progress })
   void waiting.catch(() => {})
-  await waitFor(() => expect(progress).toHaveBeenCalled())
   await waitFor(() => expect(feed.activeConnections).toBe(1))
-  completed = true
+  await waitFor(() => expect(progress).toHaveBeenCalled())
+  const initialReads = reads
+  feed.replace([{ ...task, status: 'completed', result: { snapshot: 'committed' } }])
   act(() => feed.malformed())
   expect(await waiting).toEqual({ snapshot: 'committed' })
+  expect(feed.connections).toBe(2)
+  expect(reads).toBe(initialReads)
 })
 
-it.each(['map_initialize', 'self_check'] as const)('coalesces intermediate %s detail reads and retains the newest progress metadata', async taskType => {
-  const task = taskResponse('metadata', { task_type: taskType, progress: 1 })
+it.each(['map_initialize', 'self_check', 'archive_hash', 'file_delete'] as const)('applies structured %s progress without per-event or periodic detail reads', async taskType => {
+  const task = taskResponse('metadata', { task_type: taskType, progress: 1, progress_details: { kind: taskType, version: 1 } })
   const feed = createTaskEvents([task])
-  const gate = deferred<void>()
-  let held = false
   let reads = 0
-  let version = 1
-  server.use(feed.handler, http.get('*/api/tasks/metadata', async () => {
-    reads++
-    const captured = version
-    if (held) await gate.promise
-    return HttpResponse.json({ ...task, result: { version: captured } })
-  }))
+  server.use(feed.handler, http.get('*/api/tasks/metadata', () => { reads++; return HttpResponse.json(task) }))
   const view = renderHook(() => useTask('metadata'), { wrapper })
-  await waitFor(() => expect(view.result.current.data?.result?.version).toBe(1))
+  await waitFor(() => expect(view.result.current.data?.progressDetails?.version).toBe(1))
   await waitFor(() => expect(client.isFetching()).toBe(0))
   const initialReads = reads
-  held = true
-  version = 2
-  act(() => feed.upsert({ ...task, progress: 20 }))
-  await waitFor(() => expect(reads).toBe(initialReads + 1))
-  expect(view.result.current.data?.result?.version).toBe(1)
-  version = 3
-  act(() => { feed.upsert({ ...task, progress: 30 }); feed.upsert({ ...task, progress: 40 }) })
-  expect(reads).toBe(initialReads + 1)
-  await act(async () => { held = false; gate.resolve() })
-  await waitFor(() => expect(view.result.current.data?.result?.version).toBe(3))
+  act(() => {
+    feed.upsert({ ...task, progress: 20, progress_details: { kind: taskType, version: 2 } })
+    feed.upsert({ ...task, progress: 40, progress_details: { kind: taskType, version: 3 } })
+  })
+  await waitFor(() => expect(view.result.current.data?.progressDetails?.version).toBe(3))
   expect(view.result.current.data?.progress).toBe(40)
-  expect(reads).toBe(initialReads + 2)
+  vi.useFakeTimers()
+  await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+  expect(reads).toBe(initialReads)
+  expect(view.result.current.data?.result).toBeUndefined()
+})
+
+it('completes from an included settled result without another detail read', async () => {
+  const task = taskResponse('small', { progress: 100 })
+  const feed = createTaskEvents([task])
+  let reads = 0
+  server.use(feed.handler, http.get('*/api/tasks/small', () => { reads++; return HttpResponse.json(task) }))
+  const progress = vi.fn()
+  const waiting = waitForTaskResult(client, { task_id: 'small' }, { onProgress: progress })
+  await waitFor(() => expect(progress).toHaveBeenCalled())
+  await waitFor(() => expect(feed.activeConnections).toBe(1))
+  const initialReads = reads
+  act(() => feed.upsert({ ...task, status: 'completed', result: { snapshot: 'settled' } }))
+  expect(await waiting).toEqual({ snapshot: 'settled' })
+  expect(reads).toBe(initialReads)
+})
+
+it('retains domain snapshots and dismissed prune details for late observers without another connection', async () => {
+  const retained = taskResponse('preview', { task_type: 'chunk_prune_preview', status: 'completed', result: { mode: 'regions', dry_run: true } })
+  const { taskEvent } = await import('@/test/taskEvents')
+  const state = { server_id: 'alpha', preview_task: taskEvent(retained), apply_task: null, preview: null }
+  const restoration = { id: 'restore', operation_id: 'restore-task', scope: { kind: 'global' }, status: 'running', targets: [] }
+  const feed = createTaskEvents([], { pruneStates: [state], activeRestorations: [restoration] })
+  server.use(feed.handler)
+  const view = renderHook(useTaskFeed, { wrapper })
+  await waitFor(() => expect(view.result.current.connected).toBe(true))
+  expect(view.result.current.activeRestorations).toEqual([restoration])
+  expect(view.result.current.tasks).toEqual([])
+  const detail = renderHook(() => useTask('preview'), { wrapper })
+  await waitFor(() => expect(detail.result.current.data?.result).toEqual({ mode: 'regions', dry_run: true }))
+  expect(feed.connections).toBe(1)
+  act(() => feed.restorations([]))
+  await waitFor(() => expect(view.result.current.activeRestorations).toEqual([]))
+})
+
+it('does not repeatedly hydrate an excluded prune result on unrelated task progress', async () => {
+  const { taskEvent } = await import('@/test/taskEvents')
+  const retained = taskResponse('large-preview', { status: 'completed', result: { data: 'x'.repeat(17000) } })
+  const feed = createTaskEvents([], { pruneStates: [{ server_id: 'alpha', preview_task: taskEvent(retained), apply_task: null }] })
+  let reads = 0
+  server.use(feed.handler, http.get('*/api/tasks/large-preview', () => { reads++; return new HttpResponse(null, { status: 503 }) }))
+  const view = renderHook(() => useTask('large-preview'), { wrapper })
+  await waitFor(() => expect(view.result.current.isError).toBe(true))
+  const initialReads = reads
+  act(() => { feed.upsert(taskResponse('other', { progress: 20 })); feed.upsert(taskResponse('other', { progress: 40 })) })
+  await waitFor(() => expect(client.getQueryData<{ tasks: BackgroundTask[] }>(taskQueryKeys.events())?.tasks[0].progress).toBe(40))
+  expect(reads).toBe(initialReads)
+  expect(view.result.current.data?.status).toBe('running')
+})
+
+it('serializes operation batches and reconnects from the last acknowledged cursor', async () => {
+  const feed = createTaskEvents()
+  server.use(feed.handler)
+  const gate = deferred<void>()
+  const handled: string[] = []
+  const release = subscribeTaskEvents(client, { getOperationCursor: () => 'epoch:0', onOperations: async (changes, signal) => {
+    if (changes.next_cursor === 'epoch:1') await gate.promise
+    signal.throwIfAborted()
+    handled.push(changes.next_cursor)
+  } })
+  await waitFor(() => expect(feed.connections).toBe(1))
+  const change = (cursor: string) => ({ items: [], next_cursor: cursor, reset_required: false, has_more: false, active_count: 0 })
+  act(() => { feed.operations(change('epoch:1')); feed.operations(change('epoch:2')) })
+  expect(handled).toEqual([])
+  expect(client.getQueryData<{ operationCursor: string }>(taskQueryKeys.events())?.operationCursor).toBe('epoch:0')
+  await act(async () => { gate.resolve() })
+  await waitFor(() => expect(handled).toEqual(['epoch:1', 'epoch:2']))
+  act(() => feed.close())
+  await waitFor(() => expect(feed.connections).toBe(2), { timeout: 2500 })
+  expect(new URL(feed.requests[1]).searchParams.get('operation_cursor')).toBe('epoch:2')
+  release()
 })
 
 it('removes dismissed list entries without erasing an observed full result', async () => {
@@ -194,7 +255,7 @@ it('keeps cancellation acceptance and one hundred percent progress active until 
   expect(settled).toBe(false)
   expect(view.result.current.task?.status).toBe('running')
   cancelled = true
-  act(() => feed.upsert({ ...task, status: 'cancelled' }))
+  act(() => feed.upsert({ ...task, status: 'cancelled', message: '任务已取消' }))
   expect((await waiting).message).toBe('任务已取消')
   await waitFor(() => expect(view.result.current.task?.status).toBe('cancelled'))
 })
@@ -252,4 +313,38 @@ it('isolates simultaneous clients and rejects old work when the cache is cleared
     await waitFor(() => expect(view.result.current.data?.tasks[0].progress).toBe(85))
     expect(client.getQueryCache().getAll()).toEqual([])
   } finally { oldRead.resolve(); view.unmount(); other.clear() }
+})
+
+it('announces a lost stream to detail views and waiters without releasing their guard or polling', async () => {
+  const { toast } = await import('sonner')
+  const warning = vi.spyOn(toast, 'warning')
+  const dismiss = vi.spyOn(toast, 'dismiss')
+  const task = taskResponse('connection', { progress: 100 })
+  const feed = createTaskEvents([task])
+  let reads = 0
+  server.use(feed.handler, http.get('*/api/tasks/connection', () => { reads++; return HttpResponse.json(task) }))
+  const view = renderHook(() => useTask('connection'), { wrapper })
+  const controller = new AbortController()
+  let settled = false
+  const waiting = waitForTaskResult<never>(client, { task_id: 'connection' }, { signal: controller.signal }).catch((error: Error) => { settled = true; return error })
+  await waitFor(() => expect(view.result.current.data?.status).toBe('running'))
+  await waitFor(() => expect(feed.activeConnections).toBe(1))
+  const initialReads = reads
+  act(() => feed.close())
+  await waitFor(() => expect(view.result.current.reconnecting).toBe(true))
+  expect(view.result.current.isError).toBe(true)
+  expect(view.result.current.data?.status).toBe('running')
+  expect(settled).toBe(false)
+  expect(warning).toHaveBeenCalledWith('暂时无法获取任务状态，正在重新连接', expect.objectContaining({ id: 'task-connection-connection' }))
+  await waitFor(() => expect(feed.connections).toBe(2), { timeout: 2500 })
+  await waitFor(() => expect(view.result.current.isError).toBe(false))
+  expect(dismiss).toHaveBeenCalledWith('task-connection-connection')
+  expect(reads).toBe(initialReads)
+  controller.abort()
+  expect((await waiting).name).toBe('AbortError')
+  act(() => feed.upsert({ ...task, status: 'completed' }))
+  await waitFor(() => expect(view.result.current.data?.status).toBe('completed'))
+  act(() => feed.close())
+  await waitFor(() => expect(client.getQueryData<{ connected: boolean }>(taskQueryKeys.events())?.connected).toBe(false))
+  expect(view.result.current.isError).toBe(false)
 })

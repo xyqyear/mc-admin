@@ -119,8 +119,10 @@ class ChunkPruneService:
                 claims=[ResourceClaim(ResourceKind.MAP_CACHE, server_id)],
             )
             metadata.task = submitted.task
+            self.registry.changed()
         except BaseException:
             self._metadata.pop(task_id, None)
+            self.registry.changed()
             raise
         return task_id
 
@@ -146,6 +148,7 @@ class ChunkPruneService:
         task_id = self._new_task_id("apply")
         preview.apply_task_id = task_id
         preview.references += 1
+        self.registry.changed()
         try:
             await self._validate_inputs(preview)
             metadata = ChunkPruneTaskMetadata(
@@ -169,6 +172,7 @@ class ChunkPruneService:
             preview.apply_task_id = None
             preview.references -= 1
             self._metadata.pop(task_id, None)
+            self.registry.changed()
             raise
         return task_id
 
@@ -212,6 +216,7 @@ class ChunkPruneService:
         expires = self.registry.expires_at(preview)
         if expires is not None and self.registry.now() >= expires:
             preview.unavailable_reason = "expired"
+            self.registry.changed()
             raise PrunePreviewConflict("expired")
         await require_supported_adapter()
         try:
@@ -224,9 +229,11 @@ class ChunkPruneService:
                         raise PrunePreviewConflict("stale")
         except PrunePreviewConflict:
             preview.unavailable_reason = "stale"
+            self.registry.changed()
             raise
         except (FileNotFoundError, json.JSONDecodeError) as error:
             preview.unavailable_reason = "stale"
+            self.registry.changed()
             raise PrunePreviewConflict("stale") from error
 
     async def _run_preview_task(self, metadata: ChunkPruneTaskMetadata) -> AsyncGenerator[TaskProgress]:
@@ -251,11 +258,13 @@ class ChunkPruneService:
                     yield progress
             await self._validate_inputs(metadata)
             metadata.completed_at = self.registry.now()
+            self.registry.changed()
             ready = True
         finally:
             if not ready:
                 metadata.unavailable_reason = "unavailable" if metadata.unavailable_reason is None else metadata.unavailable_reason
                 metadata.geometry = None
+                self.registry.changed()
             await finalize(release_artifact("prune_preview", metadata.task_id))
 
     async def _run_apply_task(self, metadata: ChunkPruneTaskMetadata) -> AsyncGenerator[TaskProgress]:

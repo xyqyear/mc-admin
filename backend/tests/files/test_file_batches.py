@@ -136,6 +136,7 @@ async def test_batch_delete_retains_partial_failures_and_continues_unrelated_tar
     detail = await env.tasks.get_task_detail(accepted.task_id)
     assert detail is not None and detail.result is not None
     assert detail.result["failed"] == 1 and detail.result["deleted"] == 1
+    assert detail.progress_details == {"kind": "items", "processed": 2, "total": 2, "deleted": 1, "failed": 1, "pending": 0}
     assert {entry["path"]: entry["status"] for entry in detail.result["results"]} == {"plugin.conf": "failed", "world": "deleted"}
     assert (env.data / "plugin.conf").exists()
     assert not (env.data / "world").exists()

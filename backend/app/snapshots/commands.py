@@ -494,6 +494,7 @@ class SnapshotCommands:
                     user_id=actor_id,
                     rollback_of_id=rollback_of_id,
                 )
+                self._tasks.notify_observation("restorations")
                 if self._tasks.journal is not None:
                     await self._tasks.journal.phase(
                         operation_id,
@@ -504,33 +505,37 @@ class SnapshotCommands:
                         ),
                     )
 
-            submitted = await self._tasks.submit_durable(
-                TaskType.SNAPSHOT_RESTORE,
-                "回滚恢复" if rollback_of_id else "恢复快照",
-                self._record_errors(
-                    restoration_id,
-                    self._restore(
-                        prepared,
-                        source_id,
+            try:
+                submitted = await self._tasks.submit_durable(
+                    TaskType.SNAPSHOT_RESTORE,
+                    "回滚恢复" if rollback_of_id else "恢复快照",
+                    self._record_errors(
                         restoration_id,
-                        actor_id,
-                        absent,
-                        absent_parents,
-                        preview_binding,
+                        self._restore(
+                            prepared,
+                            source_id,
+                            restoration_id,
+                            actor_id,
+                            absent,
+                            absent_parents,
+                            preview_binding,
+                        ),
                     ),
-                ),
-                server_id=None if isinstance(scope, GlobalScope) else scope.server_id,
-                server_refs=prepared.resolved.servers,
-                claims=prepared.claims,
-                require_existing_targets=not isinstance(scope, GlobalScope),
-                actor_id=actor_id,
-                task_id=task_id,
-                exclusive_key=f"snapshot-restore:{scope.model_dump_json()}",
-                on_accepted=accepted,
-                on_finished=lambda state: self.store.finish_operation(
-                    restoration_id, state
-                ),
-            )
+                    server_id=None if isinstance(scope, GlobalScope) else scope.server_id,
+                    server_refs=prepared.resolved.servers,
+                    claims=prepared.claims,
+                    require_existing_targets=not isinstance(scope, GlobalScope),
+                    actor_id=actor_id,
+                    task_id=task_id,
+                    exclusive_key=f"snapshot-restore:{scope.model_dump_json()}",
+                    on_accepted=accepted,
+                    on_finished=lambda state: self.store.finish_operation(
+                        restoration_id, state
+                    ),
+                )
+            except BaseException:
+                self._tasks.notify_observation("restorations")
+                raise
             references = stack.pop_all()
             submitted.awaitable.add_done_callback(lambda _: references.close())
         return {

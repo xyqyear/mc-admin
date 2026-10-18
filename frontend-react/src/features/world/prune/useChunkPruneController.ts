@@ -2,7 +2,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState
 } from 'react'
 import { toast } from 'sonner'
@@ -79,16 +81,29 @@ export function useChunkPruneController(serverId: string) {
     [thresholdUnit, thresholdValue],
   )
 
-  const [previewStarting, setPreviewStarting] = useState(false)
-  const stateQ = useChunkPruneState(serverId)
+  const [previewRequestServer, setPreviewRequestServer] = useState<string>()
+  const previewStarting = previewRequestServer === serverId
+  const [previewAcceptance, setPreviewAcceptance] = useState<{ serverId: string; taskId: string }>()
+  const [applyAcceptance, setApplyAcceptance] = useState<{ serverId: string; taskId: string }>()
+  const acceptedPreview = previewAcceptance?.serverId === serverId ? previewAcceptance.taskId : undefined
+  const acceptedApply = applyAcceptance?.serverId === serverId ? applyAcceptance.taskId : undefined
+  const stateQ = useChunkPruneState(serverId, { preview: acceptedPreview, apply: acceptedApply })
+  useEffect(() => {
+    if (acceptedPreview && stateQ.observedPreviewId === acceptedPreview) setPreviewAcceptance(undefined)
+    if (acceptedApply && stateQ.observedApplyId === acceptedApply) setApplyAcceptance(undefined)
+  }, [acceptedPreview, acceptedApply, stateQ.observedPreviewId, stateQ.observedApplyId])
   const previewTask = stateQ.data?.previewTask ?? null
   const applyTask = stateQ.data?.applyTask ?? null
-  const previewTaskId = previewTask?.taskId ?? null
-  const applyTaskId = applyTask?.taskId ?? null
+  const previewTaskId = previewTask?.taskId ?? acceptedPreview ?? null
+  const applyTaskId = applyTask?.taskId ?? acceptedApply ?? null
+  const currentObservation = useRef({ serverId, previewTaskId, checking: stateQ.checking })
+  useLayoutEffect(() => {
+    currentObservation.current = { serverId, previewTaskId, checking: stateQ.checking }
+  }, [serverId, previewTaskId, stateQ.checking])
   const previewStatus: BackgroundTaskStatus | 'idle' =
-    previewTask?.status ?? (stateQ.isError ? 'failed' : 'idle')
+    previewTask?.status ?? (acceptedPreview ? 'pending' : stateQ.isError ? 'failed' : 'idle')
   const applyStatus: BackgroundTaskStatus | 'idle' =
-    applyTask?.status ?? (stateQ.isError ? 'failed' : 'idle')
+    applyTask?.status ?? (acceptedApply ? 'pending' : stateQ.isError ? 'failed' : 'idle')
   const previewResult =
     previewTask?.taskType === 'chunk_prune_preview' &&
       isChunkPruneResultData(previewTask.result) &&
@@ -198,12 +213,14 @@ export function useChunkPruneController(serverId: string) {
 
   const canPreview =
     !!serverId &&
+    !stateQ.checking &&
     thresholdSeconds >= 0 &&
     !previewStarting &&
     !previewActive &&
     !applyActive
   const canApply =
     !!serverId &&
+    !stateQ.checking &&
     !!previewTaskId &&
     previewStatus === 'completed' &&
     previewAvailable &&
@@ -213,23 +230,28 @@ export function useChunkPruneController(serverId: string) {
     !applyActive
 
   const startPreview = useCallback(async () => {
-    setPreviewStarting(true)
+    if (currentObservation.current.serverId !== serverId || currentObservation.current.checking) return
+    setPreviewRequestServer(serverId)
     setSubmissionError(null)
     try {
-      await chunkPruneApi.startPreview(serverId, {
+      const accepted = await chunkPruneApi.startPreview(serverId, {
         threshold_seconds: thresholdSeconds,
         mode: urlMode,
       })
+      if (currentObservation.current.serverId !== serverId) return
+      setPreviewAcceptance({ serverId, taskId: accepted.task_id })
+      setApplyAcceptance(undefined)
       queryClient.invalidateQueries({
         queryKey: queryKeys.chunkPrune.state(serverId),
       })
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.operations.all })
     } catch (e) {
+      if (currentObservation.current.serverId !== serverId) return
       const message = (e as Error).message || '启动区块清理预览失败'
       toast.error('启动区块清理预览失败', { description: message })
     } finally {
-      setPreviewStarting(false)
+      setPreviewRequestServer(current => current === serverId ? undefined : current)
     }
   }, [queryClient, serverId, thresholdSeconds, urlMode])
 
@@ -256,17 +278,22 @@ export function useChunkPruneController(serverId: string) {
       cancelText: '取消',
       variant: 'destructive',
       onConfirm: async () => {
+        const current = currentObservation.current
+        if (current.checking || current.serverId !== serverId || current.previewTaskId !== previewTaskId) return
         setSubmissionError(null)
         try {
-          await chunkPruneApi.startApply(serverId, {
+          const accepted = await chunkPruneApi.startApply(serverId, {
             preview_task_id: previewTaskId,
           })
+          if (currentObservation.current.serverId !== serverId) return
+          setApplyAcceptance({ serverId, taskId: accepted.task_id })
           queryClient.invalidateQueries({
             queryKey: queryKeys.chunkPrune.state(serverId),
           })
           queryClient.invalidateQueries({ queryKey: taskQueryKeys.all })
           queryClient.invalidateQueries({ queryKey: queryKeys.operations.all })
         } catch (e) {
+          if (currentObservation.current.serverId !== serverId) return
           const message = getErrorMessage(e, '启动区块删除失败')
           setSubmissionError(message)
           const detail = (e as ApiError).detail

@@ -47,7 +47,7 @@ Game-port self-check remediation links to `/server/<encoded-server-id>/files?pat
 
 ## Ownership repair
 
-`FileToolbar.tsx` exposes a confirmed "修复文件所有权" action at the top of the file manager. The mutation calls `POST /servers/{id}/files/ownership/restore`, receives a `task_id`, and `useFileBrowser` polls that task with `useTask(task_id)`. The backend task recursively sets every file in the server data directory to the UID/GID of that directory; the application operation observer invalidates the file-list cache after terminal outcomes, including partial failures. The task is also visible in the global task center.
+`FileToolbar.tsx` exposes a confirmed "修复文件所有权" action at the top of the file manager. The mutation calls `POST /servers/{id}/files/ownership/restore`, receives a `task_id`, and `useFileBrowser` observes it through the shared task SSE with `useTask(task_id)`. The backend task recursively sets every file in the server data directory to the UID/GID of that directory; the application operation observer invalidates the file-list cache after terminal outcomes, including partial failures. The task is also visible in the global task center. Running progress does not issue detail requests; the confirmed terminal result supplies the final UID/GID.
 
 ## Single-file editing
 
@@ -97,7 +97,13 @@ Compressing a folder is a long operation; both happen as background tasks.
 - `CompressionConfirmDialog.tsx` → `POST /api/archive/compress` returns a `task_id`
 - `useFileBrowser` watches the task via `useTask(task_id)` and supplies progress to `CompressionConfirmDialog.tsx`; `CompressionResultDialog.tsx` presents the finished archive
 
-The user can navigate away; the task center continues to display progress and the terminal result.
+The user can navigate away; the task center continues to display progress and the terminal result. Progress comes from the shared task stream; a settled event supplies small archive results directly, while excluded results use one detail read.
+
+Batch deletion captures the accepted paths before submission. Confirmation closes
+after dispatch; the source toolbar remains disabled until real settlement and
+shows streamed processed/deleted/failed/pending counts. Closing confirmation does
+not cancel execution. Confirmed partial failures remain visible, and only deleted
+paths are removed from the selection.
 
 ## Files
 

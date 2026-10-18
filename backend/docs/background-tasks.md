@@ -31,28 +31,52 @@ execution. Detached work does not inherit its parent's operation ownership.
 
 ## Live observation
 
-Authenticated `GET /api/tasks/events` streams the current task summaries as SSE.
-The first JSON data frame is `{"type":"snapshot","tasks":[...]}`. Later frames
-are `{"type":"upsert","task":...}` or `{"type":"remove","task_id":"..."}`.
-Summaries retain nullable fields and exclude detailed results. Progress and result
-changes notify observers; large results remain available from task detail reads.
-Terminal summaries follow the same cleanup and journal confirmation as HTTP
-details. A result-consuming observer must read confirmed terminal detail before
-completing its workflow.
+Authenticated `GET /api/tasks/events?operation_cursor=...` shares one SSE
+connection for task, operation and execution-domain observation. The first data
+frame is `{"type":"snapshot","tasks":[...],"active_restorations":[...],"prune_states":[...]}`.
+Task changes use `{"type":"upsert","task":...}` and
+`{"type":"remove","task_id":"..."}`. Summaries retain nullable fields,
+including feature-owned `progress_details`. Non-null progress details replace
+the complete current details; omission retains them. They are current state,
+not a durable progress log.
+
+Event task models add `result_included` and `result`. Running tasks always send
+false and null, including at 100 percent. After worker cleanup and journal
+confirmation, known terminal results whose JSON encoding is at most 16 KiB
+(including null) are included. Larger and unloaded historical results remain
+excluded and require one authoritative detail read before completing a
+result-consuming workflow. HTTP task lists continue to omit results.
+Inline eligibility is privately cached for the settled result object, so each
+observer or reconnect does not re-encode an excluded large result. Running and
+unknown results do not populate this cache; loading a different result requires
+a fresh size decision. The cache is absent from persistence and wire schemas.
+
+`operation_changes` frames carry the existing bounded journal change batch and
+cursor/reset contract. Subscribers provide their last successfully handled
+cursor on reconnect; notifications wake ring reads after commit without another
+queue or HTTP polling. `restoration_index` and `prune_state` frames replace their
+respective complete indexes. The router injects the asynchronous domain snapshot
+provider; task core does not import snapshot or world services. A provider
+failure ends the stream for reconnect and cannot masquerade as an empty index.
 
 Each connection retains at most 256 dirty task IDs and coalesces intermediate
 updates. Overflow replaces pending updates with a current-state snapshot. The
 publisher never waits for the connection or queries the database. Idle streams
 send a comment keepalive every 15 seconds. Reconnecting starts with a fresh
-snapshot; there is no progress-history cursor. Disconnecting releases only the
-subscription, and runtime shutdown closes subscriptions after draining workers.
+snapshot; the operation cursor does not reconstruct intermediate task progress.
+Domain dirty flags are cleared before awaited reads, preserving notifications
+that arrive during a read. Disconnecting releases task and journal listeners
+only, and runtime shutdown closes subscriptions after draining workers.
 Existing HTTP list, detail, cancellation and dismissal endpoints remain available.
 
 Workers can call synchronous `update_progress(task_id, TaskProgress(...))` for
 progress callbacks. It updates memory and notifies observers, returning false for
-unknown or settled tasks. Callbacks supply progress and message only; generators
-retain the existing durable result-before-publication path. Reporting 100 percent
-does not settle a task.
+unknown or settled tasks. Callbacks can supply progress, message and structured
+details; generators retain the existing durable result-before-publication path.
+Reporting 100 percent does not settle a task. Domain owners call synchronous
+`notify_observation("restorations" | "prune")` after acceptance and lifecycle
+changes. The manager also notifies restoration start/settlement and prune
+start/progress/settlement; publishers never await domain reads or observers.
 
 ## Cancellation and completion
 

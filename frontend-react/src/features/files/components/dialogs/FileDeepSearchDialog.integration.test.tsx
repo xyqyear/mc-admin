@@ -2,18 +2,19 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { createTaskEvents, taskResponse } from '@/test/taskEvents'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import FileDeepSearchDialog from './FileDeepSearchDialog'
 import { FileSnapshotRecovery } from '../FileSnapshotRecovery'
 import { SnapshotRecoveryContext } from '../../snapshotRecoveryContext'
 
-const server = setupServer(taskEventsUnavailable)
+const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
-beforeEach(() => { client = createTestClient() })
+let events: ReturnType<typeof createTaskEvents>
+beforeEach(() => { client = createTestClient(); events = createTaskEvents(); server.use(events.handler) })
 afterEach(() => { client.clear(); server.resetHandlers() })
 
 it.each([
@@ -51,17 +52,17 @@ it.each([
 it('creates one multi-path snapshot from checked real results using the captured search root', async () => {
   let ruleReads = 0
   const created: unknown[] = []
+  const completed = taskResponse('snapshot', { status: 'completed', result: { snapshot: { id: 'a'.repeat(64), short_id: 'aaaaaaaa', note: '多选备份' }, note_warning: null } })
   server.use(
     http.post('*/api/servers/alpha/files/search', () => HttpResponse.json({ search_path: '/captured', results: [
       { path: '/plugins', name: 'plugins', type: 'directory', size: 0, modified_at: 1 },
       { path: '/plugins/a.toml', name: 'a.toml', type: 'file', size: 3, modified_at: 1 },
       { path: '/virtual/b.toml', name: 'b.toml', type: 'file', size: 5, modified_at: 1 },
     ], total_count: 3 })),
-    http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ restorations: [], total: 0 })),
     http.get('*/api/servers/alpha', () => HttpResponse.json({ id: 'alpha', name: 'Alpha', serverType: 'VANILLA', server_generation: 1 })),
     http.get('*/api/snapshots/targets/rules', () => { ruleReads++; return HttpResponse.json({ server_id: 'alpha', server_generation: 1, ignored_paths: [], rules_version: 'v1' }) }),
-    http.post('*/api/snapshots', async ({ request }) => { created.push(await request.json()); return HttpResponse.json({ task_id: 'snapshot' }, { status: 202 }) }),
-    http.get('*/api/tasks/snapshot', () => HttpResponse.json({ task_id: 'snapshot', status: 'completed', result: { snapshot: { id: 'a'.repeat(64), short_id: 'aaaaaaaa', note: '多选备份' }, note_warning: null } })),
+    http.post('*/api/snapshots', async ({ request }) => { created.push(await request.json()); events.upsert(completed); return HttpResponse.json({ task_id: 'snapshot' }, { status: 202 }) }),
+    http.get('*/api/tasks/snapshot', () => HttpResponse.json(completed)),
   )
   render(<TestProviders client={client}><FileSnapshotRecovery serverId="alpha"><FileDeepSearchDialog open serverId="alpha" currentPath="/data" onCancel={() => {}} onNavigate={vi.fn()} /></FileSnapshotRecovery></TestProviders>)
   fireEvent.change(screen.getByLabelText('搜索模式'), { target: { value: 'toml|plugins' } })

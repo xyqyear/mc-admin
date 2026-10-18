@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { taskEventsUnavailable, taskResponse } from '@/test/taskEvents'
 import { Route, Routes } from 'react-router'
 import { queryKeys } from '@/shared/http/api'
 import { createTestClient, deferred } from '@/test/http'
@@ -212,14 +212,14 @@ it.each([false, true])('accepts only its successful task version and preserves n
   await screen.findByText('应用中')
   fireEvent.change(editor, { target: { value: 'next draft' } })
   remote = 'local draft'; version = 'v2'; operation.state = 'succeeded'; feed.publish(operation)
-  server.use(http.get('*/api/tasks/task', () => HttpResponse.json({ task_id: 'task', task_type: 'server_rebuild', status: 'completed', created_at: '2026-09-25T12:00:00Z', result: { version: 'v2' } })))
-  await act(async () => { await client.refetchQueries({ queryKey: queryKeys.operations.all }) })
+  feed.upsertTask(taskResponse('task', { task_type: 'server_rebuild', status: 'completed', result: { version: 'v2' } }))
+  await waitFor(() => expect(client.getQueryData<{ cursor: string }>(queryKeys.operations.checkpoint('owner'))?.cursor).toBe(feed.cursor))
   await waitFor(() => expect(toast.success).toHaveBeenCalledWith('服务器配置更新完成'))
   expect(editor.value).toBe('next draft')
   expect(screen.queryByText('在线配置已变更')).toBeNull()
 
   remote = 'other user v3'; version = 'v3'; operation.operation_id = 'another-operation'; feed.publish(operation)
-  await act(async () => { await client.refetchQueries({ queryKey: queryKeys.operations.all }) })
+  await waitFor(() => expect(client.getQueryData<{ cursor: string }>(queryKeys.operations.checkpoint('owner'))?.cursor).toBe(feed.cursor))
   await screen.findByText('在线配置已变更')
   expect(editor.value).toBe('next draft')
   fireEvent.click(screen.getByRole('button', { name: '比较并解决冲突' }))
@@ -240,7 +240,9 @@ it('does not accept a newer remote revision when its own successful result arriv
     await resultReady.promise
     return HttpResponse.json({ task_id: 'task', task_type: 'server_rebuild', status: 'completed', created_at: '2026-09-25T12:00:00Z', result: { version: 'v2' } })
   }))
-  await act(async () => { await client.refetchQueries({ queryKey: queryKeys.operations.all }) })
+  const excluded = { ...taskResponse('task', { task_type: 'server_rebuild', status: 'completed' }), result_included: false }
+  feed.upsertTask(excluded)
+  await waitFor(() => expect(client.getQueryData<{ cursor: string }>(queryKeys.operations.checkpoint('owner'))?.cursor).toBe(feed.cursor))
   await waitFor(() => expect(client.getQueryData<{ version: string }>(queryKeys.compose.detail('alpha'))?.version).toBe('v3'))
   resultReady.resolve()
   await waitFor(() => expect(toast.success).toHaveBeenCalledWith('服务器配置更新完成'))

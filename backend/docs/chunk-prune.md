@@ -49,8 +49,9 @@ on the generic background task.
 ## Preview Lifecycle
 
 `POST /servers/{server_id}/chunk-prune/preview` accepts `threshold_seconds` and
-`mode`, then creates a background task. The page reads the current server
-workflow through `GET /servers/{server_id}/chunk-prune/state`.
+`mode`, then creates a background task. The shared `/tasks/events` stream includes
+the current server workflow in its initial snapshot and subsequent `prune_state`
+frames. The HTTP state endpoint remains available for explicit reads.
 
 Preview extracts FTB claims once from the primary world root when available and
 writes the mcmap-compatible JSON payload into a temp file under the system temp
@@ -65,6 +66,13 @@ artifact deletion or cancel an apply. A successful preview expires after
 `prune_preview_ttl_seconds` (default 1,800); the registry retains at most 128
 previews and evicts only inactive, unreferenced, ineligible entries. Expiry is
 reported explicitly rather than presenting deleted geometry as a valid preview.
+A service-owned nearest-expiry timer publishes time-driven availability changes
+using only in-memory metadata. Successful `mcmap` configuration saves and resets
+immediately rearm the timer and publish the current deadlines and availability.
+Closing the registry detaches its configuration subscription and cancels and
+joins this timer.
+Registration, consumption, validation failures and eviction also notify observers;
+the existing artifact janitor retains its separate low-frequency cleanup work.
 
 The background task result contains the mcmap result fields plus
 `threshold_seconds`, `threshold_ticks`, and
@@ -124,23 +132,29 @@ preview geometry or apply authorization valid after restart.
 
 ## Frontend Task Shape
 
-The backend does not expose prune-specific SSE. Preview and apply use the
-background task manager:
+Preview and apply share the task event connection with restoration discovery and
+operation refresh:
 
-- live progress comes from polling
-  `/servers/{server_id}/chunk-prune/state`;
+- live progress comes from task and prune-state events, with structured
+  `progress_details={kind:"regions",regions_processed,regions_total}` counters;
 - state returns the latest preview task for the server and the latest apply
   task created after that preview, so starting a new preview hides older apply
   progress/results;
 - the optional `preview` state reports `input_version`, `expires_at`,
   `availability` and `apply_task_id`, so the page can distinguish stale, expired
   and consumed previews;
-- the global task center uses summary-only `/tasks` list responses;
+- retained preview/apply tasks remain in the prune index after task-center
+  dismissal; event results follow the shared settled-result size limit;
 - the preview overlay is rendered only after the preview task completes;
 - switching the map dimension selects a different dimension entry from the same
   completed preview geometry;
 - apply progress is shown as task progress, and the map is refreshed after a
   successful apply.
+
+Index reads and expiry notifications do not scan world files or claims. External
+changes are detected by the existing input validation after preview preparation
+and before apply execution; observation is not proof that an input version is
+still safe to apply. Geometry remains a separate on-demand request.
 
 ## Dynamic Config
 

@@ -55,11 +55,19 @@ func safetySnapshotDisconnect(ctx context.Context, t *engine.Scope) error {
 	if err = startResticPauses(ctx, t); err != nil {
 		return err
 	}
+	events := observeExecutions(ctx, s.client)
+	defer events.close()
+	if _, err = events.initial(ctx); err != nil {
+		return err
+	}
 	taskID, id, err := s.startRestore(ctx, snapshot, selection)
 	if err != nil {
 		return err
 	}
 	if err = waitResticPause(ctx, t, "backup"); err != nil {
+		return err
+	}
+	if err = events.restoration(ctx, id, taskID, s.id, true); err != nil {
 		return err
 	}
 	if err = resumeResticBackup(ctx, t); err != nil {
@@ -81,6 +89,12 @@ func safetySnapshotDisconnect(ctx context.Context, t *engine.Scope) error {
 	if _, err = s.client.Task(observe, taskID); !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("task observation did not disconnect: %v", err)
 	}
+	events.close()
+	reconnected := observeExecutions(ctx, s.client)
+	defer reconnected.close()
+	if err = reconnected.restoration(ctx, id, taskID, s.id, true); err != nil {
+		return err
+	}
 	if err = resumeRestic(ctx, t); err != nil {
 		return err
 	}
@@ -88,6 +102,9 @@ func safetySnapshotDisconnect(ctx context.Context, t *engine.Scope) error {
 	if err = t.Step("early disconnect settles matching history and operation without restarting the application", func() error {
 		return s.waitSafetyDisconnect(ctx, id, safety)
 	}); err != nil {
+		return err
+	}
+	if err = reconnected.restoration(ctx, id, taskID, s.id, false); err != nil {
 		return err
 	}
 	if err = t.Step("independent persisted management writes still work after disconnection", func() error {

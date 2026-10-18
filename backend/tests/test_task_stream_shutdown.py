@@ -16,6 +16,7 @@ from app.background_tasks import TaskProgress, TaskType
 from app.config import Settings
 from app.dependencies import get_current_user
 from app.main import create_app
+from app.routers import tasks as tasks_router
 from app.runtime import Runtime
 from tests.support.environment import isolated_environment
 
@@ -24,6 +25,11 @@ def create_shutdown_app() -> FastAPI:
     root = Path(os.environ["TASK_STREAM_SHUTDOWN_ROOT"])
     runtime = Runtime(Settings(restic=None))  # type: ignore
     application = create_app(runtime=runtime)
+
+    async def empty_index(_domain):
+        return []
+
+    tasks_router.snapshot = empty_index
     application.state.api_app.dependency_overrides[get_current_user] = lambda: UserPublic(
         id=1, username="shutdown-observer", created_at=datetime.now(UTC),
     )

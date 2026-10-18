@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..errors import log_safe_error
 from ..runtime_resources import current_runtime
 from . import crud
 from .migration import ConfigMigrator
@@ -30,6 +31,19 @@ class ConfigManager:
         self._configs: dict[str, BaseConfigSchema] = {}
         self._schemas: dict[str, type[BaseConfigSchema]] = {}
         self._initialized = False
+        self._listeners: dict[str, set[Callable[[], None]]] = {}
+
+    def listen(self, module_name: str, callback: Callable[[], None]) -> Callable[[], None]:
+        self._listeners.setdefault(module_name, set()).add(callback)
+
+        def unsubscribe() -> None:
+            listeners = self._listeners.get(module_name)
+            if listeners is not None:
+                listeners.discard(callback)
+                if not listeners:
+                    self._listeners.pop(module_name, None)
+
+        return unsubscribe
 
     def register_config(
         self, module_name: str, schema_cls: type[BaseConfigSchema]
@@ -172,6 +186,11 @@ class ConfigManager:
             )
 
         self._configs[module_name] = new_config_instance
+        for listener in tuple(self._listeners.get(module_name, ())):
+            try:
+                listener()
+            except Exception as error:  # noqa: BLE001 - observers cannot undo committed configuration.
+                log_safe_error(error, "Configuration change notification failed")
 
         logger.info(f"Updated configuration for module '{module_name}'")
         return new_config_instance

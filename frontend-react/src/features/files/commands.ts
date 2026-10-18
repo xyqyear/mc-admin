@@ -2,7 +2,8 @@ import { waitForTaskResult } from '@/features/tasks/commands';
 import { getErrorMessage, type ApiError } from '@/shared/http/api'
 import type { CreateFileRequest, RenameFileRequest, FileBatchDeleteResult } from "@/features/files/contracts";
 import type { BackgroundTask } from '@/features/tasks/contracts';
-import { taskQueryKeys } from "@/features/tasks/queries";
+import { taskQueryKeys, useTask } from "@/features/tasks/queries";
+import { useState } from 'react';
 import { queryKeys } from "@/shared/http/api";
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -67,9 +68,13 @@ export const useDeleteFile = (serverId: string | undefined) => {
 
 export const useBulkDeleteFiles = (serverId: string | undefined) => {
   const queryClient = useQueryClient();
-  return useMutation({
+  const [taskId, setTaskId] = useState('');
+  const { data: task } = useTask(taskId);
+  const mutation = useMutation({
     mutationFn: async (paths: string[]) => {
+      setTaskId('');
       const accepted = await fileApi.deleteFiles(serverId!, [...paths]);
+      setTaskId(accepted.task_id);
       try {
         return await waitForTaskResult<FileBatchDeleteResult>(queryClient, accepted);
       } catch (error) {
@@ -89,6 +94,7 @@ export const useBulkDeleteFiles = (serverId: string | undefined) => {
       toast.error(getErrorMessage(error, "批量删除失败"));
     },
   });
+  return { ...mutation, task };
 };
 
 export const useRenameFile = (serverId: string | undefined) => {

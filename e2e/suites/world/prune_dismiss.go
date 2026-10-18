@@ -145,6 +145,29 @@ func pruneDismissActive(ctx context.Context, t *engine.Scope) error {
 		if state.PreviewTask == nil || state.PreviewTask.ID != preview.ID || state.ApplyTask == nil || state.ApplyTask.ID != started.ID {
 			return fmt.Errorf("feature state lost dismissed preview or its active apply: %+v", state)
 		}
+		events := observeExecutions(ctx, s.client)
+		defer events.close()
+		initial, err := events.initial(ctx)
+		if err != nil {
+			return err
+		}
+		indexed := pruneInFrame(initial, s.id, preview.ID, "consumed")
+		if indexed == nil {
+			return fmt.Errorf("reconnected prune index lost dismissed preview")
+		}
+		if err = checkPruneProgress(indexed, preview.ID); err != nil {
+			return err
+		}
+		apply, _ := indexed["apply_task"].(map[string]any)
+		if apply["task_id"] != started.ID || apply["status"] != "running" || apply["result_included"] != false || apply["result"] != nil {
+			return fmt.Errorf("reconnected prune index lost active apply settlement guard: %+v", apply)
+		}
+		for _, raw := range initial["tasks"].([]any) {
+			row, _ := raw.(map[string]any)
+			if row["task_id"] == preview.ID {
+				return fmt.Errorf("dismissed preview remains in generic task snapshot")
+			}
+		}
 		if err = s.pruneConflict(ctx, preview.ID, "prune_preview_consumed"); err != nil {
 			return err
 		}

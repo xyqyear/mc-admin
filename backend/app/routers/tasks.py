@@ -7,6 +7,7 @@ from app.background_tasks.api_models import (
     BackgroundTaskResponse,
     BackgroundTaskSummaryResponse,
 )
+from app.execution_observation import snapshot
 
 from ..background_tasks import get_task_manager
 from ..dependencies import get_current_user
@@ -40,8 +41,8 @@ async def get_tasks(
 
 
 @router.get("/events", response_class=StreamingResponse)
-async def task_events() -> StreamingResponse:
-    return sse_response(get_task_manager().events())
+async def task_events(operation_cursor: str | None = None) -> StreamingResponse:
+    return sse_response(get_task_manager().events(operation_cursor, snapshot))
 
 
 @router.get("/{task_id}", response_model=BackgroundTaskResponse)

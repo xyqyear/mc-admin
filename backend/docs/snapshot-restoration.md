@@ -18,6 +18,15 @@ starts. Rejection, queued cancellation and failure before execution settle histo
 `GET /snapshots/restorations` and its detail route project journal state; rollback
 availability follows retained generations and actual repository references.
 
+The shared `/tasks/events` stream carries every active journal-backed restoration
+with its scope and target server generations, including global scopes. Acceptance
+notifies after the restoration transaction commits, before worker registration.
+The entry remains until the journal has settled and the live task has finished
+finalization. Initial snapshots combine unpaginated database projections with
+active manager identities and do not access Restic. Frontend discovery uses this index
+instead of periodic active-restoration reads, retaining its guard when observation
+is disconnected or has not obtained a successful snapshot.
+
 `POST /snapshots/restorations/{id}/rollback` creates another recovery task and
 records its parent. It saves current contents first, including edits made since
 the original restore. Missing targets use an owned temporary absence marker when

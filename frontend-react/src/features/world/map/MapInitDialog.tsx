@@ -14,6 +14,7 @@ import { worldApi } from '@/features/world/api'
 import { taskApi } from '@/features/tasks/api'
 import type { TaskAccepted } from '@/features/tasks/contracts'
 import { waitForTaskResult } from '@/features/tasks/commands'
+import { useTaskFeed } from '@/features/tasks/queries'
 
 interface MapInitDialogProps {
   open: boolean
@@ -45,6 +46,7 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
   onComplete,
 }) => {
   const queryClient = useQueryClient()
+  const feed = useTaskFeed(open)
   const request = useRef<{ key: string; accepted: Promise<TaskAccepted> } | null>(null)
   const [isActive, setIsActive] = useState(true)
   const [client, setClient] = useState<StageState>(initialStage)
@@ -89,8 +91,18 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
     void request.current.accepted.then(accepted => waitForTaskResult(queryClient, accepted, {
       signal: ctrl.signal,
       onProgress: task => {
-        const result = task.result as { stages?: Record<string, InitEvent> } | undefined
-        Object.values(result?.stages ?? {}).forEach(applyEvent)
+        const details = task.progressDetails
+        if (details?.kind !== 'map' || !Array.isArray(details.stages)) return
+        for (const stage of details.stages) {
+          if (!stage || typeof stage !== 'object' || !['client', 'palette'].includes(stage.stage)) continue
+          applyEvent({
+            stage: stage.stage,
+            phase: ['starting', 'downloading', 'verifying', 'pack_loaded', 'resolving', 'done', 'error'].includes(stage.phase) ? stage.phase : undefined,
+            percent: typeof stage.percent === 'number' && Number.isFinite(stage.percent) ? stage.percent : undefined,
+            message: typeof stage.message === 'string' ? stage.message : undefined,
+            cached: typeof stage.cached === 'boolean' ? stage.cached : undefined,
+          })
+        }
       },
     })).then(() => {
       if (ctrl.signal.aborted) return
@@ -128,6 +140,7 @@ const MapInitDialog: React.FC<MapInitDialogProps> = ({
           {errored && (
             <div className="text-destructive text-sm">错误: {errored}</div>
           )}
+          {isActive && !feed.connected && <div className="text-muted-foreground text-sm">正在重新连接任务进度，后台任务仍在继续</div>}
         </div>
       </DialogContent>
     </Dialog>

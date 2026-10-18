@@ -5,7 +5,7 @@ import type { BackgroundTask, TaskAccepted } from './contracts'
 import { useTaskCenterStore } from './panelStore'
 import { taskApi } from '@/features/tasks/api'
 import { taskQueryKeys } from './queryKeys'
-import { retainTaskStream, taskDetailQueryOptions } from './observation'
+import { retainTaskStream, taskDetailQueryOptions, taskFeedState, taskIsTerminal } from './observation'
 
 export async function waitForTaskResult<T>(
   client: QueryClient,
@@ -24,11 +24,18 @@ export async function waitForTaskResult<T>(
   void client.invalidateQueries({ queryKey: queryKeys.operations.all })
   try {
     return await new Promise<T>((resolve, reject) => {
-      const observer = new QueryObserver(client, { ...taskDetailQueryOptions(client, accepted.task_id, 1000), refetchIntervalInBackground: true })
+      const observer = new QueryObserver(client, taskDetailQueryOptions(client, accepted.task_id))
+      const showConnection = () => {
+        const feed = taskFeedState(client)
+        if (feed?.tasks !== undefined && !feed.connected && !taskIsTerminal(observer.getCurrentResult().data)) {
+          toast.warning('暂时无法获取任务状态，正在重新连接', { id: warningId, duration: Infinity })
+        } else if (feed?.connected) toast.dismiss(warningId)
+      }
       const detach = () => reject(new DOMException('已停止观察任务', 'AbortError'))
       controller.signal.addEventListener('abort', detach, { once: true })
       const cacheUnsubscribe = client.getQueryCache().subscribe(event => {
         if (event.type === 'removed' && event.query.queryHash === JSON.stringify(taskQueryKeys.detail(accepted.task_id))) controller.abort()
+        if (event.type === 'updated' && event.query.queryHash === JSON.stringify(taskQueryKeys.events())) showConnection()
       })
       const observe = (state: ReturnType<typeof observer.getCurrentResult>) => {
         if (controller.signal.aborted || options.signal?.aborted) { detach(); return }
@@ -40,7 +47,9 @@ export async function waitForTaskResult<T>(
         }
         const task = state.data
         if (!task) return
-        toast.dismiss(warningId)
+        const feed = taskFeedState(client)
+        if (feed?.tasks !== undefined && !feed.connected && !taskIsTerminal(task)) showConnection()
+        else toast.dismiss(warningId)
         try { options.onProgress?.(task) } catch (error) { reject(error); return }
         if (task.status === 'completed') resolve(task.result as T)
         if (task.status === 'failed' || task.status === 'cancelled') reject(Object.assign(new Error(task.error || task.message || '任务未完成'), { code: task.errorCode }))

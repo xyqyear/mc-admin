@@ -1574,8 +1574,7 @@
     },
     "task_event": {
       "$defs": {
-        "BackgroundTaskSummaryResponse": {
-          "description": "Lightweight API response model for task lists.",
+        "BackgroundTaskEventResponse": {
           "properties": {
             "cancellable": {
               "title": "Cancellable",
@@ -1640,6 +1639,37 @@
               ],
               "title": "Progress"
             },
+            "progress_details": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Progress Details"
+            },
+            "result": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Result"
+            },
+            "result_included": {
+              "default": false,
+              "title": "Result Included",
+              "type": "boolean"
+            },
             "server_id": {
               "anyOf": [
                 {
@@ -1688,7 +1718,209 @@
             "ended_at",
             "error"
           ],
-          "title": "BackgroundTaskSummaryResponse",
+          "title": "BackgroundTaskEventResponse",
+          "type": "object"
+        },
+        "OperationChange": {
+          "properties": {
+            "data_changed": {
+              "title": "Data Changed",
+              "type": "boolean"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "operation_id": {
+              "title": "Operation Id",
+              "type": "string"
+            },
+            "resources": {
+              "items": {
+                "$ref": "#/$defs/ResourceReference"
+              },
+              "title": "Resources",
+              "type": "array"
+            },
+            "sequence": {
+              "title": "Sequence",
+              "type": "integer"
+            },
+            "state": {
+              "title": "State",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sequence",
+            "operation_id",
+            "kind",
+            "state",
+            "data_changed",
+            "updated_at",
+            "ended_at",
+            "resources"
+          ],
+          "title": "OperationChange",
+          "type": "object"
+        },
+        "OperationChanges": {
+          "properties": {
+            "active_count": {
+              "title": "Active Count",
+              "type": "integer"
+            },
+            "has_more": {
+              "title": "Has More",
+              "type": "boolean"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/OperationChange"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "next_cursor": {
+              "title": "Next Cursor",
+              "type": "string"
+            },
+            "reset_required": {
+              "title": "Reset Required",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "items",
+            "next_cursor",
+            "has_more",
+            "active_count",
+            "reset_required"
+          ],
+          "title": "OperationChanges",
+          "type": "object"
+        },
+        "OperationChangesEvent": {
+          "properties": {
+            "changes": {
+              "$ref": "#/$defs/OperationChanges"
+            },
+            "type": {
+              "const": "operation_changes",
+              "default": "operation_changes",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "changes"
+          ],
+          "title": "OperationChangesEvent",
+          "type": "object"
+        },
+        "PruneStateEvent": {
+          "properties": {
+            "prune_states": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Prune States",
+              "type": "array"
+            },
+            "type": {
+              "const": "prune_state",
+              "default": "prune_state",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "prune_states"
+          ],
+          "title": "PruneStateEvent",
+          "type": "object"
+        },
+        "ResourceReference": {
+          "properties": {
+            "generation": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Generation"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "path": {
+              "default": "",
+              "title": "Path",
+              "type": "string"
+            },
+            "server_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Server Id"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "title": "ResourceReference",
+          "type": "object"
+        },
+        "RestorationIndexEvent": {
+          "properties": {
+            "active_restorations": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Active Restorations",
+              "type": "array"
+            },
+            "type": {
+              "const": "restoration_index",
+              "default": "restoration_index",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "active_restorations"
+          ],
+          "title": "RestorationIndexEvent",
           "type": "object"
         },
         "TaskRemoveEvent": {
@@ -1712,9 +1944,25 @@
         },
         "TaskSnapshotEvent": {
           "properties": {
+            "active_restorations": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Active Restorations",
+              "type": "array"
+            },
+            "prune_states": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Prune States",
+              "type": "array"
+            },
             "tasks": {
               "items": {
-                "$ref": "#/$defs/BackgroundTaskSummaryResponse"
+                "$ref": "#/$defs/BackgroundTaskEventResponse"
               },
               "title": "Tasks",
               "type": "array"
@@ -1727,7 +1975,9 @@
             }
           },
           "required": [
-            "tasks"
+            "tasks",
+            "active_restorations",
+            "prune_states"
           ],
           "title": "TaskSnapshotEvent",
           "type": "object"
@@ -1780,7 +2030,7 @@
         "TaskUpsertEvent": {
           "properties": {
             "task": {
-              "$ref": "#/$defs/BackgroundTaskSummaryResponse"
+              "$ref": "#/$defs/BackgroundTaskEventResponse"
             },
             "type": {
               "const": "upsert",
@@ -1805,6 +2055,15 @@
         },
         {
           "$ref": "#/$defs/TaskRemoveEvent"
+        },
+        {
+          "$ref": "#/$defs/OperationChangesEvent"
+        },
+        {
+          "$ref": "#/$defs/RestorationIndexEvent"
+        },
+        {
+          "$ref": "#/$defs/PruneStateEvent"
         }
       ]
     },
@@ -1827,6 +2086,19 @@
           ],
           "default": null,
           "title": "Progress"
+        },
+        "progress_details": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Progress Details"
         },
         "result": {
           "anyOf": [
@@ -2210,6 +2482,18 @@
               ],
               "title": "Progress"
             },
+            "progress_details": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Progress Details"
+            },
             "result": {
               "anyOf": [
                 {
@@ -2338,6 +2622,18 @@
                 }
               ],
               "title": "Progress"
+            },
+            "progress_details": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Progress Details"
             },
             "server_id": {
               "anyOf": [
@@ -7259,6 +7555,22 @@
       "/tasks/events": {
         "get": {
           "parameters": [
+            {
+              "in": "query",
+              "name": "operation_cursor",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Operation Cursor"
+              }
+            },
             {
               "in": "header",
               "name": "authorization",

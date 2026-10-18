@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vite
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { createOperationFeed } from '@/test/operations'
+import { createTaskEvents } from '@/test/taskEvents'
 import { OperationObserver } from '@/app/operations/OperationObserver'
 import { useUpdateModuleConfig, useResetModuleConfig } from '@/features/settings/commands'
 import { useUpdateFile } from '@/features/files/commands'
@@ -23,15 +24,18 @@ const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
+let events: ReturnType<typeof createTaskEvents>
 let reads: string[]
 let generation: number
 let rules: string[]
 beforeEach(() => {
   client = createTestClient()
+  events = createTaskEvents()
   reads = []
   generation = 1
   rules = ['config', 'world/private']
   server.use(
+    events.handler,
     http.get('*/api/servers/:id', ({ params }) => HttpResponse.json({ id: params.id, name: params.id, serverType: 'VANILLA', server_generation: generation })),
     http.get('*/api/snapshots/targets/rules', ({ request }) => {
       const id = new URL(request.url).searchParams.get('server_id')!
@@ -41,7 +45,7 @@ beforeEach(() => {
     http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ restorations: [], total: 0 })),
   )
 })
-afterEach(() => { client.clear(); server.resetHandlers(); vi.useRealTimers() })
+afterEach(() => { client.clear(); events.close(); server.resetHandlers(); vi.useRealTimers() })
 const wrapper = ({ children }: { children: React.ReactNode }) => <TestProviders client={client}>{children}</TestProviders>
 
 function FileControls({ rows, selected = [] }: { rows: string[]; selected?: string[] }) {
@@ -157,7 +161,7 @@ it.each(['snapshot_restore', 'archive_extract', 'server_remove', 'server_create'
   const view = renderHook(() => { const owner = useSnapshotRules('alpha', true); const target = useSnapshotTarget(fileSnapshotScope('alpha', ['/config'])); return { owner, target } }, { wrapper })
   await waitFor(() => expect(view.result.current.target.data?.allowed).toBe(false))
   render(<TestProviders client={client}><OperationObserver sessionId="session" /></TestProviders>)
-  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('session'))).toBeTruthy())
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.checkpoint('session'))).toBeTruthy())
   reads.length = 0
   feed.publish(operation('hash', 'archive_hash'))
   await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.operations.all }) })

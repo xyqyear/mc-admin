@@ -44,6 +44,12 @@ progress. The world recovery fault proxy cuts both SSE and detail observation
 while a paused restore worker is still running with durable safety evidence;
 the journey releases that writer, verifies completion, reconnects and rolls back.
 
+Map reload observes real stage payloads through the owned proxy and verifies one
+shared connection, no discovery polling, at most one initial detail read and a
+settled inline result. The final palette status and task result independently
+verify actual prerequisite generation. Prune expiry remains a real backend
+deadline; streamed availability disables subsequent application without polling.
+
 `navigation.spec.ts` verifies native middle/ControlOrMeta navigation from sidebar,
 styled fixed destinations and advanced-search links. Real new pages retain session
 access and reach encoded directory/filter URLs; the source keeps its route,

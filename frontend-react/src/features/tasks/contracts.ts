@@ -26,6 +26,7 @@ export interface BackgroundTask {
   status: BackgroundTaskStatus
   progress: number | null
   message: string
+  progressDetails?: Record<string, unknown> | null
   serverId: string | null
   createdAt: number
   startedAt?: number
@@ -43,11 +44,12 @@ export interface BackgroundTaskResponse {
   status: BackgroundTaskStatus
   progress: number | null
   message: string
+  progress_details?: Record<string, unknown> | null
   server_id: string | null
   created_at: string
   started_at?: string
   ended_at?: string
-  result?: Record<string, unknown>
+  result?: Record<string, unknown> | null
   error?: string
   error_code?: string
   cancellable: boolean
@@ -56,4 +58,14 @@ export interface BackgroundTaskResponse {
 export interface BackgroundTaskListResponse {
   tasks: BackgroundTaskResponse[]
   total: number
+}
+
+export interface TaskEventResponse extends BackgroundTaskResponse {
+  progress_details: Record<string, unknown> | null
+  result_included: boolean
+  result: Record<string, unknown> | null
+}
+
+export interface TaskEvent extends BackgroundTask {
+  resultIncluded: boolean
 }

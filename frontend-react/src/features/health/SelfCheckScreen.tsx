@@ -35,7 +35,7 @@ import {
 import { useRunSelfCheckItem } from '@/features/health/commands';
 import { selfCheckApi } from '@/features/health/api'
 import { waitForTaskResult } from '@/features/tasks/commands'
-import { useActiveTasks } from '@/features/tasks/queries';
+import { useActiveTasks, useTaskFeed } from '@/features/tasks/queries';
 import type { SelfCheckCatalogItem, SelfCheckCurrentState, SelfCheckFinding, SelfCheckStatusResponse, SelfCheckRunDetail, SelfCheckRunResult, SelfCheckRunStatus, SelfCheckRunSummaryRecord, SelfCheckSeverity, SelfCheckSummary } from '@/features/health/contracts';
 import { queryKeys } from '@/shared/http/api'
 import { formatDateTime } from '@/shared/utils/formatUtils'
@@ -499,11 +499,13 @@ const SelfCheck: React.FC = () => {
   const statusQuery = useSelfCheckStatus()
   const runItemMutation = useRunSelfCheckItem()
   const activeTasks = useActiveTasks()
+  const feed = useTaskFeed()
   const [taskId, setTaskId] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [taskFindings, setTaskFindings] = useState<DisplayFinding[] | null>(null)
   const [taskResult, setTaskResult] = useState<SelfCheckRunResult | null>(null)
   const [taskStartedAt, setTaskStartedAt] = useState<string | null>(null)
+  const [checkProgress, setCheckProgress] = useState<{ completed: number; total: number } | null>(null)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [rerunningCheckId, setRerunningCheckId] = useState<string | null>(null)
 
@@ -550,19 +552,27 @@ const SelfCheck: React.FC = () => {
     void waitForTaskResult<SelfCheckRunResult>(queryClient, { task_id: taskId }, {
       signal: controller.signal,
       onProgress: task => {
-        const result = task.result as {
-          findings?: SelfCheckFinding[]; check_id?: string; started_at?: string; checking?: boolean
-        } | undefined
-        if (!result) return
-        const findings: DisplayFinding[] = [...(result.findings ?? [])]
-        if (result.checking && result.check_id) {
-          const item = catalog.find(item => item.check_id === result.check_id)
-          findings.push({ check_id: result.check_id, category: item?.category ?? 'self_check',
+        const details = task.progressDetails
+        if (details?.kind !== 'self_check' || !Array.isArray(details.findings)) return
+        const findings = details.findings.filter((value): value is SelfCheckFinding => value && typeof value === 'object'
+          && typeof value.check_id === 'string' && typeof value.title === 'string' && typeof value.message === 'string'
+          && typeof value.category === 'string' && typeof value.created_at === 'string'
+          && ['success', 'info', 'warning', 'critical'].includes(value.severity)
+          && ['passed', 'info', 'warning', 'critical', 'skipped', 'failed'].includes(value.status)
+          && Array.isArray(value.remediation) && value.remediation.every((item: unknown) => typeof item === 'string')
+          && value.evidence && typeof value.evidence === 'object' && !Array.isArray(value.evidence)) as DisplayFinding[]
+        if (details.checking && typeof details.check_id === 'string') {
+          const item = catalog.find(item => item.check_id === details.check_id)
+          findings.push({ check_id: details.check_id, category: item?.category ?? 'self_check',
             severity: 'info', status: 'info', title: item?.title ?? '自检项', message: '检测中',
             evidence: {}, remediation: [], created_at: new Date().toISOString(), running: true })
         }
         setTaskFindings(findings)
-        setTaskStartedAt(result.started_at ?? null)
+        setTaskStartedAt(typeof details.started_at === 'string' ? details.started_at : null)
+        if (typeof details.completed_checks === 'number' && Number.isInteger(details.completed_checks) && details.completed_checks >= 0
+          && typeof details.total_checks === 'number' && Number.isInteger(details.total_checks) && details.total_checks >= details.completed_checks) {
+          setCheckProgress({ completed: details.completed_checks, total: details.total_checks })
+        }
       },
     }).then(result => {
       if (controller.signal.aborted) return
@@ -661,6 +671,8 @@ const SelfCheck: React.FC = () => {
           {displayRun && 'updated_at' in displayRun && ` · ${formatDateTime(displayRun.updated_at)}`}
           {displayRun && 'finished_at' in displayRun && ` · ${formatDateTime(displayRun.finished_at)}`}
           {running && taskStartedAt && ` · 开始于 ${formatDateTime(taskStartedAt)}`}
+          {running && checkProgress && ` · 已完成 ${checkProgress.completed}/${checkProgress.total} 项`}
+          {running && !feed.connected && ' · 正在重新连接任务进度'}
           {displayRun && 'duration_ms' in displayRun && ` · ${displayRun.duration_ms}ms`}
         </div>
         {selectedIsHistory && (

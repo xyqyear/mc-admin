@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { taskEventsUnavailable, createTaskEvents } from '@/test/taskEvents'
 import { toast } from 'sonner'
 import DnsManagementScreen from '@/features/dns/DnsManagementScreen'
 import type { DNSStatusResponse } from '@/features/dns/contracts'
@@ -42,16 +42,14 @@ afterEach(() => { client.clear(); server.resetHandlers(); vi.restoreAllMocks() }
 
 it('shows unknown state and preserves updates; a partial failure still refreshes changed routes', async () => {
   const error = vi.spyOn(toast, 'error')
-  let failed = false
-  server.use(
+  const feed = createTaskEvents()
+  server.use(feed.handler,
     http.post('*/api/dns/update', () => {
       updates++
       return HttpResponse.json({ task_id: updatingTask.task_id }, { status: 202 })
     }),
     http.get('*/api/tasks/dns-sync', () => {
-      if (!failed) return HttpResponse.json(updatingTask)
-      routes = { 'alpha.example.test': 'alpha:25565' }
-      return HttpResponse.json({ ...updatingTask, status: 'failed', error: '部分同步失败，请检查DNS提供商后重试' })
+      return HttpResponse.json(updatingTask)
     }),
   )
   render(<TestProviders client={client}><DnsManagementScreen /></TestProviders>)
@@ -62,7 +60,8 @@ it('shows unknown state and preserves updates; a partial failure still refreshes
   await screen.findByText('正在同步 DNS 和路由')
   expect((screen.getByRole('button', { name: '更新记录' }) as HTMLButtonElement).disabled).toBe(true)
   expect(error).not.toHaveBeenCalled()
-  failed = true
+  routes = { 'alpha.example.test': 'alpha:25565' }
+  feed.upsert({ ...updatingTask, status: 'failed', error: '部分同步失败，请检查DNS提供商后重试' })
   await waitFor(() => expect(error).toHaveBeenCalledWith('DNS更新失败: 部分同步失败，请检查DNS提供商后重试'), { timeout: 3000 })
   await screen.findByText('alpha:25565')
   expect(updates).toBe(1)

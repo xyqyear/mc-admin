@@ -1,29 +1,43 @@
 # Task Center
 
-The globally mounted task center displays backend tasks and browser downloads across page navigation. `features/tasks/` owns task DTOs, transport, polling, commands, downloads and UI. `app/layout/MainLayout.tsx` mounts its public trigger/panel.
+The globally mounted task center displays backend tasks and browser downloads across page navigation. `features/tasks/` owns task DTOs, transport, observation, commands, downloads and UI. `app/layout/MainLayout.tsx` mounts its public trigger/panel.
 
 ## Backend task state
 
 `contracts.ts` contains the HTTP DTO and the camel-case view model; `api.ts` performs that explicit conversion. Backend statuses are lowercase `pending`, `running`, `completed`, `failed`, `cancelled`. Dynamic result objects remain feature-validated where a workflow consumes them.
 
-TanStack Query is the only backend-task state owner. `queries.ts` exposes the
-`queryKeys.ts` factories and list/active/detail requests. `observation.ts` shares
-one authenticated `GET /tasks/events` connection per QueryClient across lists,
-the badge, detail views and initiating workflows. The initial snapshot replaces
-current summaries; upserts refresh progress and removals hide dismissed rows.
-Detailed results remain in their existing detail cache. Connection bookkeeping
-contains no second task store.
+TanStack Query is the only backend-task state owner. `observation.ts` shares
+one authenticated `GET /tasks/events` connection per QueryClient across tasks,
+operation refresh and execution discovery. `useTaskFeed` exposes current task,
+active-restoration and prune snapshots; domain arrays remain unknown until the
+first successful snapshot. Late consumers use the same cache and connection.
+Connection bookkeeping contains no second task store.
 
-A healthy stream disables periodic task-progress reads. Before connection or
-after a failure, lists and the badge retain their one-second active/ten-second
-idle HTTP recovery; detail observers use two seconds and initiating waiters one
-second. EOF, invalid frames and a missing keepalive restart observation with
-bounded backoff; reconnect obtains a fresh snapshot without submitting work.
-Map initialization and self-check obtain their intermediate result metadata
-through event-triggered, coalesced detail reads. Other ordinary progress uses
-summary fields directly.
+Task summaries carry nullable `progress_details`. Map stages, cumulative self-check
+findings, hash byte counts and batch item counts update directly from these
+frames, without intermediate detail requests. Snapshot/upsert updates are current
+state and may coalesce; they are not a history of every progress change.
 
-Task items render progress/message/result/error, allow explicit cancellation when a pending/running task is cancellable, and allow terminal records to be dismissed. The panel shows active tasks and terminal results from the last thirty minutes (records without an end time remain visible); clearing completed records sends the existing task API command.
+There is no periodic task HTTP fallback. EOF, invalid frames and missing keepalive
+restart the stream with bounded backoff. Reconnect replaces current snapshots
+without submitting work. Disconnected nonterminal detail views expose a reconnect
+state while retaining their task identity and data; waiters show a reconnect
+warning and keep their busy guard. Reconnection clears the warning.
+
+Event tasks explicitly carry `result_included`. Only genuinely settled terminal
+results encoded within 16 KiB, including null, are included. Those results can
+complete a waiter directly. Initial or retained details and terminal results
+excluded from events use on-demand HTTP. An excluded-result read is shared per
+task; failure retains the guard until a later observation or explicit retry,
+without a retry timer. Running tasks never carry a settled result.
+
+`subscribeTaskEvents` also retains the shared connection for asynchronous operation
+consumers. Batches are processed serially, and only successful consumption advances
+the cached cursor used by the next connection. Authentication expiry, cache clear
+and subscriber disposal abort old work. The [operation refresh](operation-refresh.md)
+owner describes resource invalidation and reset semantics.
+
+Task items render progress/message/error, allow explicit cancellation when a pending/running task is cancellable, and allow terminal records to be dismissed. The panel shows active tasks and terminal results from the last thirty minutes (records without an end time remain visible); clearing completed records sends the existing task API command.
 
 Within each active or completed group, backend tasks appear newest first by
 creation time and browser downloads by start time. Progress updates and completion
@@ -33,10 +47,9 @@ Manual snapshot creation and file/world restore/rollback, lifecycle,
 creation/synchronization, file/archive deletion, map initialization, manual
 self-check/DNS and upload hashing/publication return `202 {task_id}`.
 `commands.ts` exports `waitForTaskResult`, sharing the same stream and detail
-queries as `useTask`. Terminal summaries trigger a complete HTTP detail read;
-result-consuming views and waiters retain their running guard until that read
-confirms the outcome. Transient read failures show reconnecting and retain the
-guard. Dismissing a task does not remove its retained detail or result. A waiter
+queries as `useTask`. Result-consuming views and waiters retain their running
+guard until an included settled event or a successful complete detail read
+confirms the outcome. Dismissing a task does not remove its retained detail or result. A waiter
 receiving 404 reports a missing/expired record and asks the user to refresh the
 relevant page to check the actual outcome. An AbortSignal or the last view
 leaving detaches observation without cancelling execution. Authentication expiry

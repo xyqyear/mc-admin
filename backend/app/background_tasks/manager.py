@@ -13,7 +13,7 @@ from ..operation_admission import get_server_write_admission
 from ..operations.finalization import finalize
 from ..operations.journal_types import OperationState
 from ..runtime_resources import current_runtime
-from .events import TaskEventStream
+from .events import ObservationDomain, ObservationIndex, TaskEventStream
 from .models import BackgroundTask
 from .types import TaskProgress, TaskResult, TaskStatus, TaskType
 
@@ -268,7 +268,7 @@ class BackgroundTaskManager:
             server_id=next((resource.server_id for resource in record.resources if resource.server_id), None),
             status=state, message=message, created_at=record.created_at,
             ended_at=record.ended_at, error=message if state is TaskStatus.FAILED else None,
-            error_code=record.failure_code, cancellable=False,
+            error_code=record.failure_code, cancellable=False, result_known=False,
         )
 
     async def get_task_detail(self, task_id: str) -> BackgroundTask | None:
@@ -281,7 +281,7 @@ class BackgroundTaskManager:
                 task = self._task_from_record(record)
         if task is not None and task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
             result = await self.journal.get_task_result(task_id)
-            return task.model_copy(update={"result": result})
+            return task.model_copy(update={"result": result, "result_known": True})
         return task
 
     def submit(
@@ -325,6 +325,7 @@ class BackgroundTaskManager:
             task.status = TaskStatus.RUNNING
             task.started_at = datetime.now(UTC).astimezone().replace(tzinfo=None)
             self._events.publish(task.task_id)
+            self._notify_task_observation(task)
             terminal = TaskStatus.COMPLETED
             error: str | None = None
             try:
@@ -397,6 +398,7 @@ class BackgroundTaskManager:
                             error=error,
                         ))
                     self._events.publish(task.task_id)
+                    self._notify_task_observation(task)
                     logger.info("Task %s settled: %s", task.task_id, terminal.value)
                 await finalize(publish_result())
 
@@ -411,8 +413,21 @@ class BackgroundTaskManager:
 
         return SubmitResult(task_id=task.task_id, task=task, awaitable=future)
 
-    def events(self) -> AsyncGenerator[bytes]:
-        return self._events.events()
+    def events(
+        self, operation_cursor: str | None = None, get_index: ObservationIndex | None = None,
+    ) -> AsyncGenerator[bytes]:
+        return self._events.events(
+            operation_cursor, get_index, self.journal.changes if self.journal is not None else None,
+        )
+
+    def notify_observation(self, domain: ObservationDomain) -> None:
+        self._events.notify_observation(domain)
+
+    def _notify_task_observation(self, task: BackgroundTask, *, progress: bool = False) -> None:
+        if task.task_type in (TaskType.CHUNK_PRUNE_PREVIEW, TaskType.CHUNK_PRUNE_APPLY):
+            self.notify_observation("prune")
+        elif task.task_type is TaskType.SNAPSHOT_RESTORE and not progress:
+            self.notify_observation("restorations")
 
     def update_progress(self, task_id: str, progress: TaskProgress) -> bool:
         task = self._tasks.get(task_id)
@@ -420,9 +435,12 @@ class BackgroundTaskManager:
             return False
         task.progress = progress.progress
         task.message = progress.message
+        if progress.progress_details is not None:
+            task.progress_details = progress.progress_details
         if progress.result is not None:
             task.result = progress.result
         self._events.publish(task_id)
+        self._notify_task_observation(task, progress=True)
         return True
 
     async def cancel(self, task_id: str) -> bool:
@@ -496,6 +514,8 @@ class BackgroundTaskManager:
         self._asyncio_tasks.pop(task_id, None)
         self._futures.pop(task_id, None)
         self._events.publish(task_id)
+        if task.task_type in (TaskType.CHUNK_PRUNE_PREVIEW, TaskType.CHUNK_PRUNE_APPLY):
+            self.notify_observation("prune")
         return True
 
     def clear_completed(self) -> int:

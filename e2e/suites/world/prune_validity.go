@@ -84,6 +84,11 @@ func prunePreviewValidity(ctx context.Context, t *engine.Scope) error {
 	if err = s.claims(); err != nil {
 		return err
 	}
+	events := observeExecutions(ctx, s.client)
+	defer events.close()
+	if _, err = events.initial(ctx); err != nil {
+		return err
+	}
 	if err = t.Step("world and claim changes invalidate a completed dry run without deleting chunks", func() error {
 		for _, change := range []string{"world", "claims"} {
 			preview, err := s.prunePreview(ctx, "chunks", 3600)
@@ -91,6 +96,13 @@ func prunePreviewValidity(ctx context.Context, t *engine.Scope) error {
 				return err
 			}
 			if _, err = s.pruneState(ctx, preview.ID); err != nil {
+				return err
+			}
+			streamed, err := events.prune(ctx, s.id, preview.ID, "ready")
+			if err != nil {
+				return err
+			}
+			if err = checkPruneProgress(streamed, preview.ID); err != nil {
 				return err
 			}
 			if change == "world" {
@@ -102,6 +114,9 @@ func prunePreviewValidity(ctx context.Context, t *engine.Scope) error {
 				return err
 			}
 			if err = s.pruneConflict(ctx, preview.ID, "prune_preview_stale"); err != nil {
+				return err
+			}
+			if _, err = events.prune(ctx, s.id, preview.ID, "stale"); err != nil {
 				return err
 			}
 			for x := range 2 {
@@ -123,13 +138,7 @@ func prunePreviewValidity(ctx context.Context, t *engine.Scope) error {
 		if err != nil {
 			return err
 		}
-		state, err := s.pruneState(ctx, preview.ID)
-		if err != nil {
-			return err
-		}
-		if err = api.Wait(ctx, 100*time.Millisecond, "prune preview TTL elapses", func(context.Context) (bool, error) {
-			return time.Now().After(state.Preview.Expires.Add(100 * time.Millisecond)), nil
-		}); err != nil {
+		if _, err = events.prune(ctx, s.id, preview.ID, "expired"); err != nil {
 			return err
 		}
 		return s.pruneConflict(ctx, preview.ID, "prune_preview_expired")
@@ -164,6 +173,9 @@ func prunePreviewValidity(ctx context.Context, t *engine.Scope) error {
 	}
 	if state.Preview.Availability != "consumed" || state.Preview.ApplyID == nil || *state.Preview.ApplyID != started.ID {
 		return fmt.Errorf("consumed preview lost its single apply identity: %+v", state.Preview)
+	}
+	if _, err = events.prune(ctx, s.id, preview.ID, "consumed"); err != nil {
+		return err
 	}
 	claimed, _ := chunkPayload(regionData([2]string{"modified claimed", "modified unclaimed"}), 0)
 	if err = s.checkChunk(ctx, 0, claimed); err != nil {

@@ -2,7 +2,7 @@ import base64
 import binascii
 import json
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from uuid import uuid4
@@ -43,6 +43,15 @@ class OperationChangeFeed:
         self._bytes = 0
         self._items: deque[tuple[OperationChange, int]] = deque()
         self._active: set[str] = set()
+        self._listeners: set[Callable[[], None]] = set()
+
+    def listen(self, callback: Callable[[], None]) -> Callable[[], None]:
+        self._listeners.add(callback)
+        return lambda: self._listeners.discard(callback)
+
+    def _notify(self) -> None:
+        for listener in tuple(self._listeners):
+            listener()
 
     def initialize_active(self, operation_ids: Iterable[str]) -> None:
         self._active = set(operation_ids)
@@ -51,10 +60,12 @@ class OperationChangeFeed:
         self._epoch = uuid4().hex
         self._sequence = self._discarded_through = self._bytes = 0
         self._items.clear()
+        self._notify()
 
     def close(self) -> None:
         self.reset()
         self._active.clear()
+        self._listeners.clear()
 
     def track_state(self, record: OperationRecord) -> None:
         if record.state in TERMINAL_STATES:
@@ -75,6 +86,7 @@ class OperationChangeFeed:
             self._items.clear()
             self._bytes = 0
             self._discarded_through = self._sequence
+            self._notify()
             return
         self._items.append((item, size))
         self._bytes += size
@@ -82,6 +94,7 @@ class OperationChangeFeed:
             discarded, removed_bytes = self._items.popleft()
             self._discarded_through = discarded.sequence
             self._bytes -= removed_bytes
+        self._notify()
 
     def _cursor(self, sequence: int, head: int | None = None) -> str:
         value = f"{self._epoch}:{sequence}:{head if head is not None else ''}".encode()

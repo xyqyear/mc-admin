@@ -17,7 +17,7 @@ Query hooks:
 - `useSelfCheckHealth()` derives unresolved warning and critical counts from
   the current health state for global indicators.
 
-手动全量检查提交 `/api/self-check/run`，然后读取任务详情中的累计 findings 和当前检查项；单项重跑也等待对应任务。按钮在真实终态前保持忙碌；查询失败保留进度并重连，重新进入页面可接上活跃自检。健康检查告警与执行失败分别展示。完成后由全局 operation observer 刷新 `queryKeys.selfCheck.all`。
+手动全量检查提交 `/api/self-check/run`，然后直接从共享任务 SSE 的 `progress_details`（`kind="self_check"`）读取累计 findings、当前检查项和已完成/总检查数；单项重跑也等待对应任务。按钮在真实终态前保持忙碌；断流保留进度、提示重连且不回退为 HTTP 进度轮询，重新进入页面可接上活跃自检。健康检查告警与执行失败分别展示。完成后由全局 operation observer 刷新 `queryKeys.selfCheck.all`。
 
 ## Page Behavior
 

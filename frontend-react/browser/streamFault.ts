@@ -2,7 +2,7 @@ import http from 'node:http'
 import { once } from 'node:events'
 import { StringDecoder } from 'node:string_decoder'
 
-async function taskObservationFaultProxy(baseURL: string, interruptAfterSafetySnapshot: boolean) {
+async function taskObservationFaultProxy(baseURL: string, interruptAfterSafetySnapshot: boolean, onEvent?: (event: Record<string, unknown>) => void) {
   let taskId = ''
   let disconnected = false
   let resumed = false
@@ -18,7 +18,7 @@ async function taskObservationFaultProxy(baseURL: string, interruptAfterSafetySn
     resolveCut()
   }
   const server = http.createServer((request, response) => {
-    const stream = request.method === 'GET' && request.url === '/api/tasks/events'
+    const stream = request.method === 'GET' && new URL(request.url ?? '/', baseURL).pathname === '/api/tasks/events'
     const observation = request.method === 'GET' && taskId && request.url === `/api/tasks/${taskId}`
     if (!resumed && disconnected && (stream || observation)) {
       response.destroy()
@@ -41,6 +41,7 @@ async function taskObservationFaultProxy(baseURL: string, interruptAfterSafetySn
             const data = block.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n')
             if (!data) continue
             const event = JSON.parse(data) as { type: string; task?: { task_id: string; status: string; message: string }; tasks?: Array<{ task_id: string; status: string; message: string }> }
+            onEvent?.(event)
             const task = event.type === 'upsert' ? event.task : event.tasks?.find(item => item.task_id === taskId)
             if (interruptAfterSafetySnapshot && !resumed && task?.task_id === taskId && task.status === 'running' && task.message === '正在恢复所选文件') {
               interrupt()
@@ -98,4 +99,4 @@ async function taskObservationFaultProxy(baseURL: string, interruptAfterSafetySn
 }
 
 export const interruptRestoreAfterSafetySnapshot = (baseURL: string) => taskObservationFaultProxy(baseURL, true)
-export const createTaskObservationFault = (baseURL: string) => taskObservationFaultProxy(baseURL, false)
+export const createTaskObservationFault = (baseURL: string, onEvent?: (event: Record<string, unknown>) => void) => taskObservationFaultProxy(baseURL, false, onEvent)

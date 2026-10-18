@@ -419,8 +419,15 @@ async def submit_archive_hash(upload_id: str, actor_id: int) -> TaskAccepted:
     async def run() -> AsyncGenerator[TaskProgress]:
         async with aclosing(iter_archive_upload_sha256_events(upload_id)) as events:
             async for event in events:
-                yield TaskProgress(progress=event.percent, message="服务端 SHA256 校验完成" if event.event_type == "complete" else "正在计算服务端 SHA256",
-                                   result=event.model_dump(mode="json"))
+                yield TaskProgress(
+                    progress=event.percent,
+                    message="服务端 SHA256 校验完成" if event.event_type == "complete" else "正在计算服务端 SHA256",
+                    progress_details={
+                        "kind": "bytes", "loaded": event.loaded,
+                        "total": event.total, "filename": event.filename,
+                    },
+                    result=event.model_dump(mode="json") if event.event_type == "complete" else None,
+                )
 
     submitted = await get_task_manager().submit_durable(
         TaskType.ARCHIVE_HASH, f"校验存档 {session.filename}", run(), actor_id=actor_id,

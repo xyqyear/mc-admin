@@ -29,6 +29,7 @@ interface ActiveUpload {
 interface VerifyProgress {
   local: number
   server: number
+  serverBytes?: { loaded: number; total: number }
 }
 
 interface RetryState {
@@ -117,12 +118,19 @@ async function hashServerUpload(
   queryClient: QueryClient,
   uploadId: string,
   signal: AbortSignal,
-  onProgress: (percent: number) => void,
+  onProgress: (percent: number, bytes?: { loaded: number; total: number }) => void,
 ): Promise<string> {
   const accepted = await archiveApi.hashArchiveUpload(uploadId)
   const result = await waitForTaskResult<ArchiveSHA256Event>(queryClient, accepted, {
     signal,
-    onProgress: task => onProgress(task.progress ?? 0),
+    onProgress: task => {
+      const details = task.progressDetails
+      const bytes = details?.kind === 'bytes'
+        && typeof details.loaded === 'number' && Number.isFinite(details.loaded) && details.loaded >= 0
+        && typeof details.total === 'number' && Number.isFinite(details.total) && details.total >= details.loaded
+        ? { loaded: details.loaded, total: details.total } : undefined
+      onProgress(task.progress ?? 0, bytes)
+    },
   })
   if (!result.sha256) throw new Error('服务器校验结果缺少 SHA256')
   return result.sha256
@@ -295,14 +303,16 @@ export function useArchiveUpload(open: boolean, initialFiles?: File[]) {
         }
         update({ phase: 'verifying', progress: 0, speed: '0 B/s', statusText: `校验 ${file.name}`, detailText: '本地 0% / 服务器 0%' })
         const verification: VerifyProgress = { local: 0, server: 0 }
-        const reportVerification = (side: keyof VerifyProgress, percent: number) => {
+        const reportVerification = (side: 'local' | 'server', percent: number, bytes?: { loaded: number; total: number }) => {
           verification[side] = percent
-          update({ progress: Math.round((verification.local + verification.server) / 2), detailText: `本地 ${Math.round(verification.local)}% / 服务器 ${Math.round(verification.server)}%` })
+          if (bytes) verification.serverBytes = bytes
+          const byteText = verification.serverBytes ? `（${formatBytes(verification.serverBytes.loaded)} / ${formatBytes(verification.serverBytes.total)}）` : ''
+          update({ progress: Math.round((verification.local + verification.server) / 2), detailText: `本地 ${Math.round(verification.local)}% / 服务器 ${Math.round(verification.server)}%${byteText}` })
         }
         current.backgroundStarted = true
         const [localHash, serverHash] = await Promise.all([
           hashLocalFile(file, DEFAULT_CHUNK_SIZE, signal, percent => reportVerification('local', percent)),
-          hashServerUpload(queryClient, current.uploadId, signal, percent => reportVerification('server', percent)),
+          hashServerUpload(queryClient, current.uploadId, signal, (percent, bytes) => reportVerification('server', percent, bytes)),
         ])
         check()
         if (localHash !== serverHash) throw new Error('SHA256 校验失败，服务器文件与本地文件不一致')

@@ -20,12 +20,12 @@ const wrapper = ({ children }: { children: React.ReactNode }) => <TestProviders 
 it('immediately discovers an accepted compression task from an idle observer without claiming completion', async () => {
   const feed = createOperationFeed()
   server.use(feed.handler, http.post('*/api/archive/compress', () => {
-    feed.publish({ operation_id: 'compression', kind: 'archive_create', state: 'queued', data_changed: false, updated_at: '2026-10-07T00:00:00Z', ended_at: null, resources: [{ kind: 'files', server_id: 'alpha', generation: 1, path: 'world' }] })
     feed.setActiveCount(1)
+    feed.publish({ operation_id: 'compression', kind: 'archive_create', state: 'queued', data_changed: false, updated_at: '2026-10-07T00:00:00Z', ended_at: null, resources: [{ kind: 'files', server_id: 'alpha', generation: 1, path: 'world' }] })
     return HttpResponse.json({ task_id: 'compression' }, { status: 202 })
   }))
   const view = renderHook(useCreateArchive, { wrapper })
-  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('owner'))).toEqual({ cursor: '1:0', active_count: 0 }))
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.checkpoint('owner'))).toEqual({ cursor: '1:0', active_count: 0 }))
   const archive = queryKeys.archive.files('/')
   client.setQueryData(archive, [])
   await act(async () => { expect(await view.result.current.mutateAsync({ server_id: 'alpha', paths: ['/world'] })).toEqual({ task_id: 'compression' }) })
@@ -40,7 +40,7 @@ it('immediately synchronizes a committed archive rename after an idle command', 
     return HttpResponse.json({ message: '已重命名' })
   }))
   const view = renderHook(useRenameItem, { wrapper })
-  await waitFor(() => expect(client.getQueryData(queryKeys.operations.session('owner'))).toBeTruthy())
+  await waitFor(() => expect(client.getQueryData(queryKeys.operations.checkpoint('owner'))).toBeTruthy())
   const otherFolder = queryKeys.archive.files('/other')
   client.setQueryData(otherFolder, [])
   await act(async () => { await view.result.current.mutateAsync({ old_path: '/old.zip', new_name: 'new.zip' }) })

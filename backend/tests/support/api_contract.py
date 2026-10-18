@@ -57,6 +57,9 @@ def capture() -> dict[str, Any]:
         SAFE_METHODS,
     )
     from app.background_tasks.api_models import (
+        OperationChangesEvent,
+        PruneStateEvent,
+        RestorationIndexEvent,
         TaskRemoveEvent,
         TaskSnapshotEvent,
         TaskUpsertEvent,
@@ -156,6 +159,7 @@ def capture() -> dict[str, Any]:
             "task_result": TaskResult.model_json_schema(),
             "task_event": TypeAdapter(
                 TaskSnapshotEvent | TaskUpsertEvent | TaskRemoveEvent
+                | OperationChangesEvent | RestorationIndexEvent | PruneStateEvent
             ).json_schema(),
             "task_status": [status.value for status in TaskStatus],
             "task_type": [kind.value for kind in TaskType],

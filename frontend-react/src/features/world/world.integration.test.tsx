@@ -2,10 +2,9 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-li
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { createTaskEvents, taskEvent } from '@/test/taskEvents'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
-import { queryKeys } from '@/shared/http/api'
 import { useChunkPruneController } from '@/features/world/prune/useChunkPruneController'
 import { useWorldRestoreController } from '@/features/world/restore/useWorldRestoreController'
 import type { BackgroundTaskResponse } from '@/features/tasks/contracts';
@@ -14,7 +13,7 @@ import type L from 'leaflet'
 import type { FtbClusterEntry } from '@/features/world/layers/claims/contracts'
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
 
-const server = setupServer(taskEventsUnavailable)
+const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
@@ -22,12 +21,15 @@ let preview: ChunkPrunePreview
 let previewTask: BackgroundTaskResponse
 let applyTask: BackgroundTaskResponse | null
 let cancels: number
+let events: ReturnType<typeof createTaskEvents>
+const pruneState = () => ({ server_id: 'alpha', preview, preview_task: taskEvent(previewTask), apply_task: applyTask ? taskEvent(applyTask) : null })
 beforeEach(() => {
   client = createTestClient(); cancels = 0; applyTask = null
   window.history.replaceState(null, '', '/#dim=world%2Fregion&mode=regions&z=2&cx=10&cz=-20')
   preview = { task_id: 'preview', input_version: 'v1', expires_at: null, availability: 'ready', apply_task_id: null }
   previewTask = { task_id: 'preview', task_type: 'chunk_prune_preview', name: 'preview', status: 'completed', progress: 100, message: 'ready', server_id: 'alpha', created_at: new Date().toISOString(), cancellable: false, result: { mode: 'regions', dry_run: true, threshold_seconds: 30, regions_selected: 1 } }
-  server.use(
+  events = createTaskEvents([], { pruneStates: [pruneState()] })
+  server.use(events.handler,
     http.get('*/api/servers/alpha', () => HttpResponse.json({ id: 'alpha', name: 'alpha', serverType: 'vanilla' })),
     http.get('*/api/servers/alpha/status', () => HttpResponse.json({ status: 'EXISTS' })),
     http.get('*/api/servers/alpha/online-players', () => HttpResponse.json([])),
@@ -38,7 +40,6 @@ beforeEach(() => {
     http.get('*/api/servers/alpha/claims', () => HttpResponse.json({ available: false, teams: [] })),
     http.get('*/api/servers/alpha/player-locations', () => HttpResponse.json({ players: [] })),
     http.get('*/api/servers/alpha/chunk-prune/settings', () => HttpResponse.json({ default_threshold_seconds: 30 })),
-    http.get('*/api/servers/alpha/chunk-prune/state', () => HttpResponse.json({ preview, preview_task: previewTask, apply_task: applyTask })),
     http.get('*/api/servers/alpha/chunk-prune/previews/preview/geometry', () => HttpResponse.json({ dimensions: [] })),
     http.post('*/api/tasks/:id/cancel', () => { cancels++; return HttpResponse.json({}) }),
   )
@@ -83,7 +84,7 @@ it('retains feature-owned preview projections after generic task dismissal and n
   const next = renderHook(() => useChunkPruneController('alpha'), { wrapper })
   await waitFor(() => expect(next.result.current.canApply).toBe(true))
   applyTask = { ...previewTask, task_id: 'apply', task_type: 'chunk_prune_apply', status: 'running' }
-  await act(async () => { await client.invalidateQueries({ queryKey: queryKeys.chunkPrune.state('alpha') }) })
+  act(() => events.pruneStates([pruneState()]))
   await waitFor(() => expect(next.result.current.canApply).toBe(false))
   next.unmount()
   expect(cancels).toBe(0)
@@ -92,6 +93,7 @@ it('retains feature-owned preview projections after generic task dismissal and n
 it('blocks reuse after an accepted apply fails its final input check', async () => {
   preview.apply_task_id = 'apply'
   applyTask = { ...previewTask, task_id: 'apply', task_type: 'chunk_prune_apply', status: 'failed', error: '保护范围已变化，请重新预览', error_code: 'prune_preview_stale' }
+  events.pruneStates([pruneState()])
   const { result } = renderHook(() => useChunkPruneController('alpha'), { wrapper })
   await waitFor(() => expect(result.current.applyStatus).toBe('failed'))
   expect(result.current.canApply).toBe(false)

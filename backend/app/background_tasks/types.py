@@ -48,6 +48,7 @@ class TaskProgress(BaseModel):
 
     progress: float | None = None
     message: str = ""
+    progress_details: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
 
 

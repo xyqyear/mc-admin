@@ -41,13 +41,16 @@ default is 30 seconds.
 
 `chunkPruneApi.startPreview()` submits one server-level background task and
 returns a task id. The request contains the threshold and prune mode only; the
-backend scans all dimensions under the server data directory. The page polls
-`GET /servers/{id}/chunk-prune/state`, which returns the latest preview task
-for this server and the latest apply task created after that preview. Refreshing
+backend scans all dimensions under the server data directory. The shared task
+event snapshot and `prune_state` frames provide the latest preview task for each
+server, its availability and the latest apply task created after that preview.
+There is no periodic `/chunk-prune/state` request. Refreshing
 the page or navigating away and back restores the same task state from the
 backend without storing task ids in the URL.
 
-Preview progress is the generic background task progress. The page does not
+Preview progress includes nullable percentages and structured region counters.
+Inline settled results populate the shared task cache; excluded large results use
+one detail read while retaining the running guard. The page does not
 render selected chunks while mcmap is scanning; it waits for a completed task
 result before building any preview geometry.
 
@@ -72,6 +75,7 @@ The destructive apply button is enabled only when:
 - the current threshold and mode still match the completed preview;
 - the server is stopped;
 - no apply task is already running.
+- a current, valid event snapshot has been received and the stream is connected.
 
 Apply starts a second server-level background task for the completed preview.
 The application operation observer refreshes files, world/map metadata and task state after terminal outcomes, including partial failures, even when the page is closed.
@@ -82,4 +86,13 @@ The application operation observer refreshes files, world/map metadata and task 
 
 `state.preview` contains `task_id`, `input_version`, `expires_at`, `availability`, and `apply_task_id`. `preview_task`/`apply_task` are feature-owned projections and remain readable after generic task dismissal. Ready previews can apply only with unchanged controls and a stopped server. Expired/stale/unavailable previews require regeneration; consumed previews cannot apply again, while their available geometry remains useful for inspection. Synchronous 409 details and accepted-task `error_code` values retain inputs and explain how to repreview. Starting or cancelling a task refreshes discovery; closing or navigating away does not send cancel.
 
-QueryClient/MSW tests cover each unavailable state, synchronous stale rejection, the final accepted-task recheck, task dismissal/navigation, and retained URL views and per-dimension selection. Real backend/API evidence covers the actual file and version comparisons.
+Expiry, consumption, stale detection and eviction update streamed availability.
+Unknown or disconnected observation blocks new work while retaining task identity.
+Accepted IDs cover the interval before domain discovery catches up; observation
+does not cancel work when a page closes. Accepted identities and pending requests
+are bound to their server, and confirmation rechecks the current connection,
+server and preview identity. Backend expiry and stale-input checks remain
+authoritative even for a confirmation opened before availability changed.
+QueryClient/MSW tests cover unavailable
+state, excluded terminal results, dismissal, reconnect and shared late consumers.
+Real backend/API evidence covers the actual file and version comparisons.

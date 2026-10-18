@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTask, useTaskFeed } from '@/features/tasks/queries'
 
 import { chunkPruneApi } from '@/features/world/prune/api'
 import { queryKeys } from '@/shared/http/api'
+import { pruneStateIndex } from './observation'
 
 export const useChunkPruneSettings = (serverId: string | undefined) =>
   useQuery({
@@ -11,22 +13,21 @@ export const useChunkPruneSettings = (serverId: string | undefined) =>
     staleTime: 60_000,
   })
 
-export const useChunkPruneState = (serverId: string | undefined) =>
-  useQuery({
-    queryKey: queryKeys.chunkPrune.state(serverId ?? ''),
-    queryFn: () => chunkPruneApi.getState(serverId!),
-    enabled: !!serverId,
-    refetchInterval: (query) => {
-      const state = query.state.data
-      const tasks = [state?.previewTask, state?.applyTask]
-      const hasActiveTask = tasks.some(
-        (task) => task?.status === 'pending' || task?.status === 'running',
-      )
-      return hasActiveTask ? 1000 : 10000
-    },
-    staleTime: 1000,
-    refetchOnMount: 'always',
-  })
+export function useChunkPruneState(serverId: string | undefined, accepted: { preview?: string; apply?: string } = {}) {
+  const feed = useTaskFeed(!!serverId)
+  const state = pruneStateIndex(feed.pruneStates, serverId)
+  const previewId = accepted.preview ?? state?.previewTaskId
+  const applyId = accepted.apply ?? state?.applyTaskId
+  const preview = useTask(previewId ?? '')
+  const apply = useTask(applyId ?? '')
+  return {
+    data: state ? { preview: state.preview, previewTask: preview.data ?? null, applyTask: apply.data ?? null } : undefined,
+    observedPreviewId: state?.previewTaskId,
+    observedApplyId: state?.applyTaskId,
+    checking: !feed.connected || !state || !!(previewId && !preview.data) || !!(applyId && !apply.data),
+    isError: (!feed.connected && feed.pruneStates !== undefined) || preview.isError || apply.isError,
+  }
+}
 
 export const useChunkPrunePreviewGeometry = (
   serverId: string | undefined,

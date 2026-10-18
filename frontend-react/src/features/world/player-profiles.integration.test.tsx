@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { createTaskEvents } from '@/test/taskEvents'
 import { Route, Routes } from 'react-router'
 import { createTestClient } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
@@ -22,7 +23,7 @@ const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
-beforeEach(() => { client = createTestClient(); window.history.replaceState(null, '', '/') })
+beforeEach(() => { client = createTestClient(); server.use(createTaskEvents().handler); window.history.replaceState(null, '', '/') })
 afterEach(() => { client.clear(); server.resetHandlers(); window.history.replaceState(null, '', '/') })
 
 it.each(['restore', 'prune'])('keeps %s map controls and cached positions usable while profile errors are retried through a new stream', async (page) => {
@@ -43,8 +44,6 @@ it.each(['restore', 'prune'])('keeps %s map controls and cached positions usable
       return HttpResponse.json({ dimensions: [], skipped: [], players: [{ id: uuid, id_kind: 'uuid', uuid, source: `world/playerdata/${uuid}.dat`, storage: 'playerdata', data_version: 1, dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: 10, y: 64, z: 20 } }] })
     }),
     http.get('*/api/servers/alpha/chunk-prune/settings', () => HttpResponse.json({ default_threshold_seconds: 30 })),
-    http.get('*/api/servers/alpha/chunk-prune/state', () => HttpResponse.json({ preview: null, preview_task: null, apply_task: null })),
-    http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: 0, restorations: [] })),
     http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 })),
     http.post('*/api/players/profiles/stream', () => {
       streams++
@@ -87,8 +86,6 @@ it.each(['restore', 'prune'])('normalizes HTTP player identities through the %s 
       { id: 'LegacyName', id_kind: 'name', uuid: 'LegacyName', source: 'world/players/LegacyName.dat', storage: 'legacy_players', data_version: null, dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: 4, y: 64, z: 4 } },
     ] })),
     http.get('*/api/servers/alpha/chunk-prune/settings', () => HttpResponse.json({ default_threshold_seconds: 30 })),
-    http.get('*/api/servers/alpha/chunk-prune/state', () => HttpResponse.json({ preview: null, preview_task: null, apply_task: null })),
-    http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: 0, restorations: [] })),
     http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 })),
     http.post('*/api/players/profiles/stream', async ({ request }) => {
       profileRequests.push(await request.json())

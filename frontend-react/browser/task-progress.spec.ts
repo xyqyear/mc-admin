@@ -83,3 +83,58 @@ test('shared task SSE preserves snapshot guards through disconnect and recovers 
   { label: 'snapshot source', run: () => api.deleteFile(filename) },
   )
 })
+
+test('map reload streams stages without per-progress task detail reads', { annotation: { type: 'shard_isolation', description: 'independent' } }, async ({ page, api, owned }) => {
+  await api.initializeMap()
+  const observations = new Map<string, { liveStages: Set<string>; terminal: boolean; runningResult: boolean }>()
+  let taskId = ''
+  const detailPaths: string[] = []
+  let discoveryReads = 0
+  let streamCount = 0
+  const proxy = await createTaskObservationFault(owned.base_url, event => {
+    const tasks = event.type === 'upsert' ? [event.task] : event.type === 'snapshot' ? event.tasks : []
+    if (!Array.isArray(tasks)) return
+    for (const value of tasks) {
+      if (!value || typeof value !== 'object') continue
+      const task = value as { task_id: string; task_type: string; status: string; progress_details?: { kind: string; stages?: Record<string, unknown> }; result_included: boolean }
+      if (task.task_type !== 'map_initialize') continue
+      const observed = observations.get(task.task_id) ?? { liveStages: new Set<string>(), terminal: false, runningResult: false }
+      if (task.status === 'running') {
+        observed.runningResult ||= task.result_included
+        if (task.progress_details?.kind === 'map') Object.keys(task.progress_details.stages ?? {}).forEach(stage => observed.liveStages.add(stage))
+      }
+      if (task.status === 'completed') observed.terminal = task.result_included
+      observations.set(task.task_id, observed)
+    }
+  })
+  const observe = (request: Request) => {
+    const pathname = new URL(request.url()).pathname
+    if (request.method() !== 'GET') return
+    if (/^\/api\/tasks\/[^/]+$/.test(pathname) && pathname !== '/api/tasks/events') detailPaths.push(pathname)
+    if (pathname === '/api/tasks/events') streamCount++
+    if (pathname === '/api/operations/changes' || pathname === '/api/snapshots/restorations/active' || pathname.endsWith('/chunk-prune/state')) discoveryReads++
+  }
+  await withCleanup(async () => {
+    await login(page, owned)
+    page.on('request', observe)
+    await page.goto(`${proxy.url}/server/${owned.server_id}/chunk-prune`)
+    const acceptance = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === api.server('/map/initialize'))
+    await page.getByRole('button', { name: '重载渲染前置', exact: true }).click()
+    const accepted = await acceptance
+    expect(accepted.status()).toBe(202)
+    taskId = ((await accepted.json()) as { task_id: string }).task_id
+    const dialog = page.getByRole('dialog', { name: '正在重载渲染前置' })
+    await expect(dialog).toBeVisible()
+    await expect.poll(() => observations.get(taskId)?.liveStages.has('client'), { timeout: 90_000 }).toBe(true)
+    await expect.poll(() => observations.get(taskId)?.liveStages.has('palette'), { timeout: 120_000 }).toBe(true)
+    await expect.poll(() => observations.get(taskId)?.terminal, { timeout: 120_000 }).toBe(true)
+    await expect(dialog).toBeHidden()
+    expect(observations.get(taskId)?.runningResult).toBe(false)
+    expect(detailPaths.filter(pathname => pathname === `/api/tasks/${taskId}`).length).toBeLessThanOrEqual(1)
+    expect(discoveryReads).toBe(0)
+    expect(streamCount).toBe(1)
+    expect((await api.json<{ palette_current: boolean }>(api.server('/map/status'))).palette_current).toBe(true)
+    const result = await api.task(taskId)
+    expect((result.result?.stages as Record<string, { phase: string }>).palette.phase).toBe('done')
+  }, { label: 'map observation proxy', run: async () => { page.off('request', observe); await proxy.close() } })
+})

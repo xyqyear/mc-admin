@@ -6,7 +6,8 @@ import { useServerInfo } from '@/features/servers/queries';
 import { snapshotApi } from "@/features/backups/api";
 import { queryKeys } from "@/shared/http/api";
 import type { PathsScope, RestorationFilters, SnapshotScope, WorldScope } from './contracts';
-import { activeRestorationsQueryOptions, retainActiveRestorationPolling } from './activeRestorationPolling';
+import { useTaskFeed } from '@/features/tasks/queries';
+import { activeRestorationIndex } from './observation';
 import { checkLogicalSnapshotPaths } from './targetRules';
 
 export function snapshotRulesQueryOptions(serverId: string) {
@@ -72,30 +73,13 @@ export function useSnapshotTarget(scope: PathsScope | WorldScope | null) {
 }
 
 export function useActiveRestorations(serverId?: string, enabled = true) {
-  const client = useQueryClient();
-  const options = activeRestorationsQueryOptions(serverId);
-  const updates = () => client.getQueryState(options.queryKey)?.dataUpdateCount ?? 0;
-  const [entry, setEntry] = useState(() => ({ serverId, enabled, dataUpdateCount: updates() }));
-  if (entry.serverId !== serverId || entry.enabled !== enabled) {
-    setEntry({ serverId, enabled, dataUpdateCount: updates() });
-  }
-  const query = useQuery({
-    ...options,
-    enabled,
-    staleTime: Infinity,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    refetchInterval: false,
-  });
-  useEffect(() => {
-    if (!enabled) return;
-    const polling = retainActiveRestorationPolling(client, serverId);
-    void polling.refresh();
-    return polling.release;
-  }, [client, serverId, enabled]);
-  const checked = entry.serverId === serverId && entry.enabled === enabled && updates() > entry.dataUpdateCount;
-  return { ...query, checking: enabled && (!checked || !query.isSuccess) };
+  const feed = useTaskFeed(enabled);
+  const data = activeRestorationIndex(feed.activeRestorations, serverId);
+  return {
+    data,
+    checking: enabled && (!feed.connected || !data),
+    isError: enabled && !feed.connected && feed.activeRestorations !== undefined,
+  };
 }
 
 export function useEligibleSnapshots(scope: SnapshotScope | null) {

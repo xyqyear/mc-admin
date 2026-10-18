@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { taskEventsUnavailable } from '@/test/taskEvents'
+import { createTaskEvents, taskResponse } from '@/test/taskEvents'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { useMapStatus } from '@/features/world/queries'
@@ -10,9 +10,8 @@ import type { MapStatus } from '@/features/world/map/contracts'
 import { WorldRestoreSidebar } from '@/features/world/restore/components/WorldRestoreSidebar'
 import WorldRestoreSelectionPanel from '@/features/world/restore/components/WorldRestoreSelectionPanel'
 
-const server = setupServer(taskEventsUnavailable)
+const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-const active = http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: 0, restorations: [] }))
 const target = http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())
@@ -29,9 +28,11 @@ function RestoreSidebar() {
 
 it('retains the open history and rolls back its interrupted row when delayed map status enables tabs', async () => {
   const client = createTestClient()
+  const events = createTaskEvents()
+  const completed = taskResponse('rollback-task', { task_type: 'snapshot_restore', status: 'completed', message: '安全快照回滚完成' })
   const mapStatus = deferred<MapStatus>()
   const rollbacks: string[] = []
-  server.use(active, target,
+  server.use(events.handler, target,
     http.get('*/api/servers/alpha/map/status', async () => HttpResponse.json(await mapStatus.promise)),
     http.get('*/api/snapshots/restorations', () => HttpResponse.json({ total: 1, restorations: [{
       id: 'interrupted-restore', server_id: 'alpha', server_generation: 1, binding_issue: null,
@@ -40,9 +41,10 @@ it('retains the open history and rolls back its interrupted row when delayed map
       status: 'interrupted', started_at: '2026-09-25T00:00:00Z', finished_at: '2026-09-25T00:01:00Z',
       is_rollback: false, initiated_by_user_id: 1, error_message: '恢复连接已中断',
     }] })),
-    http.get('*/api/tasks/rollback-task', () => HttpResponse.json({ task_id: 'rollback-task', status: 'completed', message: '安全快照回滚完成' })),
+    http.get('*/api/tasks/rollback-task', () => HttpResponse.json(completed)),
     http.post('*/api/snapshots/restorations/:id/rollback', ({ params }) => {
       rollbacks.push(String(params.id))
+      events.upsert(completed)
       return HttpResponse.json({ task_id: 'rollback-task', restoration_id: 'rollback', skipped_paths: [] }, { status: 202 })
     }),
   )

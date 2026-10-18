@@ -1,15 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { taskApi } from '@/features/tasks/api'
-import type { BackgroundTask } from './contracts'
 import { taskQueryKeys } from './queryKeys'
-import { retainTaskStream, streamedTaskList, taskDetailQueryOptions, taskFeedState, type TaskFeedState, type TaskListParams } from './observation'
+import { retainTaskStream, streamedTaskList, taskDetailQueryOptions, taskFeedState, taskIsTerminal, type TaskFeedState, type TaskListParams } from './observation'
 
 export { taskQueryKeys } from './queryKeys'
+export { parseTaskEvent, subscribeTaskEvents } from './observation'
+export type { TaskFeedState, TaskEventSubscriber } from './observation'
 
 function useTaskStream(enabled = true) {
   const client = useQueryClient()
-  useQuery<TaskFeedState>({
+  const { data } = useQuery<TaskFeedState>({
     queryKey: taskQueryKeys.events(),
     queryFn: () => ({ connected: false }),
     enabled: false,
@@ -17,52 +18,55 @@ function useTaskStream(enabled = true) {
     gcTime: Infinity,
   })
   useEffect(() => enabled ? retainTaskStream(client) : undefined, [client, enabled])
-  return client
+  return { client, feed: data }
+}
+
+export function useTaskFeed(enabled = true): TaskFeedState {
+  return useTaskStream(enabled).feed
 }
 
 export const useTasks = (params?: TaskListParams) => {
-  const queryClient = useTaskStream()
+  const { client } = useTaskStream()
   return useQuery({
     queryKey: taskQueryKeys.list(params),
     queryFn: async ({ signal }) => {
+      const streamed = streamedTaskList(client, params)
+      if (streamed) return streamed
       const data = await taskApi.getTasks(params, signal)
       signal.throwIfAborted()
-      return streamedTaskList(queryClient, params) ?? data
+      return streamedTaskList(client, params) ?? data
     },
-    staleTime: 1000,
-    refetchOnMount: 'always',
-    refetchInterval: () => {
-      if (taskFeedState(queryClient)?.connected) return false
-      const activeTasksData = queryClient.getQueryData<BackgroundTask[]>(
-        taskQueryKeys.active()
-      )
-      const hasActiveFromCache = activeTasksData && activeTasksData.length > 0
-      return hasActiveFromCache ? 1000 : 10000
-    },
+    staleTime: Infinity,
+    refetchInterval: false,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
 export const useActiveTasks = () => {
-  const client = useTaskStream()
+  const { client } = useTaskStream()
   return useQuery({
     queryKey: taskQueryKeys.active(),
     queryFn: async ({ signal }) => {
+      const current = taskFeedState(client)?.tasks
+      if (current) return current.filter(task => task.status === 'pending' || task.status === 'running')
       const tasks = await taskApi.getActiveTasks(signal)
       signal.throwIfAborted()
       const feed = taskFeedState(client)
-      return feed?.connected && feed.tasks ? feed.tasks.filter(task => task.status === 'pending' || task.status === 'running') : tasks
+      return feed?.tasks ? feed.tasks.filter(task => task.status === 'pending' || task.status === 'running') : tasks
     },
-    refetchInterval: (query) => {
-      if (taskFeedState(client)?.connected) return false
-      const hasActive = query.state.data && query.state.data.length > 0
-      return hasActive ? 1000 : 10000
-    },
-    staleTime: 1000,
-    refetchOnMount: 'always',
+    refetchInterval: false,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
 export const useTask = (taskId: string) => {
-  const client = useTaskStream(!!taskId)
-  return useQuery(taskDetailQueryOptions(client, taskId))
+  const { client, feed } = useTaskStream(!!taskId)
+  const query = useQuery(taskDetailQueryOptions(client, taskId))
+  const reconnecting = !!taskId && feed.tasks !== undefined && !feed.connected && !taskIsTerminal(query.data)
+  return { ...query, reconnecting, isError: query.isError || reconnecting }
 }

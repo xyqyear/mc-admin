@@ -48,6 +48,7 @@ async def run_prune(
                 yield TaskProgress(
                     progress=progress_percent,
                     message=f"发现 {event.regions} 个区域文件",
+                    progress_details={"kind": "regions", "regions_processed": 0, "regions_total": event.regions},
                 )
             elif isinstance(event, MCMapPruneProgressEvent):
                 if event.regions_total > 0:
@@ -60,6 +61,7 @@ async def run_prune(
                         f"已处理 {event.regions_processed}/"
                         f"{event.regions_total} 个区域文件"
                     ),
+                    progress_details={"kind": "regions", "regions_processed": event.regions_processed, "regions_total": event.regions_total},
                 )
             elif isinstance(event, MCMapChunksPrunedEvent):
                 relpath = path_mapper.region_relpath(event.region)
