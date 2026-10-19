@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from app.db.metadata import Base
 from app.files.application import FileApplication
 from app.mcmap import initialization as map_initialization
 from app.mcmap import runner
@@ -30,9 +29,7 @@ from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
-async def map_application(isolated_runtime, monkeypatch, tmp_path):
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+async def map_application(isolated_runtime, monkeypatch, tmp_path, database, runtime_config):
     async with isolated_runtime.database.session_factory() as session:
         session.add(Server(id=1, server_id="maps"))
         await session.commit()
@@ -54,7 +51,8 @@ async def map_application(isolated_runtime, monkeypatch, tmp_path):
     isolated_runtime.journal = journal
     manager = SimpleNamespace(servers_path=isolated_runtime.settings.server_path, get_instance=lambda _: instance, get_all_instances=AsyncMock(return_value=[instance]))
     set_runtime_resource(monkeypatch, 'docker_mc_manager', manager)
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', SimpleNamespace(mcmap=SimpleNamespace(batch_size=1, thread_count=1)))
+    runtime_config.mcmap.batch_size = 1
+    runtime_config.mcmap.thread_count = 1
     executable = tmp_path / "owned-renderer"
     executable.write_text(
         f"#!{sys.executable}\n"

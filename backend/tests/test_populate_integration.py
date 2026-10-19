@@ -14,17 +14,16 @@ import time
 import zipfile
 from contextlib import aclosing
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import ASGITransport, AsyncClient
 
-from app.background_tasks import TaskType
-from app.db.database import get_db
-from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager
+from app.operations.journal import OperationJournal
+from app.operations.models import OperationJournalEntry
 from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource, patch_settings
 from tests.support.tasks import task_result
@@ -77,14 +76,7 @@ teleport-safety: true
 
 
 @pytest.fixture
-async def test_db(isolated_runtime):
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    return isolated_runtime.database.session_factory
-
-
-@pytest.fixture
-def client(test_db):
+def client(database):
     with TestClient(api_app) as client:
         yield client
 
@@ -100,7 +92,8 @@ def temp_dirs():
 
 
 @pytest.fixture
-def mock_settings_and_auth(temp_dirs, test_db):
+def mock_settings_and_auth(temp_dirs, database):
+    current_runtime().journal = OperationJournal(database.session_factory)
     server_path, archive_path = temp_dirs
     with (
         patch_settings() as settings,
@@ -121,8 +114,8 @@ async def wait_for_task_completion_async(
     """
     Poll task status until completion or timeout (async version).
     """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < timeout:
         response = await client.get(
             f"/api/tasks/{task_id}",
             headers={"Authorization": "Bearer test_master_token"},
@@ -154,7 +147,7 @@ class TestPopulateServerIntegration:
     @pytest.mark.binary("7z")
     @pytest.mark.asyncio
     async def test_full_populate_server_flow(
-        self, async_client, mock_settings_and_auth
+        self, async_client, mock_settings_and_auth, db_session_factory
     ):
         """Test complete flow: create server -> upload archive -> populate -> verify."""
         server_path, archive_path = mock_settings_and_auth
@@ -233,7 +226,16 @@ services:
             f"Task failed: {task_data.get('error')}"
         )
         assert task_data["progress"] == 100
+        assert task_data["task_type"] == "archive_extract"
+        assert task_data["server_id"] == server_id
+        assert task_data["cancellable"] is False
         assert "填充完成" in task_data.get("message", "")
+        async with db_session_factory() as session:
+            for identity, kind in ((create_response.json()["task_id"], "server_create"), (task_id, "archive_extract")):
+                operation = await session.get(OperationJournalEntry, identity)
+                assert operation is not None
+                assert operation.kind == kind and operation.state == "succeeded"
+                assert operation.writers_stopped and operation.ended_at is not None
 
         # Step 6: Verify files using files API
         files_response = await async_client.get(
@@ -596,115 +598,3 @@ services:
         assert completed["progress"] == 100
         assert "填充完成" in completed["message"]
         assert (server_path / server_id / "data/world/level.dat").read_bytes() == b"fake_world_data_here"
-
-
-class TestPopulateEndpointIsolated:
-    """Test populate endpoint with mocked dependencies for isolation."""
-
-    @pytest.fixture
-    def isolated_client(self, test_db):
-        """Create test client with mocked dependencies and test database."""
-        async def override_get_db():
-            async with test_db() as session:
-                yield session
-
-        api_app.dependency_overrides[get_db] = override_get_db
-        yield TestClient(api_app)
-        api_app.dependency_overrides.clear()
-
-    @pytest.fixture
-    def mock_task_manager_submit(self):
-        """Replace durable submission without starting an archive adapter."""
-        mock_submit_result = MagicMock()
-        mock_submit_result.task_id = "mock-task-id-12345"
-
-        with patch_runtime_resource('task_manager') as mock_tm:
-            mock_tm.submit_durable = AsyncMock(return_value=mock_submit_result)
-            yield mock_tm
-
-    def test_endpoint_returns_task_id(
-        self, isolated_client, mock_task_manager_submit, temp_dirs
-    ):
-        """Test that endpoint returns task_id from task manager."""
-        server_path, archive_path = temp_dirs
-        real_mc_manager = DockerMCManager(server_path)
-
-        with (
-            patch_settings() as mock_settings,
-            patch_settings() as mock_dep_settings,
-            patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        ):
-            mock_settings.server_path = server_path
-            mock_settings.archive_path = archive_path
-            mock_settings.master_token = "test_master_token"
-            mock_dep_settings.master_token = "test_master_token"
-
-            # Create server directory with proper compose file
-            server_dir = server_path / "test_server"
-            server_dir.mkdir(parents=True)
-            compose_content = """services:
-  mc:
-    image: itzg/minecraft-server:latest
-    container_name: mc-test_server
-    volumes:
-      - ./data:/data
-"""
-            (server_dir / "docker-compose.yml").write_text(compose_content)
-            (server_dir / "data").mkdir()
-
-            response = isolated_client.post(
-                "/api/servers/test_server/populate",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"archive_filename": "test.zip"},
-            )
-
-            assert response.status_code == 200
-            data = response.json()
-            assert "task_id" in data
-            assert data["task_id"] == "mock-task-id-12345"
-
-    def test_endpoint_submits_correct_task_type(
-        self, isolated_client, mock_task_manager_submit, temp_dirs
-    ):
-        """Test that endpoint submits ARCHIVE_EXTRACT task type."""
-        server_path, archive_path = temp_dirs
-        real_mc_manager = DockerMCManager(server_path)
-
-        with (
-            patch_settings() as mock_settings,
-            patch_settings() as mock_dep_settings,
-            patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        ):
-            mock_settings.server_path = server_path
-            mock_settings.archive_path = archive_path
-            mock_settings.master_token = "test_master_token"
-            mock_dep_settings.master_token = "test_master_token"
-
-            # Create server directory with proper compose file
-            server_dir = server_path / "test_server"
-            server_dir.mkdir(parents=True)
-            compose_content = """services:
-  mc:
-    image: itzg/minecraft-server:latest
-    container_name: mc-test_server
-    volumes:
-      - ./data:/data
-"""
-            (server_dir / "docker-compose.yml").write_text(compose_content)
-            (server_dir / "data").mkdir()
-
-            isolated_client.post(
-                "/api/servers/test_server/populate",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"archive_filename": "test.zip"},
-            )
-
-            # Verify task type
-            call_kwargs = mock_task_manager_submit.submit_durable.call_args.kwargs
-            assert call_kwargs["task_type"] == TaskType.ARCHIVE_EXTRACT
-            assert call_kwargs["server_id"] == "test_server"
-            assert call_kwargs["cancellable"] is False
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

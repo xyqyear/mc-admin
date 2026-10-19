@@ -1,5 +1,4 @@
 import asyncio
-from types import SimpleNamespace
 
 import httpx2
 import pytest
@@ -10,8 +9,6 @@ from app.cron.jobs import backup
 from app.cron.manager import CronManager
 from app.cron.models import ExecutionStatus
 from app.cron.types import ExecutionContext
-from app.db.metadata import Base
-from app.dynamic_config.configs.snapshots import SnapshotsConfig
 from app.minecraft import get_docker_mc_manager
 from app.operations.journal import OperationJournal
 from app.operations.journal_types import OperationState
@@ -26,11 +23,8 @@ PRIVATE_ERROR = "adapter credential=private-error-secret"
 
 
 @pytest.fixture
-async def owned_backup(isolated_runtime, tmp_path):
+async def owned_backup(isolated_runtime, runtime_config, tmp_path):
     runtime = isolated_runtime
-    replace_runtime_resource(runtime, "dynamic_configuration", SimpleNamespace(snapshots=SnapshotsConfig()))
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
         session.add(Server(server_id="survival"))
         await session.commit()

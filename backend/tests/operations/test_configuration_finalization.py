@@ -9,7 +9,6 @@ from app.background_tasks.manager import BackgroundTaskManager
 from app.background_tasks.types import TaskProgress, TaskStatus, TaskType
 from app.configuration.application import rebuild_server_task
 from app.configuration.preparation import ServerConfiguration
-from app.db.metadata import Base
 from app.errors import INTERNAL_ERROR_MESSAGE
 from app.operation_admission import get_server_write_admission
 from app.operations.context import (
@@ -48,9 +47,7 @@ COMPOSE = """services:
 
 
 @pytest.fixture
-async def configuration_runtime(isolated_runtime):
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+async def configuration_runtime(isolated_runtime, database):
     async with isolated_runtime.database.session_factory() as session:
         session.add_all([Server(id=1, server_id="first"), Server(id=2, server_id="other")])
         await session.commit()

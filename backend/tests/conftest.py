@@ -7,13 +7,20 @@ import sys
 import time
 from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from tests.support.collection import digest, validate_plan
 from tests.support.environment import configure_test_environment
 from tests.support.timing import TimingRecorder
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.database import Database
+    from app.dynamic_config import ConfigProxy
+    from app.runtime import Runtime
 
 # Collection has an explicit owner separate from every test runtime.
 _session_started = time.perf_counter()
@@ -187,8 +194,36 @@ async def isolated_runtime(tmp_path_factory: pytest.TempPathFactory) -> AsyncGen
     with runtime.bind(), pytest.MonkeyPatch.context() as patch:
         patch.setattr(app.state, "runtime", runtime)
         patch.setattr(api_app.state, "runtime", runtime)
-        yield runtime
-        await runtime.close()
+        try:
+            yield runtime
+        finally:
+            await runtime.close()
+
+
+@pytest.fixture
+async def database(isolated_runtime: "Runtime") -> "Database":
+    from tests.support.database import initialize_database
+
+    database = isolated_runtime.database
+    await initialize_database(database)
+    return database
+
+
+@pytest.fixture
+def db_session_factory(database: "Database") -> "async_sessionmaker[AsyncSession]":
+    return database.session_factory
+
+
+@pytest.fixture
+async def db_session(db_session_factory: "async_sessionmaker[AsyncSession]") -> AsyncGenerator["AsyncSession"]:
+    async with db_session_factory() as session:
+        yield session
+
+
+@pytest.fixture
+async def runtime_config(database: "Database", isolated_runtime: "Runtime") -> "ConfigProxy":
+    await isolated_runtime.config_manager.initialize_all_configs()
+    return isolated_runtime.dynamic_configuration
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -202,12 +237,15 @@ def owned_archive_scratch_path() -> Generator[None]:
 
 @pytest.fixture(autouse=True)
 def capability_guard(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.support.network import guard_network
+
     required = capabilities(request.node)
     for name in required:
         if name in _binary_environment and not binary_path(name):
             pytest.skip(f"Declared capability unavailable: {name}")
-    if "docker" in required and request.config.getoption("--run-docker"):
-        return
+    if not ("external" in required and request.config.getoption("--run-external")):
+        guard_network(monkeypatch)
+    docker_allowed = "docker" in required and request.config.getoption("--run-docker")
     original = subprocess.Popen
 
     def guarded_popen(args: Any, *positional: Any, **kwargs: Any) -> Any:
@@ -220,7 +258,7 @@ def capability_guard(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyP
         ):
             executable = os.fsdecode(args[3])
         name = Path(executable).name
-        if name == "docker":
+        if name == "docker" and not docker_allowed:
             raise RuntimeError("Docker requires @pytest.mark.docker and --run-docker")
         if name in _binary_environment and name not in required:
             resolved = shutil.which(executable)
@@ -229,6 +267,9 @@ def capability_guard(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyP
         return original(args, *positional, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", guarded_popen)
+
+    if docker_allowed:
+        return
 
     import docker
 

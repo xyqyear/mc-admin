@@ -27,7 +27,6 @@ def mock_skin_fetcher():
     """Mock skin fetcher."""
 
     async def fetch_skin(uuid: str):
-        await asyncio.sleep(0.2)
         return (b"skin_" + uuid.encode(), b"avatar_" + uuid.encode())
 
     return AsyncMock(side_effect=fetch_skin)
@@ -38,7 +37,6 @@ def mock_mojang_api():
     """Mock Mojang API."""
 
     async def fetch_uuid(player_name: str):
-        await asyncio.sleep(0.2)
         return make_online_uuid(player_name)
 
     return AsyncMock(side_effect=fetch_uuid)

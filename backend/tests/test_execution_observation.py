@@ -18,7 +18,6 @@ from app.chunk_prune import lifecycle
 from app.chunk_prune.inputs import PruneInputVersion, PrunePreviewConflict
 from app.chunk_prune.models import ChunkPruneTaskMetadata
 from app.chunk_prune.service import ChunkPruneService
-from app.db.metadata import Base
 from app.dynamic_config import ConfigProxy
 from app.execution_observation import snapshot
 from app.minecraft import DockerMCManager, MCServerStatus
@@ -38,15 +37,12 @@ from tests.support.runtime import replace_runtime_resource
 
 
 @pytest.fixture
-async def domain(isolated_runtime, tmp_path):
+async def domain(isolated_runtime, tmp_path, runtime_config):
     runtime = isolated_runtime
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     runtime.journal = OperationJournal(runtime.database.session_factory)
     manager = BackgroundTaskManager(runtime.journal)
     replace_runtime_resource(runtime, "task_manager", manager)
-    config = SimpleNamespace(mcmap=SimpleNamespace(prune_preview_ttl_seconds=3600))
-    replace_runtime_resource(runtime, "dynamic_configuration", config)
+    config = runtime_config
     docker = SimpleNamespace(get_instance=lambda _: SimpleNamespace(get_status=AsyncMock(return_value=MCServerStatus.EXISTS)))
     service = ChunkPruneService(docker=cast(DockerMCManager, docker), operation_lock=runtime.server_operation_lock,
                                 temp_base_dir=tmp_path / "previews")

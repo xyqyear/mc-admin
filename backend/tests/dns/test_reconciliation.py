@@ -2,138 +2,16 @@
 
 import asyncio
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
-from app.db.metadata import Base
-from app.dns.dns import DNSClient
 from app.dns.manager import SimpleDNSManager
-from app.dns.router import MCRouterClient
 from app.dns.types import ReturnRecordT
 from app.dynamic_config.configs.dns import DNSManagerConfig, DNSPod, Manual
 from app.errors import PublicOperationError
 from app.servers.models import Server, ServerStatus
-
-
-class StatefulDNS(DNSClient):
-    def __init__(self, domain="example.com"):
-        self.domain = domain
-        self.records = []
-        self.calls = []
-        self.unavailable = False
-        self.fail_name = None
-        self.next_id = 1
-        self.started: asyncio.Event | None = None
-        self.release: asyncio.Event | None = None
-        self.closed = False
-        self.initialized = True
-        self.initialization_error: Exception | None = None
-
-    def get_domain(self):
-        return self.domain
-
-    def is_initialized(self):
-        return self.initialized
-
-    async def init(self):
-        if self.initialization_error is not None:
-            raise self.initialization_error
-        self.initialized = True
-
-    async def list_records(self):
-        if self.unavailable:
-            raise OSError("synthetic-provider-secret")
-        return list(self.records)
-
-    async def add_records(self, records):
-        for record in records:
-            self.calls.append(("add", record.sub_domain))
-            if self.started is not None:
-                self.started.set()
-                assert self.release is not None
-                await self.release.wait()
-            if record.sub_domain == self.fail_name:
-                raise OSError("synthetic-provider-secret")
-            self.records.append(ReturnRecordT(record.sub_domain, record.value, self.next_id, record.record_type, record.ttl))
-            self.next_id += 1
-
-    async def remove_records(self, record_ids):
-        self.calls.extend(("remove", identifier) for identifier in record_ids)
-        self.records = [record for record in self.records if record.record_id not in record_ids]
-
-    def has_update_capability(self):
-        return True
-
-    async def _update_records_batch(self, records):
-        for record in records:
-            self.calls.append(("update", record.sub_domain))
-            self.records = [record if current.record_id == record.record_id else current for current in self.records]
-
-    async def close(self):
-        self.closed = True
-
-
-class StatefulRouter(MCRouterClient):
-    def __init__(self):
-        self.routes = {}
-        self.calls = []
-        self.unavailable = False
-        self.fail_name = None
-        self.closed = False
-
-    async def _send_request(self, method, path, headers=None, json=None):
-        if method == "GET":
-            if self.unavailable:
-                raise OSError("synthetic-router-secret")
-            return {key: {"backend": value} for key, value in self.routes.items()}
-        self.calls.append((method, path, json))
-        if method == "POST":
-            assert json is not None
-            if json["serverAddress"] == self.fail_name:
-                raise OSError("synthetic-router-secret")
-            self.routes[json["serverAddress"]] = json["backend"]
-        elif method == "DELETE":
-            self.routes.pop(path.removeprefix("routes/"), None)
-        return None
-
-    async def close(self):
-        self.closed = True
-
-
-@pytest.fixture
-async def connectivity(isolated_runtime):
-    runtime = isolated_runtime
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    db = runtime.database.session_factory
-    async with db() as session:
-        now = datetime.now(UTC)
-        session.add(Server(server_id="survival", status=ServerStatus.ACTIVE, created_at=now, updated_at=now))
-        await session.commit()
-    ports = {"survival": 25565}
-
-    class Instance:
-        def __init__(self, server_id):
-            self.server_id = server_id
-
-        async def get_server_info(self):
-            port = ports[self.server_id]
-            if isinstance(port, Exception):
-                raise port
-            return SimpleNamespace(game_port=port)
-
-    configuration = DNSManagerConfig(enabled=True, dns=DNSPod(), addresses=[Manual()])
-    docker_manager = MagicMock()
-    docker_manager.get_instance.side_effect = Instance
-    manager = SimpleDNSManager(configuration=lambda: configuration, docker_manager=docker_manager)
-    provider, router = StatefulDNS(), StatefulRouter()
-    manager._dns_client = provider
-    manager._mc_router_client = router
-    manager._last_config_hash = manager._calculate_config_hash(configuration)
-    yield SimpleNamespace(manager=manager, provider=provider, router=router, configuration=configuration, db=db, ports=ports)
-    await manager.close()
+from tests.dns.fakes import StatefulDNS, StatefulRouter
 
 
 async def synchronize(system):
@@ -362,8 +240,7 @@ async def test_unreadable_active_server_suppresses_deletions_but_allows_known_wr
         session.add(Server(server_id="unreadable", status=ServerStatus.ACTIVE, created_at=now, updated_at=now))
         session.add(Server(server_id="creative", status=ServerStatus.ACTIVE, created_at=now, updated_at=now))
         await session.commit()
-    system.ports["unreadable"] = PermissionError("owned compose unreadable")
-    system.ports["creative"] = 25567
+    system.write_server("creative", 25567)
     with pytest.raises(PublicOperationError):
         await synchronize(system)
     state = await observe(system)
@@ -372,7 +249,7 @@ async def test_unreadable_active_server_suppresses_deletions_but_allows_known_wr
     assert system.router.routes["obsolete.mc.example.com"] == "localhost:25566"
     assert system.router.routes["creative.mc.example.com"] == "localhost:25567"
     assert any(record.record_id == 99 for record in system.provider.records)
-    system.ports["unreadable"] = 25568
+    system.write_server("unreadable", 25568)
     await synchronize(system)
     assert "obsolete.mc.example.com" not in system.router.routes
     assert not any(record.record_id == 99 for record in system.provider.records)
@@ -408,7 +285,7 @@ async def test_target_failure_does_not_cancel_unrelated_writes_and_retry_is_fres
         now = datetime.now(UTC)
         session.add(Server(server_id="creative", status=ServerStatus.ACTIVE, created_at=now, updated_at=now))
         await session.commit()
-    system.ports["creative"] = 25567
+    system.write_server("creative", 25567)
     adapter = getattr(system, failed)
     adapter.fail_name = "_minecraft._tcp.survival.mc" if failed == "provider" else "survival.mc.example.com"
     with pytest.raises(PublicOperationError):

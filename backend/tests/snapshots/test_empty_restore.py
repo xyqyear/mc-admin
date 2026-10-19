@@ -9,7 +9,6 @@ from app.snapshots import service as service_module
 from app.snapshots.planner import EmptyStep
 from app.utils import async_fs
 from app.utils.exec import exec_command
-from tests.support.runtime import set_runtime_resource
 
 pytestmark = pytest.mark.binary("restic")
 
@@ -31,15 +30,15 @@ class Manager:
 
 
 @pytest.fixture
-async def empty_snapshot(tmp_path, monkeypatch):
+async def empty_snapshot(tmp_path, runtime_config):
     data = tmp_path / "server" / "data"
     region = data / "world" / "region"
     region.mkdir(parents=True)
     (data / "world" / "level.dat").write_bytes(b"level")
     client = ResticClient(str(tmp_path / "repository"), password="temporary-test")
     await exec_command(str(client.binary_path), "init", env=client.env)
-    configuration = SimpleNamespace(snapshots=SimpleNamespace(ignored_paths=[]))
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', configuration)
+    configuration = runtime_config
+    configuration.snapshots.ignored_paths = []
     service = SnapshotService(client, Manager(data))
     snapshot = await service.create_snapshot([data / "world"])
     return SimpleNamespace(data=data, region=region, client=client, service=service, snapshot=snapshot, config=configuration)

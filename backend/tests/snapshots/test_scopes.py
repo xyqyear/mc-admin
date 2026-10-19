@@ -1,9 +1,7 @@
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.operations.coordinator import ResourceClaim, ResourceKind
 from app.servers.models import Server
 from app.snapshots.scopes import (
@@ -17,23 +15,17 @@ from app.snapshots.scopes import (
 
 
 @pytest.fixture
-async def scope_case(tmp_path):
+async def scope_case(tmp_path, db_session_factory):
     root = tmp_path / "servers"
     project = root / "survival"
     data = project / "data"
     (data / "plugins" / "example").mkdir(parents=True)
     (project / "compose.yaml").write_text("services: {}\n")
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'scope.sqlite3'}")
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    sessions = db_session_factory
     async with sessions() as session:
         session.add(Server(server_id="survival"))
         await session.commit()
-    try:
-        yield root, data, sessions
-    finally:
-        await engine.dispose()
+    return root, data, sessions
 
 
 async def test_global_project_and_data_scopes_preserve_distinct_meanings(scope_case):

@@ -6,7 +6,6 @@ from httpx2 import ASGITransport, AsyncClient
 
 from app.config import get_settings
 from app.dynamic_config import get_config
-from app.dynamic_config.configs.mcmap import MCMapConfig
 from app.main import api_app
 from app.runtime_resources import current_runtime
 from app.snapshots.restoration_models import RestorationType
@@ -20,7 +19,6 @@ pytestmark = [pytest.mark.binary("restic"), pytest.mark.binary("fd")]
 
 @pytest.fixture
 async def http(world_case, monkeypatch):
-    world_case.config.mcmap = MCMapConfig()
     monkeypatch.setattr(get_settings(), "master_token", "preview-task-tests")
     async with AsyncClient(transport=ASGITransport(app=api_app), base_url="http://test", headers={"Authorization": "Bearer preview-task-tests"}) as client:
         yield client

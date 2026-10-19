@@ -13,7 +13,6 @@ from app.configuration.preparation import ServerConfiguration
 from app.cron.jobs import restart
 from app.cron.models import ExecutionStatus
 from app.cron.types import ExecutionContext
-from app.db.metadata import Base
 from app.dynamic_config import get_config
 from app.minecraft import MCServerStatus
 from app.operation_admission import get_server_write_admission
@@ -44,9 +43,7 @@ def operation_lock(monkeypatch):
 
 
 @pytest.fixture
-async def instance(isolated_runtime, monkeypatch):
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+async def instance(isolated_runtime, monkeypatch, database):
     async with isolated_runtime.database.session_factory() as session:
         session.add(Server(server_id="race"))
         await session.commit()

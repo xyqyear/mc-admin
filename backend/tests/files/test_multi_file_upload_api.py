@@ -2,16 +2,14 @@
 Tests for multi-file upload API endpoints.
 Tests the FastAPI endpoints for multi-file upload functionality.
 """
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import closing
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_runtime_resource
 
 
 class TestMultiFileUploadAPI:
@@ -20,18 +18,19 @@ class TestMultiFileUploadAPI:
     @pytest.fixture
     def test_client(self):
         """Create test client."""
-        return TestClient(app)
+        with closing(TestClient(app)) as client:
+            yield client
 
     @pytest.fixture
-    def temp_dir(self):
-        """Create temporary directory for tests."""
-        with tempfile.TemporaryDirectory(
-            prefix="mc_admin_api_test_", dir="/tmp"
-        ) as temp_dir:
-            yield Path(temp_dir)
+    def temp_dir(self, isolated_runtime, server_id):
+        instance = isolated_runtime.docker_mc_manager.get_instance(server_id)
+        data = instance.get_data_path()
+        data.mkdir(parents=True)
+        (instance.get_project_path() / "docker-compose.yml").write_text("services: {}\n")
+        return data
 
     @pytest.fixture
-    def mock_auth_headers(self):
+    def auth_headers(self):
         """Mock authentication headers."""
         return {"Authorization": "Bearer test_token"}
 
@@ -41,19 +40,12 @@ class TestMultiFileUploadAPI:
         return "test_server"
 
     def test_check_multi_file_upload_success(
-        self, test_client, mock_auth_headers, server_id, temp_dir
+        self, test_client, auth_headers, server_id, temp_dir
     ):
         """Test successful conflict checking."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_instance.get_project_path.return_value = temp_dir.parent
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test request
             request_data = {
@@ -72,7 +64,7 @@ class TestMultiFileUploadAPI:
                 f"/api/servers/{server_id}/files/upload/check?path=/",
                 json=request_data,
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -84,17 +76,12 @@ class TestMultiFileUploadAPI:
             assert isinstance(data["conflicts"], list)
 
     def test_check_multi_file_upload_server_not_found(
-        self, test_client, mock_auth_headers, server_id
+        self, test_client, auth_headers, server_id
     ):
         """Test conflict checking with non-existent server."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance that doesn't exist
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=False)
-            mock_manager.get_instance.return_value = mock_instance
 
             request_data = {
                 "files": [
@@ -111,7 +98,7 @@ class TestMultiFileUploadAPI:
                 f"/api/servers/{server_id}/files/upload/check?path=/",
                 json=request_data,
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -120,19 +107,12 @@ class TestMultiFileUploadAPI:
             assert "not found" in response.json()["detail"]
 
     def test_set_multi_file_upload_policy_success(
-        self, test_client, mock_auth_headers, server_id, temp_dir
+        self, test_client, auth_headers, server_id, temp_dir
     ):
         """Test successful policy setting."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_instance.get_project_path.return_value = temp_dir.parent
-            mock_manager.get_instance.return_value = mock_instance
 
             # First create a session
             request_data = {
@@ -150,7 +130,7 @@ class TestMultiFileUploadAPI:
                 f"/api/servers/{server_id}/files/upload/check?path=/",
                 json=request_data,
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -165,7 +145,7 @@ class TestMultiFileUploadAPI:
                 json=policy_data,
                 params={"session_id": session_id},
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -174,17 +154,12 @@ class TestMultiFileUploadAPI:
             assert "successfully" in response.json()["message"]
 
     def test_set_multi_file_upload_policy_invalid_session(
-        self, test_client, mock_auth_headers, server_id
+        self, test_client, auth_headers, server_id, temp_dir
     ):
         """Test setting policy with invalid session."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_manager.get_instance.return_value = mock_instance
 
             policy_data = {"mode": "always_overwrite"}
 
@@ -193,7 +168,7 @@ class TestMultiFileUploadAPI:
                 json=policy_data,
                 params={"session_id": "invalid_session"},
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -202,19 +177,12 @@ class TestMultiFileUploadAPI:
             assert "session not found" in response.json()["detail"]
 
     def test_upload_multiple_files_success(
-        self, test_client, mock_auth_headers, server_id, temp_dir
+        self, test_client, auth_headers, server_id, temp_dir
     ):
         """Test successful multi-file upload."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_instance.get_project_path.return_value = temp_dir.parent
-            mock_manager.get_instance.return_value = mock_instance
 
             # First create a session
             request_data = {
@@ -238,7 +206,7 @@ class TestMultiFileUploadAPI:
                 f"/api/servers/{server_id}/files/upload/check?path=/",
                 json=request_data,
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -253,7 +221,7 @@ class TestMultiFileUploadAPI:
                 json=policy_data,
                 params={"session_id": session_id},
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -269,7 +237,7 @@ class TestMultiFileUploadAPI:
                 files=files,
                 params={"session_id": session_id, "path": "/"},
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -285,17 +253,12 @@ class TestMultiFileUploadAPI:
             assert (temp_dir / "test2.txt").read_bytes() == b"content2"
 
     def test_upload_multiple_files_invalid_session(
-        self, test_client, mock_auth_headers, server_id
+        self, test_client, auth_headers, server_id, temp_dir
     ):
         """Test uploading with invalid session."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_manager.get_instance.return_value = mock_instance
 
             files = [("files", ("test.txt", b"content", "text/plain"))]
 
@@ -304,7 +267,7 @@ class TestMultiFileUploadAPI:
                 files=files,
                 params={"session_id": "invalid_session", "path": "/"},
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -313,17 +276,12 @@ class TestMultiFileUploadAPI:
             assert "session not found" in response.json()["detail"]
 
     def test_upload_multiple_files_server_not_found(
-        self, test_client, mock_auth_headers, server_id
+        self, test_client, auth_headers, server_id
     ):
         """Test uploading to non-existent server."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance that doesn't exist
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=False)
-            mock_manager.get_instance.return_value = mock_instance
 
             files = [("files", ("test.txt", b"content", "text/plain"))]
 
@@ -332,7 +290,7 @@ class TestMultiFileUploadAPI:
                 files=files,
                 params={"session_id": "dummy_session", "path": "/"},
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -341,17 +299,12 @@ class TestMultiFileUploadAPI:
             assert "not found" in response.json()["detail"]
 
     def test_request_validation_invalid_file_type(
-        self, test_client, mock_auth_headers, server_id
+        self, test_client, auth_headers, server_id
     ):
         """Test request validation with invalid file type."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_manager.get_instance.return_value = mock_instance
 
             # Invalid file type
             request_data = {
@@ -369,7 +322,7 @@ class TestMultiFileUploadAPI:
                 f"/api/servers/{server_id}/files/upload/check?path=/",
                 json=request_data,
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -377,17 +330,12 @@ class TestMultiFileUploadAPI:
             assert response.status_code == 422  # Validation error
 
     def test_request_validation_missing_fields(
-        self, test_client, mock_auth_headers, server_id
+        self, test_client, auth_headers, server_id
     ):
         """Test request validation with missing required fields."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_manager.get_instance.return_value = mock_instance
 
             # Missing required fields
             request_data = {
@@ -404,7 +352,7 @@ class TestMultiFileUploadAPI:
                 f"/api/servers/{server_id}/files/upload/check?path=/",
                 json=request_data,
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -412,19 +360,12 @@ class TestMultiFileUploadAPI:
             assert response.status_code == 422  # Validation error
 
     def test_policy_validation_per_file_without_decisions(
-        self, test_client, mock_auth_headers, server_id, temp_dir
+        self, test_client, auth_headers, server_id, temp_dir
     ):
         """Test policy validation for per_file mode without decisions."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_instance.get_project_path.return_value = temp_dir.parent
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create existing file for conflict
             test_file = temp_dir / "existing.txt"
@@ -446,7 +387,7 @@ class TestMultiFileUploadAPI:
                 f"/api/servers/{server_id}/files/upload/check?path=/",
                 json=request_data,
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )
@@ -464,7 +405,7 @@ class TestMultiFileUploadAPI:
                 json=policy_data,
                 params={"session_id": session_id},
                 headers={
-                    **mock_auth_headers,
+                    **auth_headers,
                     "Authorization": "Bearer test_master_token",
                 },
             )

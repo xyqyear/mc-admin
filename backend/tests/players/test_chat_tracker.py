@@ -5,9 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.dynamic_config.configs.players import PlayersConfig
 from app.players import get_player_service
 from app.players.models import Player, PlayerAchievement, PlayerChatMessage
@@ -17,27 +15,13 @@ from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
-async def test_db_engine():
-    """Create a temporary in-memory SQLite database for testing."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    await engine.dispose()
+async def test_db_engine(database):
+    return database.engine
 
 
 @pytest.fixture
-async def test_db_session(test_db_engine):
-    """Create a test database session."""
-    async_session = async_sessionmaker(
-        test_db_engine, class_=AsyncSession, expire_on_commit=False
-    )
-
-    async with async_session() as session:
-        yield session
+async def test_db_session(db_session):
+    return db_session
 
 
 @pytest.fixture
@@ -92,62 +76,58 @@ class TestRecordChatMessage:
     @pytest.mark.asyncio
     async def test_existing_player(self, test_db_session, test_server, test_player):
         """Test recording chat message from existing player."""
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
+        await get_player_service().record_chat_message(
+            server_id="test_server",
+            player_name="TestPlayer",
+            message="Hello world!",
+            timestamp=datetime.now(UTC),
+        )
+
+        result = await test_db_session.execute(
+            select(PlayerChatMessage).where(
+                PlayerChatMessage.player_db_id == test_player.player_db_id
+            )
+        )
+        messages = result.scalars().all()
+
+        assert len(messages) == 1
+        assert messages[0].message_text == "Hello world!"
+        assert messages[0].player_db_id == test_player.player_db_id
+        assert messages[0].server_db_id == test_server.id
+
+    @pytest.mark.asyncio
+    async def test_new_player(self, test_db_session, test_server, mock_mojang_api):
+        """Test recording chat message from new player (auto-creates player)."""
+
+        with patch(
+            "app.players.mojang_api.fetch_player_uuid_from_mojang",
+            return_value=make_online_uuid("NewPlayer"),
+        ):
             await get_player_service().record_chat_message(
                 server_id="test_server",
-                player_name="TestPlayer",
-                message="Hello world!",
+                player_name="NewPlayer",
+                message="First message!",
                 timestamp=datetime.now(UTC),
             )
 
             result = await test_db_session.execute(
+                select(Player).where(Player.current_name == "NewPlayer")
+            )
+            player = result.scalar_one_or_none()
+
+            assert player is not None
+            assert player.uuid == make_online_uuid("NewPlayer")
+
+            result = await test_db_session.execute(
                 select(PlayerChatMessage).where(
-                    PlayerChatMessage.player_db_id == test_player.player_db_id
+                    PlayerChatMessage.player_db_id == player.player_db_id
                 )
             )
             messages = result.scalars().all()
 
             assert len(messages) == 1
-            assert messages[0].message_text == "Hello world!"
-            assert messages[0].player_db_id == test_player.player_db_id
-            assert messages[0].server_db_id == test_server.id
-
-    @pytest.mark.asyncio
-    async def test_new_player(self, test_db_session, test_server, mock_mojang_api):
-        """Test recording chat message from new player (auto-creates player)."""
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
-
-            with patch(
-                "app.players.mojang_api.fetch_player_uuid_from_mojang",
-                return_value=make_online_uuid("NewPlayer"),
-            ):
-                await get_player_service().record_chat_message(
-                    server_id="test_server",
-                    player_name="NewPlayer",
-                    message="First message!",
-                    timestamp=datetime.now(UTC),
-                )
-
-                result = await test_db_session.execute(
-                    select(Player).where(Player.current_name == "NewPlayer")
-                )
-                player = result.scalar_one_or_none()
-
-                assert player is not None
-                assert player.uuid == make_online_uuid("NewPlayer")
-
-                result = await test_db_session.execute(
-                    select(PlayerChatMessage).where(
-                        PlayerChatMessage.player_db_id == player.player_db_id
-                    )
-                )
-                messages = result.scalars().all()
-
-                assert len(messages) == 1
-                assert messages[0].message_text == "First message!"
+            assert messages[0].message_text == "First message!"
 
     @pytest.mark.asyncio
     async def test_ignored_player_skips_chat_write(
@@ -156,18 +136,16 @@ class TestRecordChatMessage:
         """Test ignored player chat is not persisted or auto-created."""
         _set_ignored_player_prefixes(monkeypatch, ["bot_"])
 
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
-            with patch(
-                "app.players.mojang_api.fetch_player_uuid_from_mojang",
-            ) as mock_fetch_uuid:
-                await get_player_service().record_chat_message(
-                    server_id="test_server",
-                    player_name="boT_Carpet",
-                    message="Synthetic hello",
-                    timestamp=datetime.now(UTC),
-                )
+        with patch(
+            "app.players.mojang_api.fetch_player_uuid_from_mojang",
+        ) as mock_fetch_uuid:
+            await get_player_service().record_chat_message(
+                server_id="test_server",
+                player_name="boT_Carpet",
+                message="Synthetic hello",
+                timestamp=datetime.now(UTC),
+            )
 
         mock_fetch_uuid.assert_not_called()
 
@@ -182,24 +160,22 @@ class TestRecordChatMessage:
     @pytest.mark.asyncio
     async def test_server_not_found(self, test_db_session, test_player):
         """Test handling when server is not found."""
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
-            with patch(
-                "app.players.service.get_server_db_id",
-                return_value=None,
-            ):
-                await get_player_service().record_chat_message(
-                    server_id="unknown_server",
-                    player_name="TestPlayer",
-                    message="Hello!",
-                    timestamp=datetime.now(UTC),
-                )
+        with patch(
+            "app.players.service.get_server_db_id",
+            return_value=None,
+        ):
+            await get_player_service().record_chat_message(
+                server_id="unknown_server",
+                player_name="TestPlayer",
+                message="Hello!",
+                timestamp=datetime.now(UTC),
+            )
 
-                result = await test_db_session.execute(select(PlayerChatMessage))
-                messages = result.scalars().all()
+            result = await test_db_session.execute(select(PlayerChatMessage))
+            messages = result.scalars().all()
 
-                assert len(messages) == 0
+            assert len(messages) == 0
 
 
 class TestRecordAchievement:
@@ -208,50 +184,46 @@ class TestRecordAchievement:
     @pytest.mark.asyncio
     async def test_existing_player(self, test_db_session, test_server, test_player):
         """Test recording achievement from existing player."""
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await get_player_service().record_achievement(
-                server_id="test_server",
-                player_name="TestPlayer",
-                achievement_name="Mine Diamond",
-                timestamp=datetime.now(UTC),
+        await get_player_service().record_achievement(
+            server_id="test_server",
+            player_name="TestPlayer",
+            achievement_name="Mine Diamond",
+            timestamp=datetime.now(UTC),
+        )
+
+        result = await test_db_session.execute(
+            select(PlayerAchievement).where(
+                PlayerAchievement.player_db_id == test_player.player_db_id
             )
+        )
+        achievements = result.scalars().all()
 
-            result = await test_db_session.execute(
-                select(PlayerAchievement).where(
-                    PlayerAchievement.player_db_id == test_player.player_db_id
-                )
-            )
-            achievements = result.scalars().all()
-
-            assert len(achievements) == 1
-            assert achievements[0].achievement_name == "Mine Diamond"
-            assert achievements[0].player_db_id == test_player.player_db_id
-            assert achievements[0].server_db_id == test_server.id
+        assert len(achievements) == 1
+        assert achievements[0].achievement_name == "Mine Diamond"
+        assert achievements[0].player_db_id == test_player.player_db_id
+        assert achievements[0].server_db_id == test_server.id
 
     @pytest.mark.asyncio
     async def test_unknown_player_skipped(self, test_db_session, test_server):
         """Test that achievement from unknown player is skipped (no player created)."""
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await get_player_service().record_achievement(
-                server_id="test_server",
-                player_name="UnknownPlayer",
-                achievement_name="Kill Ender Dragon",
-                timestamp=datetime.now(UTC),
-            )
+        await get_player_service().record_achievement(
+            server_id="test_server",
+            player_name="UnknownPlayer",
+            achievement_name="Kill Ender Dragon",
+            timestamp=datetime.now(UTC),
+        )
 
-            result = await test_db_session.execute(
-                select(Player).where(Player.current_name == "UnknownPlayer")
-            )
-            player = result.scalar_one_or_none()
-            assert player is None
+        result = await test_db_session.execute(
+            select(Player).where(Player.current_name == "UnknownPlayer")
+        )
+        player = result.scalar_one_or_none()
+        assert player is None
 
-            result = await test_db_session.execute(select(PlayerAchievement))
-            achievements = result.scalars().all()
-            assert len(achievements) == 0
+        result = await test_db_session.execute(select(PlayerAchievement))
+        achievements = result.scalars().all()
+        assert len(achievements) == 0
 
     @pytest.mark.asyncio
     async def test_offline_uuid_player_skipped(self, test_db_session, test_server):
@@ -264,50 +236,46 @@ class TestRecordAchievement:
         test_db_session.add(player)
         await test_db_session.commit()
 
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await get_player_service().record_achievement(
-                server_id="test_server",
-                player_name="OfflinePlayer",
-                achievement_name="Not Recorded",
-                timestamp=datetime.now(UTC),
-            )
+        await get_player_service().record_achievement(
+            server_id="test_server",
+            player_name="OfflinePlayer",
+            achievement_name="Not Recorded",
+            timestamp=datetime.now(UTC),
+        )
 
-            result = await test_db_session.execute(select(PlayerAchievement))
-            achievements = result.scalars().all()
-            assert len(achievements) == 0
+        result = await test_db_session.execute(select(PlayerAchievement))
+        achievements = result.scalars().all()
+        assert len(achievements) == 0
 
     @pytest.mark.asyncio
     async def test_duplicate_not_saved(self, test_db_session, test_server, test_player):
         """Test that duplicate achievements are not saved."""
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
-            ts = datetime.now(UTC)
+        ts = datetime.now(UTC)
 
-            await get_player_service().record_achievement(
-                server_id="test_server",
-                player_name="TestPlayer",
-                achievement_name="Mine Diamond",
-                timestamp=ts,
+        await get_player_service().record_achievement(
+            server_id="test_server",
+            player_name="TestPlayer",
+            achievement_name="Mine Diamond",
+            timestamp=ts,
+        )
+
+        await get_player_service().record_achievement(
+            server_id="test_server",
+            player_name="TestPlayer",
+            achievement_name="Mine Diamond",
+            timestamp=ts,
+        )
+
+        result = await test_db_session.execute(
+            select(PlayerAchievement).where(
+                PlayerAchievement.player_db_id == test_player.player_db_id
             )
+        )
+        achievements = result.scalars().all()
 
-            await get_player_service().record_achievement(
-                server_id="test_server",
-                player_name="TestPlayer",
-                achievement_name="Mine Diamond",
-                timestamp=ts,
-            )
-
-            result = await test_db_session.execute(
-                select(PlayerAchievement).where(
-                    PlayerAchievement.player_db_id == test_player.player_db_id
-                )
-            )
-            achievements = result.scalars().all()
-
-            assert len(achievements) == 1
+        assert len(achievements) == 1
 
     @pytest.mark.asyncio
     async def test_player_with_title(self, test_db_session, test_server):
@@ -321,27 +289,25 @@ class TestRecordAchievement:
         test_db_session.add(player)
         await test_db_session.commit()
 
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await get_player_service().record_achievement(
-                server_id="test_server",
-                player_name="___Astesia the Ugly",
-                achievement_name="Dragon Growth Hormone",
-                timestamp=datetime.now(UTC),
+        await get_player_service().record_achievement(
+            server_id="test_server",
+            player_name="___Astesia the Ugly",
+            achievement_name="Dragon Growth Hormone",
+            timestamp=datetime.now(UTC),
+        )
+
+        result = await test_db_session.execute(
+            select(PlayerAchievement).where(
+                PlayerAchievement.player_db_id == player.player_db_id
             )
+        )
+        achievements = result.scalars().all()
 
-            result = await test_db_session.execute(
-                select(PlayerAchievement).where(
-                    PlayerAchievement.player_db_id == player.player_db_id
-                )
-            )
-            achievements = result.scalars().all()
-
-            assert len(achievements) == 1
-            assert achievements[0].achievement_name == "Dragon Growth Hormone"
-            assert achievements[0].player_db_id == player.player_db_id
-            assert achievements[0].server_db_id == test_server.id
+        assert len(achievements) == 1
+        assert achievements[0].achievement_name == "Dragon Growth Hormone"
+        assert achievements[0].player_db_id == player.player_db_id
+        assert achievements[0].server_db_id == test_server.id
 
     @pytest.mark.asyncio
     async def test_longest_name_match_priority(self, test_db_session, test_server):
@@ -362,31 +328,29 @@ class TestRecordAchievement:
         test_db_session.add(long_player)
         await test_db_session.commit()
 
-        with patch.object(get_player_service(), "session_factory") as mock_session:
-            mock_session.return_value.__aenter__.return_value = test_db_session
 
-            await get_player_service().record_achievement(
-                server_id="test_server",
-                player_name="SteveTheGreat the Mighty",
-                achievement_name="Epic Achievement",
-                timestamp=datetime.now(UTC),
+        await get_player_service().record_achievement(
+            server_id="test_server",
+            player_name="SteveTheGreat the Mighty",
+            achievement_name="Epic Achievement",
+            timestamp=datetime.now(UTC),
+        )
+
+        result = await test_db_session.execute(
+            select(PlayerAchievement).where(
+                PlayerAchievement.player_db_id == long_player.player_db_id
             )
+        )
+        achievements = result.scalars().all()
 
-            result = await test_db_session.execute(
-                select(PlayerAchievement).where(
-                    PlayerAchievement.player_db_id == long_player.player_db_id
-                )
+        assert len(achievements) == 1
+        assert achievements[0].achievement_name == "Epic Achievement"
+
+        result = await test_db_session.execute(
+            select(PlayerAchievement).where(
+                PlayerAchievement.player_db_id == short_player.player_db_id
             )
-            achievements = result.scalars().all()
+        )
+        achievements = result.scalars().all()
 
-            assert len(achievements) == 1
-            assert achievements[0].achievement_name == "Epic Achievement"
-
-            result = await test_db_session.execute(
-                select(PlayerAchievement).where(
-                    PlayerAchievement.player_db_id == short_player.player_db_id
-                )
-            )
-            achievements = result.scalars().all()
-
-            assert len(achievements) == 0
+        assert len(achievements) == 0

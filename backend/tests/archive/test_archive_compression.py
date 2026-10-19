@@ -7,21 +7,20 @@ import sys
 import tempfile
 from contextlib import aclosing
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 
 from app.background_tasks import TaskType, get_task_manager
 from app.background_tasks.types import TaskStatus
 from app.main import api_app
+from app.operations.journal import OperationJournal
 from app.utils.compression import (
     _sanitize_filename_part,
     create_server_archive_stream,
     generate_archive_filename,
 )
 from app.utils.exec import exec_command_stream
-from tests.support.runtime import patch_runtime_resource
 
 
 class TestFilenameGeneration:
@@ -280,143 +279,102 @@ class TestCreateServerArchiveStream:
 
 class TestArchiveCompressionEndpoint:
     @pytest.fixture
-    def client(self):
-        return TestClient(api_app)
+    async def archive_application(self, database, isolated_runtime, monkeypatch):
+        from httpx2 import ASGITransport, AsyncClient
 
-    @pytest.fixture
-    def temp_dir(self):
-        with tempfile.TemporaryDirectory(prefix="mc_admin_test_") as temp_dir:
-            yield Path(temp_dir)
+        from app.servers.models import Server
 
-    @pytest.fixture
-    def server_setup(self, temp_dir):
-        server_path = temp_dir / "servers" / "test_server"
-        server_path.mkdir(parents=True)
-        data_dir = server_path / "data"
-        data_dir.mkdir()
-        (data_dir / "test.txt").write_text("test content")
-        return server_path
+        runtime = isolated_runtime
+        runtime.journal = OperationJournal(database.session_factory)
+        monkeypatch.setattr(runtime.settings, "master_token", "compression-test")
+        project = runtime.settings.server_path / "survival"
+        data = project / "data"
+        (data / "plugins" / "empty").mkdir(parents=True)
+        (project / "compose.yaml").write_text("services: {}\n")
+        (data / "plugins" / "settings.txt").write_text("中文配置与空目录")
+        (data / "unselected.txt").write_text("keep outside archive")
+        async with database.session_factory() as session:
+            session.add(Server(server_id="survival"))
+            await session.commit()
+        async with AsyncClient(
+            transport=ASGITransport(app=api_app), base_url="http://test",
+            headers={"Authorization": "Bearer compression-test"},
+        ) as client:
+            yield client, runtime, data
 
-    @pytest.fixture
-    def mock_server_manager(self, server_setup, temp_dir):
-        archive_dir = temp_dir / "archives"
-        archive_dir.mkdir()
+    @pytest.mark.binary("7z")
+    async def test_compression_publishes_verified_content_after_durable_completion(
+        self, archive_application, tmp_path, monkeypatch,
+    ):
+        from app.archive import application
+        from app.operations.journal_types import OperationState
+        from app.utils.exec import exec_command
 
-        mock_submit_result = MagicMock()
-        mock_submit_result.task_id = "test-task-id-123"
+        client, runtime, data = archive_application
+        entered, release = asyncio.Event(), asyncio.Event()
+        compress = application.create_server_archive_stream
 
-        with (
-            patch_settings() as mock_settings,
-            patch_settings() as mock_dep_settings,
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
-            patch_runtime_resource('task_manager') as mock_task_manager,
-        ):
-            mock_settings.archive_path = archive_dir
-            mock_settings.master_token = "test_master_token"
-            mock_dep_settings.master_token = "test_master_token"
+        async def held_compression(*args, **kwargs):
+            entered.set()
+            await release.wait()
+            async with aclosing(compress(*args, **kwargs)) as stream:
+                async for progress in stream:
+                    yield progress
 
-            mock_instance = mock_manager.get_instance.return_value
-            mock_instance.get_project_path.return_value = server_setup
-            mock_instance.get_data_path.return_value = server_setup / "data"
-            mock_instance.get_name.return_value = "test_server"
-
-            async def mock_exists():
-                return True
-
-            mock_instance.exists = mock_exists
-
-            async def submit_durable(**kwargs):
-                await kwargs["task_generator"].aclose()
-                return mock_submit_result
-
-            mock_task_manager.submit_durable = AsyncMock(side_effect=submit_durable)
-
-            yield {
-                "archive_dir": archive_dir,
-                "server_path": server_setup,
-                "task_manager": mock_task_manager,
-            }
-
-    def test_endpoint_returns_task_id(self, client, mock_server_manager):
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "test_server"},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "task_id" in data
-        assert data["task_id"] == "test-task-id-123"
-
-        mock_server_manager["task_manager"].submit_durable.assert_awaited_once()
-
-    def test_endpoint_submits_correct_task_type(self, client, mock_server_manager):
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "test_server"},
-        )
-
-        assert response.status_code == 200
-
-        submit = mock_server_manager["task_manager"].submit_durable
-        submit.assert_awaited_once()
-        call_kwargs = submit.await_args.kwargs
-        assert call_kwargs["task_type"] == TaskType.ARCHIVE_CREATE
-        assert call_kwargs["server_id"] == "test_server"
-        assert call_kwargs["cancellable"] is True
-        assert call_kwargs["actor_id"] == 0
-
-    def test_endpoint_nonexistent_server(self, client, temp_dir):
-        with (
-            patch_settings() as mock_settings,
-            patch_settings() as mock_dep_settings,
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
-        ):
-            mock_settings.master_token = "test_master_token"
-            mock_dep_settings.master_token = "test_master_token"
-
-            mock_instance = mock_manager.get_instance.return_value
-
-            async def mock_exists():
-                return False
-
-            mock_instance.exists = mock_exists
-
-            response = client.post(
-                "/archive/compress",
-                headers={"Authorization": "Bearer test_master_token"},
-                json={"server_id": "nonexistent"},
+        monkeypatch.setattr(application, "create_server_archive_stream", held_compression)
+        try:
+            response = await client.post(
+                "/archive/compress", json={"server_id": "survival", "path": "plugins"},
             )
+            assert response.status_code == 200
+            task_id = response.json()["task_id"]
+            await asyncio.wait_for(entered.wait(), 5)
+            pending = (await client.get(f"/tasks/{task_id}")).json()
+            assert pending["status"] == "running" and pending["result"] is None
+            assert not list(runtime.settings.archive_path.glob("*.7z"))
+            release.set()
+            future = runtime.task_manager.get_future(task_id)
+            assert future is not None
+            terminal = await asyncio.wait_for(future, 15)
+            assert terminal.success, terminal.error
+            detail = (await client.get(f"/tasks/{task_id}")).json()
+            assert detail["status"] == "completed"
+            assert detail["task_type"] == TaskType.ARCHIVE_CREATE.value
+            published = runtime.settings.archive_path / detail["result"]["filename"]
+            extracted = tmp_path / "extracted"
+            await exec_command("7z", "x", "-y", f"-o{extracted}", str(published))
+            assert (extracted / "plugins" / "settings.txt").read_text() == "中文配置与空目录"
+            assert (extracted / "plugins" / "empty").is_dir()
+            assert not (extracted / "unselected.txt").exists()
+            assert (data / "unselected.txt").read_text() == "keep outside archive"
+            record = await OperationJournal(runtime.database.session_factory).get(task_id)
+            assert record is not None and record.state is OperationState.SUCCEEDED
+            assert record.writers_stopped and record.actor_id == 0
+        finally:
+            release.set()
+            await runtime.task_manager.shutdown()
 
-            assert response.status_code == 404
+    @pytest.mark.parametrize(("payload", "expected"), [
+        ({"server_id": "missing"}, 404),
+        ({"server_id": "survival", "path": "missing"}, 404),
+        ({}, 422),
+    ])
+    async def test_rejected_compression_preserves_files_and_accepts_no_task(
+        self, archive_application, payload, expected,
+    ):
+        client, runtime, data = archive_application
+        response = await client.post("/archive/compress", json=payload)
+        assert response.status_code == expected
+        assert not await OperationJournal(runtime.database.session_factory).list()
+        assert not list(runtime.settings.archive_path.iterdir())
+        assert (data / "plugins" / "settings.txt").read_text() == "中文配置与空目录"
 
-    def test_endpoint_nonexistent_path(self, client, mock_server_manager):
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={"server_id": "test_server", "path": "/nonexistent"},
-        )
-
-        assert response.status_code == 404
-
-    def test_endpoint_unauthorized(self, client, mock_server_manager):
-        response = client.post(
-            "/archive/compress",
-            json={"server_id": "test_server"},
-        )
-
-        assert response.status_code in [401, 422]
-
-    def test_endpoint_missing_server_id(self, client, mock_server_manager):
-        response = client.post(
-            "/archive/compress",
-            headers={"Authorization": "Bearer test_master_token"},
-            json={},
-        )
-
-        assert response.status_code == 422
+    async def test_unauthenticated_compression_accepts_no_task(self, archive_application):
+        client, runtime, _ = archive_application
+        client.headers.pop("Authorization")
+        response = await client.post("/archive/compress", json={"server_id": "survival"})
+        assert response.status_code == 401
+        assert not await OperationJournal(runtime.database.session_factory).list()
 
 
 class TestBackgroundTaskIntegration:

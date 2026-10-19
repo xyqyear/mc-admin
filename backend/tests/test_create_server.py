@@ -2,16 +2,21 @@
 Comprehensive integration tests for the create server endpoint.
 Covers port conflict detection, YAML validation, and server creation scenarios.
 """
+import socket
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app.db.metadata import Base
 from app.main import api_app
+from app.operations.journal import OperationJournal
+from app.operations.models import OperationJournalEntry
 from app.runtime_resources import current_runtime
+from app.servers.models import Server
+from app.servers.port_utils import get_system_used_ports
 from tests.support.runtime import patch_runtime_resource
 from tests.support.tasks import task_result
 
@@ -152,17 +157,12 @@ def temp_server_path():
 
 
 @pytest.fixture
-async def test_db(isolated_runtime):
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-
-
-@pytest.fixture
-def test_client_with_temp_path(temp_server_path, test_db):
+def test_client_with_temp_path(temp_server_path, database):
     from unittest.mock import AsyncMock
 
     from app.minecraft import DockerMCManager
 
+    current_runtime().journal = OperationJournal(database.session_factory)
     with (
         patch.object(current_runtime().settings, 'server_path', temp_server_path),
         patch.object(current_runtime().settings, 'master_token', 'test-master-token'),
@@ -199,7 +199,7 @@ class TestCreateServerSuccess:
         assert "SERVER_" in response.json()["detail"]
         assert not (temp_server_path / "unsafe-port").exists()
 
-    def test_successful_server_creation(self, test_client_with_temp_path):
+    async def test_successful_server_creation(self, test_client_with_temp_path, db_session_factory, temp_server_path):
         """Test successful server creation with unique ports."""
         yaml_content = generate_yaml("test-server", 25565, 25575)
 
@@ -214,6 +214,14 @@ class TestCreateServerSuccess:
         assert data["game_port"] == 25565
         assert data["rcon_port"] == 25575
         assert data["restart_cronjob_id"] is None
+        async with db_session_factory() as session:
+            created = await session.scalar(select(Server).where(Server.server_id == "test-server"))
+            assert created is not None
+            operation = await session.get(OperationJournalEntry, response.json()["task_id"])
+            assert operation is not None
+            assert operation.kind == "server_create" and operation.state == "succeeded"
+            assert operation.writers_stopped and operation.ended_at is not None
+        assert (temp_server_path / "test-server/docker-compose.yml").read_text().strip() == yaml_content
 
     def test_no_conflicts_with_different_ports(self, test_client_with_temp_path):
         """Test that servers with different ports can be created successfully."""
@@ -491,3 +499,22 @@ class TestPortExtractionUtility:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+async def test_listening_system_port_rejects_creation_without_files_or_registration(
+    test_client_with_temp_path, temp_server_path, db_session_factory, monkeypatch,
+):
+    monkeypatch.setattr("app.servers.port_utils.get_system_used_ports", get_system_used_ports)
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        response = test_client_with_temp_path.post(
+            "/api/servers/occupied", json={"yaml_content": generate_yaml("occupied", port, port)},
+            headers={"Authorization": "Bearer test-master-token"},
+        )
+    assert response.status_code == 409, response.text
+    assert str(port) in response.json()["detail"]
+    assert not (temp_server_path / "occupied").exists()
+    async with db_session_factory() as session:
+        assert await session.scalar(select(Server).where(Server.server_id == "occupied")) is None

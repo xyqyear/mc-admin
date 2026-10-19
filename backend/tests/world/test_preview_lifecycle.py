@@ -19,7 +19,6 @@ from app.snapshots.preview_sessions import (
     PreviewSessionManager,
     PreviewSessionNotFoundError,
 )
-from tests.support.runtime import set_runtime_resource
 
 default_region_bytes = WorldRestoreConfig().preview_avg_region_bytes
 
@@ -122,24 +121,11 @@ async def test_cancel_during_session_directory_creation_waits_and_cleans(manager
     assert not list(manager.base_dir.iterdir())
 
 
-def _restore_config(
-    *,
-    ttl_seconds: int = 60,
-    janitor_interval_seconds: int = 5,
-    region_bytes: int = default_region_bytes,
-):
-    return SimpleNamespace(
-        preview_session_ttl_seconds=ttl_seconds,
-        preview_janitor_interval_seconds=janitor_interval_seconds,
-        preview_avg_region_bytes=region_bytes,
-    )
-
-
-def _runtime_config(**kwargs):
-    values = vars(get_config()) | {
-        "snapshots": SimpleNamespace(**(vars(get_config().snapshots) | {"world_restore": _restore_config(**kwargs)}))
-    }
-    return SimpleNamespace(**values)
+def _configure_preview(monkeypatch, *, ttl_seconds=60, janitor_interval_seconds=5, region_bytes=default_region_bytes):
+    config = get_config().snapshots.world_restore
+    monkeypatch.setattr(config, "preview_session_ttl_seconds", ttl_seconds)
+    monkeypatch.setattr(config, "preview_janitor_interval_seconds", janitor_interval_seconds)
+    monkeypatch.setattr(config, "preview_avg_region_bytes", region_bytes)
 
 
 @pytest.fixture
@@ -150,7 +136,7 @@ def base_dir():
 
 @pytest.fixture
 def manager(base_dir, monkeypatch):
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', _runtime_config())
+    _configure_preview(monkeypatch)
     return PreviewSessionManager(base_dir=base_dir)
 
 
@@ -293,7 +279,7 @@ async def test_disk_guard_raises_when_free_too_low(manager):
 
 @pytest.mark.asyncio
 async def test_disk_guard_uses_dynamic_region_size(manager, monkeypatch):
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', _runtime_config(region_bytes=4096))
+    _configure_preview(monkeypatch, region_bytes=4096)
     with (
         patch.object(manager, 'disk_free_bytes', new=AsyncMock(return_value=4096)),
         pytest.raises(PreviewDiskGuardError) as exc,
@@ -332,7 +318,7 @@ async def test_janitor_loop_starts_and_stops_cleanly(manager):
 async def test_janitor_reaps_stale_in_background(base_dir, monkeypatch):
     """End-to-end: spin up a janitor with a tight interval; create a stale
     session; verify it's reaped within a reasonable time window."""
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', _runtime_config(ttl_seconds=1, janitor_interval_seconds=1))
+    _configure_preview(monkeypatch, ttl_seconds=1, janitor_interval_seconds=1)
     manager = PreviewSessionManager(base_dir=base_dir)
     session_dir = await manager.create_session("srv1")
     sid = session_dir.name
@@ -370,9 +356,7 @@ async def test_global_preview_replacement_releases_all_overlapping_server_owners
 
 
 async def test_cleanup_and_restart_preserve_unknown_preview_writer_artifacts(
-    manager, isolated_runtime,
-):
-    from app.db.metadata import Base
+    manager, isolated_runtime, database):
     from app.operations.journal import OperationJournal
     from app.operations.journal_types import (
         OperationSpec,
@@ -381,8 +365,6 @@ async def test_cleanup_and_restart_preserve_unknown_preview_writer_artifacts(
         ResourceReference,
     )
 
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     journal = OperationJournal(isolated_runtime.database.session_factory)
     isolated_runtime.journal = journal
     directory = await manager.create_session("srv1", source_snapshot_id="source")

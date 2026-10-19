@@ -1,45 +1,10 @@
-"""Unit tests for ResticClient construction, validation, and models."""
+"""Reject unsafe Restic requests before acquiring a repository writer."""
 
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from app.snapshots import ResticClient, ResticSnapshot
-
-
-class TestResticClientConstruction:
-    def test_initialization(self):
-        client = ResticClient(
-            repository_path="/test/repo/path", password="test-password"
-        )
-
-        assert client.repository_path == "/test/repo/path"
-        assert client.use_password is True
-        assert client.env["RESTIC_REPOSITORY"] == "/test/repo/path"
-        assert client.env["RESTIC_PASSWORD"] == "test-password"
-
-    def test_binary_path(self):
-        client = ResticClient(
-            repository_path="/test/repo/path",
-            password="test-password",
-            binary_path="/custom/bin/restic",
-        )
-
-        assert client.binary_path == Path("/custom/bin/restic")
-        assert client._build_args("version") == ["/custom/bin/restic", "version"]
-
-    @pytest.mark.parametrize("password", [None, "", "   "])
-    def test_no_password_modes(self, password):
-        client = ResticClient(repository_path="/test/repo", password=password)
-
-        assert client.use_password is False
-        assert "RESTIC_PASSWORD" not in client.env
-        assert client._build_args("snapshots")[-1] == "--insecure-no-password"
-
-    def test_password_mode_omits_insecure_flag(self):
-        client = ResticClient(repository_path="/test/repo", password="secret")
-        assert "--insecure-no-password" not in client._build_args("snapshots")
+from app.snapshots import ResticClient
 
 
 class TestValidation:
@@ -94,30 +59,11 @@ class TestValidation:
             await client.forget(keep_within="   ")
 
 
-class TestModels:
-    def test_restic_snapshot_model(self):
-        snapshot = ResticSnapshot(
-            time=datetime.now(UTC),
-            paths=["/test/path1", "/test/path2"],
-            hostname="test-host",
-            username="test-user",
-            program_version="restic 0.18.1",
-            id="abc123def456",
-            short_id="abc123",
-        )
+@pytest.mark.binary("restic")
+@pytest.mark.parametrize("password", [None, "", "   "])
+async def test_blank_password_opens_an_actual_unprotected_repository(tmp_path, password):
+    from app.utils.exec import exec_command
 
-        assert snapshot.excludes == []
-        assert snapshot.hostname == "test-host"
-        assert len(snapshot.paths) == 2
-
-    def test_restic_snapshot_model_with_excludes(self):
-        snapshot = ResticSnapshot(
-            time=datetime.now(UTC),
-            paths=["/srv/x"],
-            excludes=["/srv/x/data/.mcmap"],
-            hostname="h",
-            username="u",
-            id="i" * 64,
-            short_id="i" * 8,
-        )
-        assert snapshot.excludes == ["/srv/x/data/.mcmap"]
+    client = ResticClient(str(tmp_path / "repository"), password=password)
+    await exec_command(str(client.binary_path), "init", "--insecure-no-password", env=client.env)
+    assert await client.list_snapshots() == []

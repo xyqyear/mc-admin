@@ -26,11 +26,73 @@ uv run pyright
 uv run ruff check .
 ```
 
+## Business assertions and test boundaries
+
+Start from a user operation and its invariant: what must be saved, returned,
+preserved, refused, recovered or cleaned up? Expected results must come from the
+business contract and independent input examples, not from reproducing the
+production algorithm or calculating an opaque implementation fingerprint.
+
+| Boundary | Real behavior to retain | Appropriate controlled substitution |
+| --- | --- | --- |
+| Pure business rules | Parsing, validation, selection and explicit input/output examples | None unless the rule depends on a clock or external observation |
+| Persistence and service integration | SQLite, production session configuration, commits and independent reads | Narrow failures needed to exercise rollback or cancellation |
+| HTTP, WebSocket and tasks | Routing, authorization, actual services, durable acceptance and terminal outcomes | Unavailable external provider; a barrier to observe intermediate state |
+| Local resource adapters | Temporary files, real subprocesses and available fd/7z/Restic/mcmap | Malformed protocol, crash, permission failure or deterministic cancellation |
+| External providers | Adapter request/response contracts and stateful failure/recovery semantics | HTTP/cloud/Mojang responses; explicitly enabled live tests remain separate |
+| Compatibility and infrastructure | Published schema fixtures, wire contracts, ownership and qualification gates | Deliberately invalid evidence and controlled infrastructure failures |
+
+An assertion about a call is meaningful when the call itself is an external
+effect or its absence is a safety requirement. Ordinary service orchestration
+should instead assert persisted records, returned data, actual file bytes and
+preservation of unrelated state. A successful submission or a fake returning
+the expected result cannot prove a workflow succeeded. Authentication scenarios
+use stored users and real password verification; narrowly scoped protocol/fault
+tests may bypass identity only when authentication is outside their purpose.
+
+Retain distinct failure, permission, concurrency, recovery and destructive-action
+boundaries when consolidating tests. Record the surviving business scenario for
+removed coverage in the change evidence. Exact schema/protocol assertions and
+independent parser examples are not inherently over-testing. Test count, mock
+count and coverage percentage alone do not establish quality.
+
+## Database ownership
+
+The function-scoped `database` fixture initializes current tables on the isolated
+Runtime's production `Database`. `db_session_factory` creates a new session for
+each call; `db_session` is a convenient independently owned setup/assertion
+session. `runtime_config` initializes the real configuration manager against
+that same database. Request dependencies, services and background tasks consume
+the same Runtime database without separate HTTP or service factory patches.
+
+Durable-task API fixtures must also bind a real `OperationJournal` to that
+Runtime before submitting work. Creating tables alone does not enable the
+journal; without it, submission can fall back to an in-memory task manager.
+Check persisted terminal outcomes through an independent journal/session in
+addition to the response, completed task and filesystem effects.
+
+Use file-backed SQLite with production transaction settings. Do not replace a
+service's factory with a context manager that repeatedly yields one shared
+session. Observe committed results through a fresh session, and end read
+transactions before asserting subsequent writes. Tests needing restart,
+multiple databases or special cancellation instrumentation may explicitly own
+additional databases; `tests.support.database.database_at` provides production
+configuration and cleanup even when schema initialization fails. Historical
+migration tests deliberately retain their own pre-upgrade schemas and run real
+migrations instead of using the initialized current-schema fixture.
+
+Acquiring a resource and registering its cleanup belong together. Use context
+managers or `try/finally` around setup as well as the yielded body; setup failure
+must not leave a scheduler, connection, patch or subprocess behind. Fixture
+dependencies must drain independently owned managers before their database is
+closed. Do not create mutable manager instances at module import time or import
+another test module's shared manager as a fixture.
+
 ## Isolation and capabilities
 
 `tests/conftest.py` configures an owned temporary application root before importing application modules. The pytest session explicitly owns the runtime used during collection; every test then binds a fresh `Runtime`. Each test owns its SQLite, log, server and archive directories as well as its manager state and caches. Static fixtures, test configuration files and archive upload scratch files remain in the session-owned root. Inherited JWT, audit, and Restic connection settings are removed. Explicit `create_app(runtime=...)` apps retain their own runtime. Fixture teardown awaits runtime closure; tests must still join independently constructed managers and resources outside the runtime. See `runtime.md` for application construction and lifecycle verification.
 
-Replace external adapters through `tests.support.runtime.set_runtime_resource` or `patch_runtime_resource`, which restore the individual resource on the current test's runtime. Patching a removed module-level singleton cannot isolate an application. Multiple feature getters for one resource intentionally return the same object. Use `patch_settings` to change fields on the actual owned settings object while preserving its other valid configuration and restoring fields afterward. Database and adapter fixtures normally have function scope so their overrides bind to the runtime that executes the test.
+Replace external adapters through `tests.support.runtime.set_runtime_resource` or `patch_runtime_resource`, which restore the individual resource on the current test's runtime. Prefer explicit, narrow fake adapters or interface-constrained mocks over unrestricted `MagicMock` object graphs. Patching a removed module-level singleton cannot isolate an application. Multiple feature getters for one resource intentionally return the same object. Use `patch_settings` to change fields on the actual owned settings object while preserving its other valid configuration and restoring fields afterward. Database and adapter fixtures normally have function scope so their overrides bind to the runtime that executes the test.
 
 Capabilities are declarations, not naming conventions:
 
@@ -44,6 +106,13 @@ Capabilities are declarations, not naming conventions:
 | `@pytest.mark.external` | Explicit external service dependency | Deselect unless `--run-external` |
 
 `--require-capabilities` fails before execution if a selected local binary is missing. `FD_BINARY_PATH`, `RESTIC_BINARY_PATH`, and `MCMAP_BINARY_PATH` select binary locations. Strict marker validation rejects unknown markers and malformed binary declarations. Pure tests that accidentally execute a known installed binary fail. Docker subprocesses and SDK clients are blocked in tests without the Docker marker and explicit opt-in. Adapter mocks can still replace those boundaries.
+
+Python socket connections, datagram sends and hostname resolution reject
+external destinations unless the test declares `external` and opts in with
+`--run-external`. Loopback and Unix sockets remain available for real owned
+services. This guard does not sandbox subprocess networking; real binary and
+Docker fixtures must still own their resources and avoid ambient external
+configuration.
 
 Docker fixtures generate a random owner identifier and container names. They ask Docker to allocate available host ports and inspect the owned container's actual port bindings. They label containers and Compose networks, inspect ownership before removal, and remove verified Docker IDs. A same-name resource belonging to someone else is rejected. Cleanup attempts the other registered resources if one removal fails. No fixture removes `mc-testserver1` or `/tmp/test_temp_dir`. Tests execute sequentially inside each runner; independent CI runners provide the parallelism, without pytest workers sharing a Docker host.
 

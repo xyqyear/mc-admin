@@ -6,9 +6,6 @@ import pytest
 
 from app.dns.manager import SimpleDNSManager
 from app.dns.types import ReturnRecordT
-from tests.dns.test_reconciliation import connectivity as connectivity_fixture
-
-connectivity = connectivity_fixture
 
 
 async def test_observe_uninitialized_adapters_reports_unknown(connectivity, monkeypatch):

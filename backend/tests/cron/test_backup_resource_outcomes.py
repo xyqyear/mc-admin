@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 import pytest
 
@@ -8,8 +7,6 @@ from app.cron import crud
 from app.cron.jobs import backup
 from app.cron.manager import CronManager
 from app.cron.models import ExecutionStatus
-from app.db.metadata import Base
-from app.dynamic_config.configs.snapshots import SnapshotsConfig
 from app.minecraft import get_docker_mc_manager
 from app.operations.journal import OperationJournal
 from app.operations.journal_types import OperationState, ResourceReference
@@ -22,11 +19,8 @@ from tests.support.runtime import replace_runtime_resource
 
 @pytest.mark.binary("restic")
 @pytest.mark.parametrize("busy", [False, True])
-async def test_global_backup_records_success_or_skip_with_nested_file_scope(isolated_runtime, tmp_path, busy):
+async def test_global_backup_records_success_or_skip_with_nested_file_scope(isolated_runtime, runtime_config, tmp_path, busy):
     runtime = isolated_runtime
-    replace_runtime_resource(runtime, "dynamic_configuration", SimpleNamespace(snapshots=SnapshotsConfig()))
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
         session.add(Server(server_id="survival"))
         await session.commit()

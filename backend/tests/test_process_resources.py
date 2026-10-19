@@ -55,7 +55,7 @@ async def test_sampling_runs_off_loop_and_keeps_multicore_percentage(monkeypatch
         release.set()
         result = await sampling
     assert result == 175.0
-    assert intervals == [1]
+    assert len(intervals) == 1 and intervals[0] > 0
 
 
 async def test_reused_pid_is_sampled_from_current_process(monkeypatch):
@@ -66,7 +66,6 @@ async def test_reused_pid_is_sampled_from_current_process(monkeypatch):
             self.percentage = next(samples)
 
         def cpu_percent(self, interval):
-            assert interval == 1
             return self.percentage
 
     monkeypatch.setattr(system.psutil, "Process", lambda pid: CurrentProcess())

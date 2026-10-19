@@ -3,21 +3,19 @@ from tests.support.tasks import task_result, wait_task
 """End-to-end tests for POST /api/servers/sync.
 
 Covers: empty diff, fs_only / db_only / mixed, validation errors, dry-run,
-empty-fs safety guard, and concurrent 409.
+empty-fs safety guard, and owner authorization.
 """
 import asyncio
 import tempfile
+from contextlib import ExitStack
 from datetime import UTC
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import get_db
-from app.db.metadata import Base
-from app.main import api_app
+from app.main import create_api_app
 from app.minecraft import DockerMCManager
 from app.runtime_resources import current_runtime
 from app.servers.crud import create_server_record
@@ -69,51 +67,22 @@ def temp_server_path():
 
 
 @pytest.fixture
-async def test_db():
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-    engine = create_async_engine(
-        f"sqlite+aiosqlite:///{database_path}", echo=False
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    TestSessionLocal = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
-    yield TestSessionLocal
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db(db_session_factory):
+    return db_session_factory
 
 
 @pytest.fixture
 def test_client(temp_server_path, test_db):
-    from app.auth.service import get_identity_service
-
-    async def override_get_db():
-        async with test_db() as session:
-            yield session
-
-    api_app.dependency_overrides[get_db] = override_get_db
 
     real_mc_manager = DockerMCManager(temp_server_path)
     patches = [
-        patch_runtime_resource("session_factory", test_db),
-        patch.object(get_identity_service(), "session_factory", test_db),
         patch.object(current_runtime().settings, 'server_path', temp_server_path),
         patch.object(current_runtime().settings, 'master_token', "test-master-token"),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
-        patch_runtime_resource('docker_mc_manager', real_mc_manager),
         patch_runtime_resource('docker_mc_manager', real_mc_manager),
         patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
         patch.object(current_runtime().log_monitor, 'start_server', new_callable=AsyncMock),
         patch.object(current_runtime().log_monitor, 'stop_watching', new_callable=AsyncMock),
         patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
-        patch(
-            "app.servers.lifecycle.orchestrators.close_open_sessions",
-            new_callable=AsyncMock,
-            return_value=0,
-        ),
         patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
         patch(
             "app.minecraft.docker.manager.ComposeManager.created",
@@ -121,13 +90,11 @@ def test_client(temp_server_path, test_db):
             return_value=False,
         ),
     ]
-    for p in patches:
-        p.start()
-    with TestClient(api_app, raise_server_exceptions=False) as client:
-        yield client, real_mc_manager, test_db
-    for p in patches:
-        p.stop()
-    api_app.dependency_overrides.pop(get_db, None)
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
+        with TestClient(create_api_app(current_runtime()), raise_server_exceptions=False) as client:
+            yield client, real_mc_manager, test_db
 
 
 # ---------------------------------------------------------------------------

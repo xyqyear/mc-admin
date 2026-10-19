@@ -1,49 +1,25 @@
-from collections.abc import Callable, Iterable
-from pathlib import Path
-from typing import Self
+import os
 
 import pytest
 
-from app.dynamic_config import get_config
-from app.world import region_manifest
-
-pytestmark = [pytest.mark.binary('fd')]
+from app.world.region_manifest import list_region_manifest_sync
 
 
-def test_region_manifest_worker_count_comes_from_config(tmp_path: Path, monkeypatch):
-    region_dir = tmp_path / "region"
-    region_dir.mkdir()
-    for x in range(3):
-        (region_dir / f"r.{x}.0.mca").write_bytes(b"mca")
+@pytest.mark.parametrize("workers", [1, 3])
+def test_region_manifest_preserves_complete_current_files(tmp_path, runtime_config, workers):
+    runtime_config.world.region_stat_workers = workers
+    for name in ("r.-1.2.mca", "r.3.0.mca", "r.0.0.mca"):
+        path = tmp_path / name
+        path.write_bytes(b"region content")
+        os.utime(path, (1_700_000_000, 1_700_000_000))
+    (tmp_path / "r.99.99.mca").mkdir()
+    (tmp_path / "r.5.5.mca").touch()
+    (tmp_path / "not-a-region.mca").write_bytes(b"unrelated")
 
-    seen_workers: list[int] = []
-
-    class FakePool:
-        def __init__(self, max_workers: int) -> None:
-            seen_workers.append(max_workers)
-
-        def __enter__(self) -> Self:
-            return self
-
-        def __exit__(
-            self,
-            exc_type: type[BaseException] | None,
-            exc: BaseException | None,
-            tb: object,
-        ) -> bool:
-            return False
-
-        def map(
-            self,
-            fn: Callable[[tuple[str, int, int]], tuple[int, int, int] | None],
-            candidates: Iterable[tuple[str, int, int]],
-        ) -> Iterable[tuple[int, int, int] | None]:
-            return map(fn, candidates)
-
-    monkeypatch.setattr(get_config().world, "region_stat_workers", 2)
-    monkeypatch.setattr(region_manifest, "ThreadPoolExecutor", FakePool)
-
-    rows = region_manifest.list_region_manifest_sync(region_dir)
-
-    assert seen_workers == [2]
-    assert [(x, z) for x, z, _ in rows] == [(0, 0), (1, 0), (2, 0)]
+    assert list_region_manifest_sync(tmp_path) == [
+        (-1, 2, 1_700_000_000), (0, 0, 1_700_000_000), (3, 0, 1_700_000_000),
+    ]
+    (tmp_path / "r.0.0.mca").unlink()
+    assert list_region_manifest_sync(tmp_path) == [
+        (-1, 2, 1_700_000_000), (3, 0, 1_700_000_000),
+    ]

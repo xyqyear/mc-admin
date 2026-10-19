@@ -5,7 +5,6 @@ Tests complete tracking flows using direct function calls.
 Only mocks: skin_fetcher, mojang_api, and uses isolated test databases.
 """
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -30,10 +29,9 @@ from tests.players.helpers import make_online_uuid
 
 @pytest.fixture
 def mock_skin_fetcher():
-    """Mock skin fetcher with 200ms network delay."""
+    """Controlled external skin response."""
 
     async def fetch_skin(uuid: str):
-        await asyncio.sleep(0.2)
         return (b"skin_data_" + uuid.encode(), b"avatar_data_" + uuid.encode())
 
     return AsyncMock(side_effect=fetch_skin)
@@ -41,10 +39,9 @@ def mock_skin_fetcher():
 
 @pytest.fixture
 def mock_mojang_api():
-    """Mock Mojang API with 200ms network delay."""
+    """Controlled external identity response."""
 
     async def fetch_uuid(player_name: str):
-        await asyncio.sleep(0.2)
         return make_online_uuid(player_name)
 
     return AsyncMock(side_effect=fetch_uuid)

@@ -1,4 +1,8 @@
+from tests.cron.test_cronjobs import assert_next_calendar_day
+
 """Cron expression validation and execution timing tests."""
+
+from datetime import datetime
 
 import pytest
 from sqlalchemy import select
@@ -26,9 +30,15 @@ class TestCronScheduling:
             ("*/5 * * * *", None, "Every 5 minutes"),
         ]
 
+        reference = datetime(2026, 1, 4, 8, 7, 12, tzinfo=cron_manager.scheduler.timezone)
+        expected_dates = [
+            (2026, 1, 5, 0, 0, 0), (2026, 1, 4, 10, 0, 0),
+            (2026, 1, 5, 9, 30, 0), (2026, 2, 1, 0, 0, 0),
+            (2026, 1, 4, 8, 7, 12), (2026, 1, 4, 8, 10, 0),
+        ]
         created_cronjobs = []
 
-        for cron_expr, second, description in test_cases:
+        for (cron_expr, second, description), expected in zip(test_cases, expected_dates, strict=True):
             cronjob_id = await cron_manager.create_cronjob(
                 identifier="test_cronjob",
                 params=params,
@@ -44,10 +54,8 @@ class TestCronScheduling:
                 f"Cron expression '{cron_expr}' should be valid"
             )
 
-            from apscheduler.triggers.cron import CronTrigger
-
-            assert isinstance(scheduled_job.trigger, CronTrigger), (
-                f"CronJob with cron '{cron_expr}' should have CronTrigger"
+            assert scheduled_job.trigger.get_next_fire_time(None, reference) == datetime(
+                *expected, tzinfo=cron_manager.scheduler.timezone,
             )
 
         scheduled_job_ids = [job.id for job in cron_manager.scheduler.get_jobs()]
@@ -105,7 +113,7 @@ class TestCronScheduling:
 
         scheduled_job = cron_manager.scheduler.get_job(cronjob_id)
         assert scheduled_job is not None
-        assert str(scheduled_job.trigger.fields[4]) == "0"
+        assert_next_calendar_day(scheduled_job, 0)
 
         with pytest.raises(ValueError, match="星期字段"):
             await cron_manager.update_cronjob(
@@ -124,11 +132,11 @@ class TestCronScheduling:
 
         scheduled_job = cron_manager.scheduler.get_job(cronjob_id)
         assert scheduled_job is not None
-        assert str(scheduled_job.trigger.fields[4]) == "0"
+        assert_next_calendar_day(scheduled_job, 0)
 
         await cron_manager.pause_cronjob(cronjob_id)
         await cron_manager.resume_cronjob(cronjob_id)
 
         scheduled_job = cron_manager.scheduler.get_job(cronjob_id)
         assert scheduled_job is not None
-        assert str(scheduled_job.trigger.fields[4]) == "0"
+        assert_next_calendar_day(scheduled_job, 0)

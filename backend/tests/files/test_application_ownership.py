@@ -10,7 +10,6 @@ from fastapi import HTTPException, UploadFile
 
 from app.archive import application as archives
 from app.background_tasks import BackgroundTaskManager, TaskType
-from app.db.metadata import Base
 from app.files import multi_file, ownership
 from app.files.application import FileApplication
 from app.files.types import (
@@ -47,13 +46,11 @@ from app.snapshots.scopes import PathsScope
 from app.utils import async_fs
 from app.utils.exec import exec_command
 from app.world.locks import LockHolder, ServerOperationKind, get_server_operation_lock
-from tests.support.runtime import replace_runtime_resource, set_runtime_resource
+from tests.support.runtime import replace_runtime_resource
 
 
 @pytest.fixture
-async def file_application(isolated_runtime, monkeypatch):
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+async def file_application(isolated_runtime, monkeypatch, database):
     async with isolated_runtime.database.session_factory() as session:
         session.add(Server(id=1, server_id="first"))
         await session.commit()
@@ -161,9 +158,9 @@ async def test_archive_delete_rejects_protected_scope_without_accepting_task(fil
 
 
 @pytest.mark.binary("restic")
-async def test_cancelled_world_file_restore_invalidates_cache_before_restic_file_events(file_application, monkeypatch):
+async def test_cancelled_world_file_restore_invalidates_cache_before_restic_file_events(file_application, monkeypatch, runtime_config):
     app = file_application
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', SimpleNamespace(snapshots=SimpleNamespace(ignored_paths=[".mcmap"])))
+    runtime_config.snapshots.ignored_paths = [".mcmap"]
     monkeypatch.setattr(app.instance, "get_status", AsyncMock(return_value=MCServerStatus.CREATED))
     cache = app.data / ".mcmap" / "tiles"
     cache.mkdir(parents=True)
@@ -273,11 +270,11 @@ async def test_ownership_task_holds_real_data_scope_until_external_command_finis
 
 
 @pytest.mark.binary("restic")
-async def test_real_online_restore_reuses_file_lease_and_preserves_ignored_paths(file_application, tmp_path, monkeypatch):
+async def test_real_online_restore_reuses_file_lease_and_preserves_ignored_paths(file_application, tmp_path, monkeypatch, runtime_config):
     client = ResticClient(str(tmp_path / "repo"), password="owned-test")
     await exec_command(str(client.binary_path), "init", env=client.env)
     snapshots = SnapshotService(client, file_application.manager)
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', SimpleNamespace(snapshots=SimpleNamespace(ignored_paths=["ignored"])))
+    runtime_config.snapshots.ignored_paths = ["ignored"]
     data = file_application.data
     snapshot = await snapshots.create_snapshot([data])
     (data / "plugin.conf").write_text("changed")

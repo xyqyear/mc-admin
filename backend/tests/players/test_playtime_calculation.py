@@ -10,11 +10,10 @@ from app.players.crud.query.player_query import (
 )
 from app.players.models import Player, PlayerSession
 from app.servers.models import Server
-from tests.players.helpers import cleanup_test_db, create_test_db
 
 
 @pytest.mark.asyncio
-async def test_playtime_with_finished_and_ongoing_sessions():
+async def test_playtime_with_finished_and_ongoing_sessions(db_session):
     """Test that total playtime includes both finished and ongoing sessions.
 
     This test verifies:
@@ -22,284 +21,269 @@ async def test_playtime_with_finished_and_ongoing_sessions():
     2. Ongoing sessions calculate duration from joined_at to now
     3. Total playtime is the sum of both
     """
-    db, engine, temp_db_path = await create_test_db()
+    db = db_session
+    test_player_uuid = "test-uuid-playtime-123"
+    test_server_id = "test_server_playtime"
 
-    try:
-        test_player_uuid = "test-uuid-playtime-123"
-        test_server_id = "test_server_playtime"
+    # Create test server
+    test_server = Server(
+        server_id=test_server_id,
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_server)
+    await db.flush()
 
-        # Create test server
-        test_server = Server(
-            server_id=test_server_id,
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_server)
-        await db.flush()
+    # Create test player
+    test_player = Player(
+        uuid=test_player_uuid,
+        current_name="TestPlayer",
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_player)
+    await db.flush()
 
-        # Create test player
-        test_player = Player(
-            uuid=test_player_uuid,
-            current_name="TestPlayer",
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_player)
-        await db.flush()
+    # Create finished sessions
+    # Session 1: 1 hour ago, played for 3600 seconds (1 hour)
+    session1_joined = datetime.now(UTC) - timedelta(hours=2)
+    session1_left = session1_joined + timedelta(hours=1)
+    session1 = PlayerSession(
+        player_db_id=test_player.player_db_id,
+        server_db_id=test_server.id,
+        joined_at=session1_joined,
+        left_at=session1_left,
+        duration_seconds=3600,
+    )
+    db.add(session1)
 
-        # Create finished sessions
-        # Session 1: 1 hour ago, played for 3600 seconds (1 hour)
-        session1_joined = datetime.now(UTC) - timedelta(hours=2)
-        session1_left = session1_joined + timedelta(hours=1)
-        session1 = PlayerSession(
-            player_db_id=test_player.player_db_id,
-            server_db_id=test_server.id,
-            joined_at=session1_joined,
-            left_at=session1_left,
-            duration_seconds=3600,
-        )
-        db.add(session1)
+    # Session 2: 30 minutes ago, played for 1800 seconds (30 minutes)
+    session2_joined = datetime.now(UTC) - timedelta(minutes=60)
+    session2_left = session2_joined + timedelta(minutes=30)
+    session2 = PlayerSession(
+        player_db_id=test_player.player_db_id,
+        server_db_id=test_server.id,
+        joined_at=session2_joined,
+        left_at=session2_left,
+        duration_seconds=1800,
+    )
+    db.add(session2)
 
-        # Session 2: 30 minutes ago, played for 1800 seconds (30 minutes)
-        session2_joined = datetime.now(UTC) - timedelta(minutes=60)
-        session2_left = session2_joined + timedelta(minutes=30)
-        session2 = PlayerSession(
-            player_db_id=test_player.player_db_id,
-            server_db_id=test_server.id,
-            joined_at=session2_joined,
-            left_at=session2_left,
-            duration_seconds=1800,
-        )
-        db.add(session2)
+    # Create ongoing session (no left_at, no duration_seconds)
+    # Joined 10 minutes ago, still playing
+    ongoing_joined = datetime.now(UTC) - timedelta(minutes=10)
+    session3 = PlayerSession(
+        player_db_id=test_player.player_db_id,
+        server_db_id=test_server.id,
+        joined_at=ongoing_joined,
+        left_at=None,
+        duration_seconds=None,
+    )
+    db.add(session3)
 
-        # Create ongoing session (no left_at, no duration_seconds)
-        # Joined 10 minutes ago, still playing
-        ongoing_joined = datetime.now(UTC) - timedelta(minutes=10)
-        session3 = PlayerSession(
-            player_db_id=test_player.player_db_id,
-            server_db_id=test_server.id,
-            joined_at=ongoing_joined,
-            left_at=None,
-            duration_seconds=None,
-        )
-        db.add(session3)
+    await db.commit()
 
-        await db.commit()
+    # Test get_all_players_summary
+    players_summary = await get_all_players_summary(db)
 
-        # Test get_all_players_summary
-        players_summary = await get_all_players_summary(db)
+    # Find our test player
+    test_player_summary = next(
+        (p for p in players_summary if p.uuid == test_player_uuid), None
+    )
+    assert test_player_summary is not None, "Test player not found in summary"
 
-        # Find our test player
-        test_player_summary = next(
-            (p for p in players_summary if p.uuid == test_player_uuid), None
-        )
-        assert test_player_summary is not None, "Test player not found in summary"
+    # Expected playtime:
+    # - Session 1: 3600 seconds (1 hour)
+    # - Session 2: 1800 seconds (30 minutes)
+    # - Session 3 (ongoing): ~600 seconds (10 minutes, may vary slightly)
+    # Total: ~5400 seconds (90 minutes)
+    expected_min = 3600 + 1800 + 580  # Allow some tolerance for timing
+    expected_max = 3600 + 1800 + 620
 
-        # Expected playtime:
-        # - Session 1: 3600 seconds (1 hour)
-        # - Session 2: 1800 seconds (30 minutes)
-        # - Session 3 (ongoing): ~600 seconds (10 minutes, may vary slightly)
-        # Total: ~5400 seconds (90 minutes)
-        expected_min = 3600 + 1800 + 580  # Allow some tolerance for timing
-        expected_max = 3600 + 1800 + 620
+    assert (
+        expected_min <= test_player_summary.total_playtime_seconds <= expected_max
+    ), (
+        f"Total playtime {test_player_summary.total_playtime_seconds} "
+        f"not in expected range [{expected_min}, {expected_max}]"
+    )
 
-        assert (
-            expected_min <= test_player_summary.total_playtime_seconds <= expected_max
-        ), (
-            f"Total playtime {test_player_summary.total_playtime_seconds} "
-            f"not in expected range [{expected_min}, {expected_max}]"
-        )
+    print(
+        f"✓ Player summary playtime: {test_player_summary.total_playtime_seconds} seconds "
+        f"(expected ~5400, range: {expected_min}-{expected_max})"
+    )
 
-        print(
-            f"✓ Player summary playtime: {test_player_summary.total_playtime_seconds} seconds "
-            f"(expected ~5400, range: {expected_min}-{expected_max})"
-        )
+    # Test get_player_detail_by_uuid
+    player_detail = await get_player_detail_by_uuid(db, test_player_uuid)
+    assert player_detail is not None, "Player detail not found"
 
-        # Test get_player_detail_by_uuid
-        player_detail = await get_player_detail_by_uuid(db, test_player_uuid)
-        assert player_detail is not None, "Player detail not found"
+    assert expected_min <= player_detail.total_playtime_seconds <= expected_max, (
+        f"Total playtime {player_detail.total_playtime_seconds} "
+        f"not in expected range [{expected_min}, {expected_max}]"
+    )
 
-        assert expected_min <= player_detail.total_playtime_seconds <= expected_max, (
-            f"Total playtime {player_detail.total_playtime_seconds} "
-            f"not in expected range [{expected_min}, {expected_max}]"
-        )
+    print(
+        f"✓ Player detail playtime: {player_detail.total_playtime_seconds} seconds "
+        f"(expected ~5400, range: {expected_min}-{expected_max})"
+    )
 
-        print(
-            f"✓ Player detail playtime: {player_detail.total_playtime_seconds} seconds "
-            f"(expected ~5400, range: {expected_min}-{expected_max})"
-        )
+    # Verify player is marked as online (has ongoing session)
+    assert player_detail.is_online is True, "Player should be online"
+    assert test_server_id in player_detail.current_servers, (
+        f"Player should be on {test_server_id}"
+    )
 
-        # Verify player is marked as online (has ongoing session)
-        assert player_detail.is_online is True, "Player should be online"
-        assert test_server_id in player_detail.current_servers, (
-            f"Player should be on {test_server_id}"
-        )
+    print("✓ Player correctly marked as online")
 
-        print("✓ Player correctly marked as online")
-
-    finally:
-        await cleanup_test_db(db, engine, temp_db_path)
 
 
 @pytest.mark.asyncio
-async def test_playtime_with_only_ongoing_sessions():
+async def test_playtime_with_only_ongoing_sessions(db_session):
     """Test playtime calculation with only ongoing sessions (no finished sessions)."""
-    db, engine, temp_db_path = await create_test_db()
+    db = db_session
+    test_player_uuid = "test-uuid-ongoing-456"
+    test_server_id = "test_server_ongoing"
 
-    try:
-        test_player_uuid = "test-uuid-ongoing-456"
-        test_server_id = "test_server_ongoing"
+    # Create test server
+    test_server = Server(
+        server_id=test_server_id,
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_server)
+    await db.flush()
 
-        # Create test server
-        test_server = Server(
-            server_id=test_server_id,
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_server)
-        await db.flush()
+    # Create test player
+    test_player = Player(
+        uuid=test_player_uuid,
+        current_name="OngoingPlayer",
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_player)
+    await db.flush()
 
-        # Create test player
-        test_player = Player(
-            uuid=test_player_uuid,
-            current_name="OngoingPlayer",
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_player)
-        await db.flush()
+    # Create only ongoing session
+    # Joined 5 minutes ago
+    ongoing_joined = datetime.now(UTC) - timedelta(minutes=5)
+    session = PlayerSession(
+        player_db_id=test_player.player_db_id,
+        server_db_id=test_server.id,
+        joined_at=ongoing_joined,
+        left_at=None,
+        duration_seconds=None,
+    )
+    db.add(session)
+    await db.commit()
 
-        # Create only ongoing session
-        # Joined 5 minutes ago
-        ongoing_joined = datetime.now(UTC) - timedelta(minutes=5)
-        session = PlayerSession(
-            player_db_id=test_player.player_db_id,
-            server_db_id=test_server.id,
-            joined_at=ongoing_joined,
-            left_at=None,
-            duration_seconds=None,
-        )
-        db.add(session)
-        await db.commit()
+    # Get player summary
+    players_summary = await get_all_players_summary(db)
+    test_player_summary = next(
+        (p for p in players_summary if p.uuid == test_player_uuid), None
+    )
 
-        # Get player summary
-        players_summary = await get_all_players_summary(db)
-        test_player_summary = next(
-            (p for p in players_summary if p.uuid == test_player_uuid), None
-        )
+    assert test_player_summary is not None
 
-        assert test_player_summary is not None
+    # Expected: ~300 seconds (5 minutes)
+    expected_min = 280
+    expected_max = 320
 
-        # Expected: ~300 seconds (5 minutes)
-        expected_min = 280
-        expected_max = 320
+    assert (
+        expected_min <= test_player_summary.total_playtime_seconds <= expected_max
+    ), (
+        f"Total playtime {test_player_summary.total_playtime_seconds} "
+        f"not in expected range [{expected_min}, {expected_max}]"
+    )
 
-        assert (
-            expected_min <= test_player_summary.total_playtime_seconds <= expected_max
-        ), (
-            f"Total playtime {test_player_summary.total_playtime_seconds} "
-            f"not in expected range [{expected_min}, {expected_max}]"
-        )
+    print(
+        f"✓ Ongoing-only playtime: {test_player_summary.total_playtime_seconds} seconds "
+        f"(expected ~300, range: {expected_min}-{expected_max})"
+    )
 
-        print(
-            f"✓ Ongoing-only playtime: {test_player_summary.total_playtime_seconds} seconds "
-            f"(expected ~300, range: {expected_min}-{expected_max})"
-        )
-
-    finally:
-        await cleanup_test_db(db, engine, temp_db_path)
 
 
 @pytest.mark.asyncio
-async def test_playtime_with_only_finished_sessions():
+async def test_playtime_with_only_finished_sessions(db_session):
     """Test playtime calculation with only finished sessions (no ongoing sessions)."""
-    db, engine, temp_db_path = await create_test_db()
+    db = db_session
+    test_player_uuid = "test-uuid-finished-789"
+    test_server_id = "test_server_finished"
 
-    try:
-        test_player_uuid = "test-uuid-finished-789"
-        test_server_id = "test_server_finished"
+    # Create test server
+    test_server = Server(
+        server_id=test_server_id,
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_server)
+    await db.flush()
 
-        # Create test server
-        test_server = Server(
-            server_id=test_server_id,
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_server)
-        await db.flush()
+    # Create test player
+    test_player = Player(
+        uuid=test_player_uuid,
+        current_name="FinishedPlayer",
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_player)
+    await db.flush()
 
-        # Create test player
-        test_player = Player(
-            uuid=test_player_uuid,
-            current_name="FinishedPlayer",
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_player)
-        await db.flush()
+    # Create only finished sessions
+    session1_joined = datetime.now(UTC) - timedelta(hours=3)
+    session1_left = session1_joined + timedelta(hours=2)
+    session1 = PlayerSession(
+        player_db_id=test_player.player_db_id,
+        server_db_id=test_server.id,
+        joined_at=session1_joined,
+        left_at=session1_left,
+        duration_seconds=7200,  # 2 hours
+    )
+    db.add(session1)
+    await db.commit()
 
-        # Create only finished sessions
-        session1_joined = datetime.now(UTC) - timedelta(hours=3)
-        session1_left = session1_joined + timedelta(hours=2)
-        session1 = PlayerSession(
-            player_db_id=test_player.player_db_id,
-            server_db_id=test_server.id,
-            joined_at=session1_joined,
-            left_at=session1_left,
-            duration_seconds=7200,  # 2 hours
-        )
-        db.add(session1)
-        await db.commit()
+    # Get player summary
+    players_summary = await get_all_players_summary(db)
+    test_player_summary = next(
+        (p for p in players_summary if p.uuid == test_player_uuid),
+        None,
+    )
 
-        # Get player summary
-        players_summary = await get_all_players_summary(db)
-        test_player_summary = next(
-            (p for p in players_summary if p.uuid == test_player_uuid),
-            None,
-        )
+    assert test_player_summary is not None
+    assert test_player_summary.total_playtime_seconds == 7200, (
+        f"Expected 7200 seconds, got {test_player_summary.total_playtime_seconds}"
+    )
 
-        assert test_player_summary is not None
-        assert test_player_summary.total_playtime_seconds == 7200, (
-            f"Expected 7200 seconds, got {test_player_summary.total_playtime_seconds}"
-        )
+    # Player should be offline
+    assert test_player_summary.is_online is False, "Player should be offline"
 
-        # Player should be offline
-        assert test_player_summary.is_online is False, "Player should be offline"
+    print(
+        f"✓ Finished-only playtime: {test_player_summary.total_playtime_seconds} seconds "
+        f"(expected exactly 7200)"
+    )
 
-        print(
-            f"✓ Finished-only playtime: {test_player_summary.total_playtime_seconds} seconds "
-            f"(expected exactly 7200)"
-        )
-
-    finally:
-        await cleanup_test_db(db, engine, temp_db_path)
 
 
 @pytest.mark.parametrize("whole_server", [False, True])
 @pytest.mark.parametrize("departure_seconds", [-30, 120])
-async def test_session_end_never_precedes_join(whole_server, departure_seconds):
+async def test_session_end_never_precedes_join(whole_server, departure_seconds, db_session):
     from app.players.crud.player_session import (
         end_all_open_sessions,
         end_all_open_sessions_on_server,
     )
 
-    db, engine, db_path = await create_test_db()
-    try:
-        joined_at = datetime(2026, 9, 7, 12, tzinfo=UTC)
-        server = Server(server_id="end-boundary")
-        player = Player(uuid="123e4567e89b42d3a456426614174000", current_name="RecentJoin", created_at=joined_at)
-        db.add_all([server, player])
-        await db.flush()
-        active = PlayerSession(player_db_id=player.player_db_id, server_db_id=server.id, joined_at=joined_at)
-        db.add(active)
-        await db.commit()
-        departure = joined_at + timedelta(seconds=departure_seconds)
-        if whole_server:
-            ended = await end_all_open_sessions_on_server(db, server.id, departure)
-        else:
-            ended = await end_all_open_sessions(db, player.player_db_id, server.id, departure)
-        assert ended == 1
-        await db.refresh(active)
-        expected_duration = max(0, departure_seconds)
-        assert active.left_at == joined_at + timedelta(seconds=expected_duration)
-        assert active.duration_seconds == expected_duration
-        summary = await get_player_detail_by_uuid(db, player.uuid)
-        assert summary is not None
-        assert not summary.is_online
-        assert summary.total_playtime_seconds == expected_duration
-    finally:
-        await cleanup_test_db(db, engine, db_path)
+    db = db_session
+    joined_at = datetime(2026, 9, 7, 12, tzinfo=UTC)
+    server = Server(server_id="end-boundary")
+    player = Player(uuid="123e4567e89b42d3a456426614174000", current_name="RecentJoin", created_at=joined_at)
+    db.add_all([server, player])
+    await db.flush()
+    active = PlayerSession(player_db_id=player.player_db_id, server_db_id=server.id, joined_at=joined_at)
+    db.add(active)
+    await db.commit()
+    departure = joined_at + timedelta(seconds=departure_seconds)
+    if whole_server:
+        ended = await end_all_open_sessions_on_server(db, server.id, departure)
+    else:
+        ended = await end_all_open_sessions(db, player.player_db_id, server.id, departure)
+    assert ended == 1
+    await db.refresh(active)
+    expected_duration = max(0, departure_seconds)
+    assert active.left_at == joined_at + timedelta(seconds=expected_duration)
+    assert active.duration_seconds == expected_duration
+    summary = await get_player_detail_by_uuid(db, player.uuid)
+    assert summary is not None
+    assert not summary.is_online
+    assert summary.total_playtime_seconds == expected_duration

@@ -115,10 +115,8 @@ async def test_router_api_contract_with_docker(monkeypatch):
             if client is not None:
                 await client.close()
         finally:
-            ownership = await docker(
-                "inspect", "--format", '{{index .Config.Labels "io.mc-admin.e2e.environment"}}', name,
-                required=False,
-            )
-            if ownership:
-                assert ownership == environment_id, "refusing to delete a container with different ownership"
-                await docker("rm", "-f", name)
+            inventory = await docker("inspect", name, required=False)
+            if inventory:
+                resource = json.loads(inventory)[0]
+                assert resource["Config"]["Labels"]["io.mc-admin.e2e.environment"] == environment_id
+                await docker("rm", "-f", resource["Id"])

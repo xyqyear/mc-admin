@@ -8,12 +8,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import get_db
-from app.db.metadata import Base
-from app.main import api_app
+from app.main import create_api_app
 from app.minecraft import DockerMCManager
+from app.operations.journal import OperationJournal
 from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource
 
@@ -69,34 +67,14 @@ def temp_server_path():
 
 
 @pytest.fixture
-async def test_db():
-    """Create a test database."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    TestSessionLocal = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
-    yield TestSessionLocal
-
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db(db_session_factory):
+    return db_session_factory
 
 
 @pytest.fixture
 def test_client(temp_server_path, test_db):
     """Create TestClient with mocked dependencies."""
-
-    async def override_get_db():
-        async with test_db() as session:
-            yield session
-
-    api_app.dependency_overrides[get_db] = override_get_db
+    current_runtime().journal = OperationJournal(test_db)
 
     with (
         patch.object(current_runtime().settings, 'server_path', temp_server_path),
@@ -104,18 +82,14 @@ def test_client(temp_server_path, test_db):
     ):
         real_mc_manager = DockerMCManager(temp_server_path)
         with (
-            patch_runtime_resource("session_factory", test_db),
-            patch_runtime_resource('docker_mc_manager', real_mc_manager),
-            patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch_runtime_resource('docker_mc_manager', real_mc_manager),
             patch('app.servers.port_utils.get_system_used_ports', return_value=set()),
             patch.object(current_runtime().log_monitor, 'start_server', new_callable=AsyncMock),
             patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
-            TestClient(api_app, raise_server_exceptions=False) as client,
+            TestClient(create_api_app(current_runtime()), raise_server_exceptions=False) as client,
         ):
             yield client
 
-    api_app.dependency_overrides.pop(get_db, None)
 
 
 def auth_headers():
@@ -289,7 +263,6 @@ async def test_legacy_snapshot_edit_rebuilds_without_requiring_server_port(test_
     with (
         patch_runtime_resource('docker_mc_manager', manager),
         patch_runtime_resource('task_manager', tasks),
-        patch("app.configuration.application.get_async_session", test_db),
         patch_runtime_resource('docker_mc_manager', manager),
         patch("app.configuration.application.check_port_conflicts", AsyncMock(return_value=[])),
         patch.object(instance, "get_status", AsyncMock(return_value=MCServerStatus.EXISTS)),
@@ -356,7 +329,6 @@ async def test_rebuild_completion_includes_metadata_save(test_db, temp_server_pa
     tasks = BackgroundTaskManager()
     with (
         patch_runtime_resource('docker_mc_manager', manager),
-        patch("app.configuration.application.get_async_session", test_db),
         patch("app.configuration.application.check_port_conflicts", AsyncMock(return_value=[])),
         patch.object(manager, "get_instance", return_value=instance),
         patch.object(instance, "get_status", AsyncMock(return_value=MCServerStatus.HEALTHY)),

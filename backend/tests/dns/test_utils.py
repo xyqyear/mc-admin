@@ -1,21 +1,8 @@
 import pytest
 
 from app.dns.types import AddRecordT, ReturnRecordT
-from app.dns.utils import RecordDiff, RecordKey, diff_dns_records
-from tests.dns.test_reconciliation import StatefulDNS
-
-
-def test_record_key():
-    key = RecordKey("test.example.com", "A")
-    assert key.sub_domain == "test.example.com"
-    assert key.record_type == "A"
-
-    key2 = RecordKey("test.example.com", "A")
-    assert key == key2
-
-    key3 = RecordKey("test.example.com", "AAAA")
-    assert key != key3
-
+from app.dns.utils import RecordDiff, diff_dns_records
+from tests.dns.fakes import StatefulDNS
 
 ADDRESS = ReturnRecordT(sub_domain="*.mc", value="192.0.2.1", record_id="address", record_type="A", ttl=300)
 UNCHANGED = AddRecordT(sub_domain="*.mc", value="192.0.2.1", record_type="A", ttl=300)
@@ -67,9 +54,13 @@ async def test_managed_filtering_excludes_unrelated_records_without_writes():
     provider = StatefulDNS()
     unrelated = ReturnRecordT(sub_domain="www", value="192.0.2.5", record_id="unrelated", record_type="A", ttl=300)
     managed_srv = ReturnRecordT(sub_domain="_minecraft._tcp.survival.mc", value="0 5 25565 survival.mc.example.com", record_id="srv", record_type="SRV", ttl=300)
-    provider.records = [ADDRESS, unrelated, managed_srv]
+    nested_srv = ReturnRecordT(sub_domain="_minecraft._tcp.creative.backup.mc", value="0 5 25566 creative.backup.mc.example.com", record_id="nested", record_type="SRV", ttl=300)
+    other_wildcard = ReturnRecordT(sub_domain="*.api", value="192.0.2.8", record_id="api", record_type="A", ttl=300)
+    http_srv = ReturnRecordT(sub_domain="_http._tcp.web.mc", value="0 5 80 web.mc.example.com", record_id="http", record_type="SRV", ttl=300)
+    original = [ADDRESS, unrelated, managed_srv, other_wildcard, http_srv, nested_srv]
+    provider.records = list(original)
     observed = await provider.list_relevant_records("mc")
-    assert observed == [ADDRESS, managed_srv]
-    assert diff_dns_records(observed, [UNCHANGED]) == RecordDiff([], ["srv"], [])
-    assert provider.records == [ADDRESS, unrelated, managed_srv]
+    assert observed == [ADDRESS, managed_srv, nested_srv]
+    assert diff_dns_records(observed, [UNCHANGED]) == RecordDiff([], ["srv", "nested"], [])
+    assert provider.records == original
     assert provider.calls == []

@@ -2,17 +2,11 @@
 backend startup should flip to interrupted with an error message and a
 finished_at timestamp."""
 
-import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.snapshots.recovery import mark_running_restorations_interrupted
 from app.snapshots.restoration_models import (
     Restoration,
@@ -21,25 +15,11 @@ from app.snapshots.restoration_models import (
 )
 
 
-@pytest_asyncio.fixture
-async def session_factory():
-    with tempfile.TemporaryDirectory(prefix="mc-restore-crash-db-") as tmp:
-        db_path = Path(tmp) / "test.db"
-        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        maker = async_sessionmaker(engine, expire_on_commit=False)
-        try:
-            yield maker
-        finally:
-            await engine.dispose()
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [RestorationStatus.PENDING, RestorationStatus.RUNNING])
-async def test_unfinished_rows_become_interrupted(session_factory, status):
+async def test_unfinished_rows_become_interrupted(db_session_factory, status):
     started = datetime.now(UTC) - timedelta(minutes=10)
-    async with session_factory() as session:
+    async with db_session_factory() as session:
         session.add(
             Restoration(
                 id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -69,14 +49,11 @@ async def test_unfinished_rows_become_interrupted(session_factory, status):
         )
         await session.commit()
 
-    with patch(
-        "app.snapshots.recovery.get_async_session", session_factory
-    ):
-        flipped = await mark_running_restorations_interrupted()
+    flipped = await mark_running_restorations_interrupted()
 
     assert flipped == 1
 
-    async with session_factory() as session:
+    async with db_session_factory() as session:
         running_row = (
             await session.execute(
                 select(Restoration).where(
@@ -99,9 +76,6 @@ async def test_unfinished_rows_become_interrupted(session_factory, status):
 
 
 @pytest.mark.asyncio
-async def test_no_running_rows_returns_zero(session_factory):
-    with patch(
-        "app.snapshots.recovery.get_async_session", session_factory
-    ):
-        flipped = await mark_running_restorations_interrupted()
+async def test_no_running_rows_returns_zero(db_session_factory):
+    flipped = await mark_running_restorations_interrupted()
     assert flipped == 0

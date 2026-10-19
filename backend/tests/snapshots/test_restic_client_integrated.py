@@ -6,36 +6,15 @@ Requires restic on PATH (CI installs the pinned version).
 
 import asyncio
 import os
-import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from app.config import get_settings
 from app.operations import processes
 from app.snapshots import NodeKind, ResticClient
 from app.utils.exec import exec_command
-
-
-def check_restic_available():
-    try:
-        result = subprocess.run(
-            [str(get_settings().restic_binary_path), "version"],
-            capture_output=True,
-            text=True,
-            timeout=5, check=False,
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not check_restic_available(),
-    reason="restic command not available - install restic to run these tests",
-)
 
 
 async def _collect(gen):
@@ -421,4 +400,4 @@ class TestSnapshotLifecycle:
         assert (await client.list_locks()).strip() == ""
         await client.unlock()
 
-pytestmark = [pytestmark, pytest.mark.binary('restic')]
+pytestmark = [pytest.mark.binary("restic")]

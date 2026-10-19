@@ -20,6 +20,7 @@ uv run ruff check .
 - Use `uv`, never direct `pip`/`venv`. Do not run `black`; formatting is not enforced.
 - After backend code changes, run Pyright and Ruff. Use explicit related files/nodes for pytest, including architecture checks when imports or boundaries change.
 - Full collection, execution and shard loops belong to CI. Docker/external tests require explicit capability opt-in. Read [testing](docs/testing.md) before changing fixtures or test selection.
+- Test business outcomes with real SQLite, files and available local binaries. Use the shared database fixtures; keep independent sessions and terminal-state assertions. Replace unavailable external APIs or deliberate fault boundaries, and justify removed coverage with a surviving business scenario. See [test boundaries](docs/testing.md#business-assertions-and-test-boundaries).
 - Observable behavior changes need deployed API E2E coverage and an update to [the coverage inventory](../e2e/docs/coverage.md).
 - Migrations run at startup before DB consumers. Read [migration operations](docs/database-migrations.md) before adding revisions or performing manual maintenance.
 

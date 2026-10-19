@@ -9,10 +9,8 @@ import pytest
 from fastapi import HTTPException
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.auth.schemas import UserPublic
-from app.db.metadata import Base
 from app.dependencies import get_current_user
 from app.dynamic_config.configs.players import PlayersConfig
 from app.main import api_app
@@ -36,24 +34,13 @@ def _test_user() -> UserPublic:
 
 
 @pytest.fixture
-async def test_db_session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with maker() as session:
-        yield session
-    await engine.dispose()
+async def test_db_session(db_session):
+    return db_session
 
 
 @pytest.fixture
-async def test_db_maker():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    yield maker
-    await engine.dispose()
+async def test_db_maker(db_session_factory):
+    return db_session_factory
 
 
 async def _collect_profile_stream(uuids):
