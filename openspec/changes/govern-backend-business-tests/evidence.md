@@ -71,3 +71,15 @@ The complete qualification must run against the pushed commit via manual
 `Qualify and Publish Application` dispatch with `publish=false`. Local results
 and static review do not establish complete qualification. The delivery report
 records the exact SHA, Actions URL and final gate/audit outcome.
+
+## Qualification findings
+
+The first full run, [39288106004](https://github.com/xyqyear/mc-admin/actions/runs/39288106004),
+tested `dcf807dd2550841ace9135be7d6d0348ea201a49`. Candidate/Go, static/frontend,
+all API and browser shards and their audits passed. Seven backend shards passed;
+the remaining shard exposed an outdated populate rejection assertion after the
+fixture began using the real durable journal. Admission correctly rejects an
+unregistered server before filesystem existence checks. Its regression now
+requires the precise registration error, an unchanged archive, no server
+directory/registration, no journal row and no submitted task. The failed run
+does not qualify the change; the correction requires a new complete run.

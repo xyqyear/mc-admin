@@ -19,4 +19,11 @@
 
 - [x] 4.1 Update owning testing documentation and agent reading rules, and reconcile the complete file audit against the final implementation.
 - [x] 4.2 Independently review final changes and run selected local behavior regressions plus backend Ruff and Pyright.
-- [ ] 4.3 Commit and push, dispatch full qualification with publish=false, and verify the latest SHA and every required gate/audit.
+
+## Delivery acceptance
+
+Commit and push, dispatch full qualification with `publish=false`, and verify
+the latest SHA and every required gate/audit. Acceptance belongs to the
+immutable pushed commit's Actions result; the delivery response records that
+SHA, run URL and conclusion. A failed or incomplete run does not complete
+delivery, regardless of the implementation checklist above.

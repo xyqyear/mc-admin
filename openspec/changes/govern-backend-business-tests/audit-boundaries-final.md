@@ -77,3 +77,9 @@
 - 三条正向业务分别在新 SQL session 查询受理返回的 task ID 对应 `OperationJournalEntry`，独立断言期望业务 kind、`succeeded`、非空 ended_at、writers_stopped；populate 同时查创建与解压两条操作。保留实际文件内容、DNS远端状态、受理不等于完成、重复423等独立业务证据。
 - `test_tasks_auth.py` 明确用真实 `submit` 执行可控瞬态 worker，目标为通用任务权限、CSRF、列表/详情载荷、取消清理、删除；它没有声称覆盖持久化业务。`test_decompression.py` 的 TaskManager 回归、`test_task_stream_shutdown.py` 的真实进程关闭亦属于瞬态 worker 生命周期合同。`test_runtime.py` 的 durable 路径已调用真实 runtime.start() 绑定 journal；`test_execution_observation.py` 已显式绑定真实 journal。鉴权、事件日志及纯 DNS reconcile 不创建 durable task，不强加无关 journal。
 - 仅重跑三个已有正向节点：server creation、完整真实7z populate、DNS受理/重复/终态，均通过（3 passed）；三个文件 Ruff、定向 Pyright 均通过（0 errors）。这些是前述42个节点中的重复验证，未扩大成本为全量执行。
+
+## 首轮完整 CI 后的拒绝场景修正
+
+- 唯一失败节点 `TestPopulateServerIntegration::test_populate_nonexistent_server` 原先断言瞬态 worker 的“服务器不存在”文案；真实 durable 准入先检查登记身份，契约为 404 + `服务器尚未登记；已有目录需要先显式接管`。依照 `resolve_server_ref` 和服务器登记说明改为精确响应断言，生产行为保持不变。
+- 用真实 ZIP 作为尚未消费的输入；拒绝后独立 SQL session 验证无服务器注册、无操作 journal，真实任务列表为空，服务器根目录无文件，归档目录只含原 ZIP 且字节不变。此场景验证准入拒绝且没有任务/资源副作用，而非只适配文案。
+- 仅运行该失败节点：1 passed；该文件 Ruff 通过。未运行 CI、未提交；完整新 SHA 资格验证由主 agent 执行。

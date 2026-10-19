@@ -19,12 +19,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from app.main import api_app
 from app.minecraft import DockerMCManager
 from app.operations.journal import OperationJournal
 from app.operations.models import OperationJournalEntry
 from app.runtime_resources import current_runtime
+from app.servers.models import Server
 from tests.support.runtime import patch_runtime_resource, patch_settings
 from tests.support.tasks import task_result
 
@@ -308,18 +310,29 @@ services:
             f"Full populate integration test completed successfully for server '{server_id}'"
         )
 
-    def test_populate_nonexistent_server(self, client, mock_settings_and_auth):
-        """Test populate endpoint with nonexistent server."""
-        _, _ = mock_settings_and_auth
+    async def test_populate_nonexistent_server(
+        self, async_client, mock_settings_and_auth, db_session_factory
+    ):
+        server_path, archive_path = mock_settings_and_auth
+        archive = archive_path / "test.zip"
+        create_test_minecraft_archive(archive)
+        original_archive = archive.read_bytes()
 
-        response = client.post(
+        response = await async_client.post(
             "/api/servers/nonexistent_server/populate",
             headers={"Authorization": "Bearer test_master_token"},
             json={"archive_filename": "test.zip"},
         )
 
         assert response.status_code == 404
-        assert "不存在" in response.json()["detail"]
+        assert response.json() == {"detail": "服务器尚未登记；已有目录需要先显式接管"}
+        assert current_runtime().task_manager.get_all_tasks() == []
+        async with db_session_factory() as session:
+            assert await session.scalar(select(Server.id)) is None
+            assert await session.scalar(select(OperationJournalEntry.operation_id)) is None
+        assert list(server_path.iterdir()) == []
+        assert list(archive_path.iterdir()) == [archive]
+        assert archive.read_bytes() == original_archive
 
     @pytest.mark.asyncio
     async def test_populate_nonexistent_archive(
