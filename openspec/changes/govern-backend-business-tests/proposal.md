@@ -23,6 +23,6 @@ None. Existing business specifications remain the acceptance source.
 
 ## Impact
 
-Scope: all backend tests, support fixtures and owning backend testing documentation. Existing API E2E and browser coverage remain qualification gates. No frontend, public API, production persistence schema, deployment configuration or Docker behavior changes are intended. No breaking changes. Product behavior fixes discovered during review must be explicitly documented and receive their required API E2E coverage.
+Scope: all backend tests, support fixtures and owning backend testing documentation. Existing API E2E and browser coverage remain qualification gates. Qualification also identified a lifecycle browser test's ambiguous locator and premature cleanup; that test and its owning documentation are included. No production frontend, public API, production persistence schema, deployment configuration or Docker behavior changes are intended. No breaking changes. Product behavior fixes discovered during review must be explicitly documented and receive their required API E2E coverage.
 
 Non-goals: reducing test counts or runtime as an end in itself; removing meaningful safety boundaries; replacing integration coverage with mocks; executing a full suite locally.

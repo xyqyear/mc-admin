@@ -83,3 +83,21 @@ unregistered server before filesystem existence checks. Its regression now
 requires the precise registration error, an unchanged archive, no server
 directory/registration, no journal row and no submitted task. The failed run
 does not qualify the change; the correction requires a new complete run.
+
+The second full run, [39291131375](https://github.com/xyqyear/mc-admin/actions/runs/39291131375),
+tested `6dd40f2d45e356f5d321ad082f3c774e1121f40d`. All backend shards and their
+audit passed, as did candidate/Go, static/frontend and API qualification. A
+browser lifecycle journey failed because its page-wide "查看任务" locator matched
+both the pending-operation status region and an observation-failure toast.
+Trace inspection and independent review identified the original assertion,
+which premature cleanup had masked with a 423 response. The locator now targets
+the actual status region. Cleanup preserves original failures and waits for the
+accepted task's terminal state before restoring the server; no task state,
+server state or business assertion is replaced or relaxed.
+
+The corrected lifecycle journey passed alone against the second run's verified
+candidate image, using the owned Go wrapper and a real Minecraft container.
+Candidate identity, successful outcome and owned cleanup were verified by the
+release evidence checker. Node 24 frontend lint/boundaries, typecheck and bundle
+build passed. Complete acceptance still requires qualification of the new
+commit containing this correction.

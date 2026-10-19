@@ -92,6 +92,12 @@ The file-layout cases retain the actual server-rule GET response behind a transp
 
 Lifecycle acceptance has a dedicated journey: actual Docker startup returns 202; delaying delivery of real task-detail responses keeps the original controls blocked, exposes the reason/task-center link, and releases controls only after confirmed completion. The transport gate never fabricates task or server state.
 
+The journey opens the task center from the pending operation's status region;
+an observation-failure notification may independently offer the same action.
+Cleanup restores observation and waits for the accepted task's real terminal
+state before restoring the server, while preserving the original assertion
+failure alongside any cleanup errors.
+
 The file recovery journey creates a mixed-selection snapshot from the actual UI, checks source-specific skips and preview bytes, restores after a reload, and rolls back through filtered history after removing the current ignore rule. Individually ignored directories remain disabled; mixed selections skip them and rollback retains their recorded protection. File and map reload cases temporarily stop the next Restic backup worker only inside their owned application container, using a verified PID handle; they release it after checking resumed progress and close guards. The helper resumes automatically on input closure or its bounded timeout, and declared cleanup awaits its exit. These cases retain real task and filesystem results rather than synthesizing a running response.
 
 The batch journey checks one multi-path snapshot with notes, restores only selected files, packs the same scope and deletes it while preserving unselected bytes. Directory-export cases replace only the directory picker with an owned native Chrome OPFS directory handle; native writable streams and real manifest/file APIs produce outputs inspected for exact bytes, empty directories and safe flat-name collisions. Advanced-search grouping checkboxes aggregate matching descendant paths while preserving selections outside the group; manifests contain those exact paths without treating a synthetic parent directory as the operation scope, so unmatched sibling files remain intact. They also check navigation while downloading and unsupported-browser tooltips with packing still available. The overview player case uses owned log/usercache inputs and public player APIs to verify keyboard opening and keeping the detail dialog after logout.
