@@ -7,9 +7,14 @@ import pytest
 from sqlalchemy import select
 from watchfiles import Change, awatch
 
-from app.log_monitor.events import PlayerUuidDiscoveredEvent
+from app.log_monitor.events import PlayerLeftEvent, PlayerUuidDiscoveredEvent
 from app.log_monitor.monitor import LogMonitor
+from app.operations.context import current_execution
+from app.operations.execution import operation_scope
+from app.operations.journal import OperationJournal
+from app.operations.journal_types import OperationState
 from app.players.models import Player, PlayerChatMessage, PlayerSession
+from app.runtime_resources import current_runtime
 from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_online_uuid
 
@@ -37,6 +42,57 @@ async def log_monitor_instance(db_session_factory, runtime_config, isolated_runt
 
 
 class TestLogMonitor:
+    async def test_watcher_persists_player_events_after_parent_operation_finishes(
+        self, log_monitor_instance, tmp_path, db_session_factory, isolated_runtime, monkeypatch,
+    ):
+        journal = OperationJournal(db_session_factory)
+        isolated_runtime.journal = journal
+        log_path = tmp_path / "latest.log"
+        log_path.touch()
+        observed = []
+        processed = asyncio.Event()
+        handle_event = log_monitor_instance._handle_event
+
+        async def observe(event):
+            observed.append((current_runtime(), current_execution()))
+            await handle_event(event)
+            if isinstance(event, PlayerLeftEvent):
+                processed.set()
+
+        monkeypatch.setattr(log_monitor_instance, "_handle_event", observe)
+        async with operation_scope("server_create", []) as parent:
+            assert parent is not None
+            await log_monitor_instance._watch_server("test_server", log_path)
+            async with asyncio.timeout(5):
+                while "test_server" not in log_monitor_instance._file_pointers:
+                    await asyncio.sleep(0)
+        before = await journal.get(parent.operation_id)
+        assert before is not None and before.state is OperationState.SUCCEEDED
+
+        content = (
+            identity_line("TestPlayer")
+            + "[12:00:01] [Server thread/INFO]: TestPlayer[/127.0.0.1:12345] logged in with entity id 1 at (0, 0, 0)\n"
+            + chat_line("TestPlayer", "父操作结束后的聊天")
+            + "[12:00:02] [Server thread/INFO]: TestPlayer lost connection: Disconnected\n"
+        )
+        await asyncio.to_thread(log_path.write_text, content)
+        await asyncio.wait_for(processed.wait(), 5)
+        await log_monitor_instance.stop_watching("test_server")
+
+        assert observed == [(isolated_runtime, None)] * 4
+        async with db_session_factory() as session:
+            player = (await session.scalars(select(Player))).one()
+            presence = (await session.scalars(select(PlayerSession))).one()
+            message = (await session.scalars(select(PlayerChatMessage))).one()
+            assert player.uuid == make_online_uuid("TestPlayer")
+            assert presence.player_db_id == message.player_db_id == player.player_db_id
+            assert presence.server_db_id == message.server_db_id == 1
+            assert presence.left_at is not None
+            assert message.message_text == "父操作结束后的聊天"
+        assert await journal.get(parent.operation_id) == before
+        assert len(await journal.list()) == 1
+        assert not log_monitor_instance.is_watching("test_server")
+
     async def test_appended_log_persists_identity_presence_and_chat_once(self, log_monitor_instance, tmp_path, db_session_factory):
         log_path = tmp_path / "latest.log"
         log_path.write_text(identity_line("TestPlayer"))

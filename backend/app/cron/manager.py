@@ -5,7 +5,6 @@ import json
 import secrets
 from datetime import UTC, datetime
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import HTTPException
 
@@ -16,7 +15,7 @@ from ..db.database import get_async_session
 from ..dynamic_config.schemas import BaseConfigSchema
 from ..errors import log_safe_error
 from ..logger import get_logger
-from ..operations.context import record_phase
+from ..operations.context import bind_execution, record_phase
 from ..operations.coordinator import ResourceClaim, ResourceKind
 from ..operations.execution import operation_scope
 from ..operations.finalization import finalize
@@ -28,13 +27,15 @@ from .errors import cron_error_message, cron_value_error
 from .models import CronJob
 from .registration import definition_version, retained_params
 from .registry import get_cron_registry
+from .scheduler import RuntimeAsyncIOScheduler
 from .types import CronJobConfig, CronJobExecutionRecord, ExecutionContext
 from .weekdays import normalize_crontab_weekday
 
 
 class CronManager:
     def __init__(self):
-        self.scheduler = AsyncIOScheduler()
+        self._runtime = current_runtime()
+        self.scheduler = RuntimeAsyncIOScheduler(self._runtime)
         self._initialized = False
         self._registration_errors: dict[str, str] = {}
         self._configuration_lock = asyncio.Lock()
@@ -429,7 +430,22 @@ class CronManager:
         *,
         definition_token: str | None = None,
     ) -> None:
-        """Run ``cronjob_function`` with execution context, recording the outcome."""
+        """Run an independent scheduled operation in its owning runtime."""
+        with self._runtime.bind(), bind_execution(None):
+            await self._execute_cronjob(
+                cronjob_id, identifier, params, cronjob_function,
+                definition_token=definition_token,
+            )
+
+    async def _execute_cronjob(
+        self,
+        cronjob_id: str,
+        identifier: str,
+        params: BaseConfigSchema,
+        cronjob_function,
+        *,
+        definition_token: str | None = None,
+    ) -> None:
         timestamp = int(datetime.now(UTC).timestamp() * 1000)
         random_suffix = secrets.token_urlsafe(4)
         execution_id = f"{timestamp}_{random_suffix}"
@@ -509,7 +525,12 @@ class CronManager:
                     return
                 if operation is not None:
                     recorded = await operation.journal.get(operation.operation_id)
-                    if recorded is not None and recorded.state in TERMINAL_STATES:
+                    if (
+                        recorded is not None
+                        and recorded.origin == "cron"
+                        and recorded.legacy_id == execution_id
+                        and recorded.state in TERMINAL_STATES
+                    ):
                         context.status = {
                             OperationState.SUCCEEDED: ExecutionStatus.COMPLETED,
                             OperationState.CANCELLED: ExecutionStatus.CANCELLED,

@@ -161,13 +161,17 @@ async def operation_scope(
     parent = current_execution()
     resource_kind = {"world_restore": "world", "snapshot_restore": "files"}.get(kind, "server")
     if parent is not None:
+        if parent.settled:
+            raise RuntimeError("已结束的操作不能作为子操作的父操作")
         if not set(server_ids).issubset({server.server_id for server in parent.servers}):
             raise RuntimeError("子操作不能扩大已声明的服务器范围")
+        record = await journal.get(parent.operation_id)
+        if record is None:
+            raise RuntimeError("操作记录不存在")
+        if record.state in TERMINAL_STATES:
+            raise RuntimeError("已结束的操作不能作为子操作的父操作")
         if claims is not None:
             resources = journal_resources([server for server in parent.servers if server.server_id in server_ids], claims, default_kind=resource_kind)
-            record = await journal.get(parent.operation_id)
-            if record is None:
-                raise RuntimeError("操作记录不存在")
             require_contained_resources(record.resources, resources)
         yield parent
         return
