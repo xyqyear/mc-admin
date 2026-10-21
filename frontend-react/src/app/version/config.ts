@@ -671,6 +671,20 @@ export const versionUpdates: VersionUpdate[] = [
       '多选和文件夹下载先完成扫描，进度显示更稳定',
     ],
   },
+  {
+    version: '7.0.0',
+    date: '2026-10-21',
+    title: '任务进度与定时任务修复',
+    description: '实时显示任务进度，修复定时任务异常。',
+    improvements: [
+      '实时显示任务和备份进度，最新任务优先展示 #150 #173',
+      '页面链接支持在新标签页打开 #140',
+      '改善玩家日志识别，避免误判连接失败信息 #142 #177',
+    ],
+    fixes: [
+      '修复定时备份、巡检和重启任务失败及状态误报',
+    ],
+  },
 ]
 
 function parseVersion(version: string) {
