@@ -14,6 +14,12 @@ Read the applicable component instructions before editing that component. Use th
 [documentation index](docs/README.md) to select the topics needed for the task.
 Environment setup and binary prerequisites belong to [development](docs/development.md).
 
+## 设计原则
+
+- 前后端始终一起发布，不支持混合版本。API（含 HTTP、WebSocket、SSE）只面向当前版本设计；变更时同步更新契约、调用方和测试，不保留旧接口、旧字段或兼容分支。优先保证当前 API 清晰、一致、简洁；持久化数据的迁移与恢复保障仍须保留。
+- 遵循 Keep It Simple、You Aren’t Gonna Need It 和 Avoid Premature Abstraction：只解决当前明确需求，不为假设的未来需求增加抽象、配置或重复逻辑。
+- 遵循 Locality of Behavior 和 Boy Scout Rule：相关行为就近组织，修改时顺手清理涉及范围内的重复、死代码和过时设计，避免无关的大范围重构。
+
 ## 交付与测试要求
 
 - 本地只运行改动直接相关及受影响调用路径的定向测试，必须用明确的文件、节点、包或用例筛选限定范围。禁止运行完整项目或任一组件的全量测试，也不得通过目录、分片或多个 agent 累计执行全量。必要的 lint、类型检查和构建仍按组件要求执行；纯文档变更不运行本地测试。
@@ -43,6 +49,6 @@ reading routes change. Function signatures, hook/store details, schema revisions
 and feature inventories belong in their topic documents or source.
 
 Keep current-state descriptions and remove superseded claims. Preserve necessary
-compatibility and recovery boundaries, but keep change history in Git/OpenSpec
+persisted-data migration and recovery boundaries, but keep change history in Git/OpenSpec
 archives. Link to one detailed owner instead of copying its explanation. Add or
 adjust the component documentation index whenever a topic is created or moved.
