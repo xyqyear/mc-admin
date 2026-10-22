@@ -23,7 +23,7 @@ Environment setup and binary prerequisites belong to [development](docs/developm
 ## 交付与测试要求
 
 - 本地只运行改动直接相关及受影响调用路径的定向测试，必须用明确的文件、节点、包或用例筛选限定范围。禁止运行完整项目或任一组件的全量测试，也不得通过目录、分片或多个 agent 累计执行全量。必要的 lint、类型检查和构建仍按组件要求执行；纯文档变更不运行本地测试。
-- 项目变更优先使用独立分支。完成本地定向验证后，必须 commit、push，再对最新提交运行完整 GitHub Actions；本地通过、部分检查通过或旧 SHA 的绿灯都不能代表交付完成。
+- 项目变更优先使用独立分支。完成本地定向验证后，必须 commit、push，再对最新提交运行完整 GitHub Actions；仅修改 Markdown 文件时不运行本地测试或 CI。其他变更不能以本地通过、部分检查通过或旧 SHA 的绿灯代表交付完成。
 - 完整验证必须手动触发 `Qualify and Publish Application`（`.github/workflows/docker-image.yml`），选择开发分支并设置 `publish=false`。普通 push 检查不能替代完整验证。
 - 执行完整 CI 前阅读 [CI 验证流程](docs/ci.md#validation)。确认最新 SHA 对应的 run ID 后，由主 agent 启动一次 `gh run watch <run-id> --exit-status --interval 60 --compact > <log-path> 2>&1`。等待期间静默，不读日志或进度、不开展其他工作；所有 agent 不得另行轮询同一 run/job。工具分段返回时继续等待同一命令。用户新消息可以中断等待；命令中断或连接失败不代表 CI 结束或通过。
 - 等待命令退出后统一核对一次 SHA、最终结论、candidate/Go、static/frontend、全部 backend 分片及覆盖审计、全部 API E2E 分片及覆盖与清理审计、全部 browser 分片及覆盖审计和最终 qualification。失败后读取失败步骤，修复、定向验证、提交推送，再完整验证新 SHA；不得跳过检查、降低业务断言或用局部重跑代替。报告须附 SHA 和 Actions 链接；尚未通过时明确说明。
