@@ -15,7 +15,7 @@ case "$action" in
     build)
         mkdir -p -- "$(dirname -- "$binary")"
         cd -- "$repository/e2e"
-        CGO_ENABLED=0 go build -trimpath -o "$binary" ./cmd/mc-admin-e2e
+        GIT_OPTIONAL_LOCKS=0 CGO_ENABLED=0 go build -trimpath -o "$binary" ./cmd/mc-admin-e2e
         ;;
     run)
         if [[ " $* " != *" --case "* && " $* " != *" --case="* ]]; then

@@ -106,6 +106,8 @@ the repository root. The E2E executable defaults to
 `~/.cache/mc-admin/e2e/mc-admin-e2e`; its owned run data defaults to
 `~/.local/share/mc-admin-e2e`. `MC_ADMIN_E2E_BINARY` and `MC_ADMIN_E2E_OUTPUT`
 select other Linux paths. Rebuild after changing the Go runner.
+The Linux build disables optional Git index refreshes so its VCS inspection
+does not replace the Windows checkout's cached filesystem metadata.
 
 Frontend Vitest runs through Windows pnpm with explicit related file filters.
 Contract generation/checking invokes WSL Python on Windows and native uv on
