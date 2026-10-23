@@ -39,9 +39,14 @@ code mc-admin.code-workspace
 ```
 
 The Windows `backend/.venv` supplies Python completion and static analysis.
-The backend's Pyright target remains Linux. WSL project commands explicitly
-use `~/.venvs/mc-admin-backend` through `UV_PROJECT_ENVIRONMENT`, including when
-the source is under `/mnt`. Never run an unqualified Linux `uv sync` in this
+The workspace sets `ruff.path` to its Windows Ruff executable, keeping the
+editor on the version pinned by the backend instead of the extension's bundled
+version. After changing this setting, run **Ruff: Restart Server** if the editor
+still reports a version mismatch. The backend's Pyright target remains Linux.
+
+WSL project commands explicitly use `~/.venvs/mc-admin-backend` through
+`UV_PROJECT_ENVIRONMENT`, including when the source is under `/mnt`.
+Never run an unqualified Linux `uv sync` in this
 checkout: it would target the Windows `.venv`. Use `backend.ps1` from Windows
 or `bash scripts/dev/backend.sh` from WSL. Frontend pnpm commands use Windows
 Node and `node_modules`; from WSL use `cmd.exe /c` for those commands.
