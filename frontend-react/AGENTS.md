@@ -23,6 +23,10 @@ pnpm check:contracts
 The test file is an example: select the actual related files and add `-t` when
 only particular cases are affected. `pnpm build` combines type checking and
 bundling. Contract generation/checking requires backend uv dependencies.
+In Windows checkouts, run frontend commands with Windows pnpm. Contract
+generation/checking uses the WSL backend wrapper. Browser tests use the Windows
+Playwright bridge while the WSL Go runner owns deployment and cleanup; see
+[browser verification](docs/browser-tests.md#windows-browser-with-a-wsl-owned-deployment).
 
 `pnpm test` includes the complete architecture suite; it cannot target local
 validation. `pnpm test`, `pnpm test:architecture` and unfiltered

@@ -1,4 +1,5 @@
-import { chown, copyFile, mkdir, readFile, realpath, stat } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, realpath } from 'node:fs/promises'
+import { copyOwner, hostPath, requirePrivateFile, within } from './host'
 import { createHash } from 'node:crypto'
 import { withCleanup } from './cleanup'
 import path from 'node:path'
@@ -20,19 +21,22 @@ export interface OwnedEnvironment {
 }
 
 async function ownedEnvironment(): Promise<OwnedEnvironment> {
-  const source = process.env.MC_ADMIN_BROWSER_FIXTURE
-  if (!source) throw new Error('Run browser tests through mc-admin-e2e browser; no attach mode is supported.')
+  const configured = process.env.MC_ADMIN_BROWSER_FIXTURE
+  if (!configured) throw new Error('Run browser tests through mc-admin-e2e browser; no attach mode is supported.')
+  const source = hostPath(configured)
   const document: unknown = JSON.parse(await readFile(source, 'utf8'))
   const fields: Array<keyof OwnedEnvironment> = ['base_url', 'server_id', 'server_path', 'username', 'password', 'master_token', 'backend_container', 'run_id', 'image_id', 'environment_id', 'manifest_path']
   if (!document || typeof document !== 'object' || fields.some(field => !(field in document) || typeof document[field as keyof typeof document] !== 'string' || !document[field as keyof typeof document])) throw new Error('The owned browser fixture is incomplete.')
   const fixture = document as OwnedEnvironment
+  fixture.server_path = hostPath(fixture.server_path)
+  fixture.manifest_path = hostPath(fixture.manifest_path)
   const url = new URL(fixture.base_url)
   if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname)) throw new Error('The browser fixture must be an owned local deployment.')
   const runtime = await realpath(path.join(path.dirname(fixture.manifest_path), 'runtime'))
   const sourcePath = await realpath(source)
   const serverPath = await realpath(fixture.server_path)
-  if (![sourcePath, serverPath].every(candidate => candidate.startsWith(runtime + path.sep))) throw new Error('Browser fixture paths must belong to the recorded runtime directory.')
-  if ((await stat(source)).mode & 0o077) throw new Error('Browser fixture credentials must have private file permissions.')
+  if (![sourcePath, serverPath].every(candidate => within(runtime, candidate))) throw new Error('Browser fixture paths must belong to the recorded runtime directory.')
+  await requirePrivateFile(source)
   return fixture
 }
 
@@ -103,6 +107,7 @@ export class OwnedApi {
     if (metadataPath) {
       const metadata = JSON.parse(await readFile(metadataPath, 'utf8')) as { path: string; url: string; version: string; sha1: string; size: number }
       if (new URL(metadata.url).hostname !== 'piston-data.mojang.com' || !/^[a-f0-9]{40}$/.test(metadata.sha1)) throw new Error('The optional Minecraft client must have official download provenance.')
+      metadata.path = hostPath(metadata.path)
       const bytes = await readFile(metadata.path)
       if (bytes.length !== metadata.size || createHash('sha1').update(bytes).digest('hex') !== metadata.sha1) throw new Error('The optional official Minecraft client failed integrity verification.')
       const data = path.join(this.environment.server_path, 'data')
@@ -111,11 +116,7 @@ export class OwnedApi {
       if (!(await realpath(cache)).startsWith((await realpath(data)) + path.sep)) throw new Error('The Minecraft cache must stay inside the owned server data directory.')
       const destination = path.join(cache, 'client.jar')
       await copyFile(metadata.path, destination)
-      const owner = await stat(data)
-      if (process.getuid?.() === 0) {
-        await chown(cache, owner.uid, owner.gid)
-        await chown(destination, owner.uid, owner.gid)
-      }
+      await copyOwner(data, [cache, destination])
       this.clientSource = { version: metadata.version, url: metadata.url, sha1: metadata.sha1, bytes: metadata.size }
     }
     const accepted = await this.json<{ task_id: string }>(this.server('/map/initialize'), 'POST', {}, 202)

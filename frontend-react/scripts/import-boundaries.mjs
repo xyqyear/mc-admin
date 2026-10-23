@@ -21,6 +21,8 @@ const screenEntries = new Set([
 const legacyRoots = new Set(['hooks', 'components', 'stores', 'types', 'utils', 'lib', 'config'])
 
 export function importBoundaryViolation(from, to) {
+  from = from.replaceAll('\\', '/')
+  to = to.replaceAll('\\', '/')
   const source = from.split('/')
   const target = to.replace(/\.(tsx?|jsx?)$/, '').split('/')
   if (legacyRoots.has(target[0])) return 'deleted compatibility layer'

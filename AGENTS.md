@@ -14,6 +14,19 @@ Read the applicable component instructions before editing that component. Use th
 [documentation index](docs/README.md) to select the topics needed for the task.
 Environment setup and binary prerequisites belong to [development](docs/development.md).
 
+## Windows / WSL execution
+
+- In a Windows checkout, run frontend pnpm, Vitest and Playwright with Windows
+  tools. Run backend commands through `scripts/dev/backend.ps1` and API E2E
+  through `scripts/dev/e2e.ps1`; both invoke WSL with Linux-owned dependencies.
+- The backend wrapper is the explicit exception to using Windows tools for
+  `/mnt/*` checkouts: it sets an external Linux `UV_PROJECT_ENVIRONMENT` before
+  running uv. Never let native Linux uv replace `backend/.venv`, which belongs
+  to the Windows editor. Use the Bash counterpart from a WSL terminal.
+- Select explicit backend test files/nodes, API case IDs and frontend test
+  files/titles. Windows browser tests retain the WSL runner's owned fixture and
+  cleanup. See [development](docs/development.md) for commands and overrides.
+
 ## 设计原则
 
 - 前后端始终一起发布，不支持混合版本。API（含 HTTP、WebSocket、SSE）只面向当前版本设计；变更时同步更新契约、调用方和测试，不保留旧接口、旧字段或兼容分支。优先保证当前 API 清晰、一致、简洁；持久化数据的迁移与恢复保障仍须保留。

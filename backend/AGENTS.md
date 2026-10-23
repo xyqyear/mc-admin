@@ -8,6 +8,11 @@ Use the [backend documentation index](docs/README.md) for architecture and featu
 Run these from `backend/`. Select only tests for changed behavior and affected
 call paths; the examples are alternatives, not a checklist.
 
+For a Windows checkout, run these backend commands through
+`../scripts/dev/backend.ps1 run ...`, or use `backend.ps1 test` with explicit
+test files/nodes. The wrapper owns the separate Linux virtual environment;
+`backend/.venv` belongs to the Windows editor. See [development](../docs/development.md).
+
 ```bash
 uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 5678 --reload --timeout-graceful-shutdown 2

@@ -1,0 +1,102 @@
+{
+  "folders": [
+    { "name": "mc-admin", "path": "." },
+    { "name": "backend", "path": "backend" },
+    { "name": "frontend-react", "path": "frontend-react" }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder:backend}/.venv/Scripts/python.exe",
+    "python.testing.pytestEnabled": false,
+    "python.testing.unittestEnabled": false,
+    "npm.packageManager": "pnpm"
+  },
+  "extensions": {
+    "recommendations": ["ms-python.python", "ms-python.vscode-pylance", "ms-python.debugpy"]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Backend: sync WSL environment",
+        "type": "process",
+        "command": "pwsh.exe",
+        "args": ["-NoProfile", "-File", "${workspaceFolder:mc-admin}/scripts/dev/backend.ps1", "sync"],
+        "problemMatcher": []
+      },
+      {
+        "label": "Backend: dev in WSL",
+        "type": "process",
+        "command": "pwsh.exe",
+        "args": ["-NoProfile", "-File", "${workspaceFolder:mc-admin}/scripts/dev/backend.ps1", "dev"],
+        "problemMatcher": []
+      },
+      {
+        "label": "Backend: debug in WSL",
+        "type": "process",
+        "command": "pwsh.exe",
+        "args": ["-NoProfile", "-File", "${workspaceFolder:mc-admin}/scripts/dev/backend.ps1", "debug"],
+        "isBackground": true,
+        "problemMatcher": {
+          "pattern": { "regexp": "^(?!)$", "file": 1, "message": 2 },
+          "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "MC_ADMIN_DEBUG_READY" }
+        }
+      },
+      {
+        "label": "Backend: stop owned process",
+        "type": "process",
+        "command": "pwsh.exe",
+        "args": ["-NoProfile", "-File", "${workspaceFolder:mc-admin}/scripts/dev/backend.ps1", "stop"],
+        "problemMatcher": []
+      },
+      {
+        "label": "Backend: test selected file or node in WSL",
+        "type": "process",
+        "command": "pwsh.exe",
+        "args": ["-NoProfile", "-File", "${workspaceFolder:mc-admin}/scripts/dev/backend.ps1", "test", "${input:pytestTarget}"],
+        "problemMatcher": []
+      },
+      {
+        "label": "Frontend: dev on Windows",
+        "type": "shell",
+        "command": "pnpm dev --host 127.0.0.1 --strictPort",
+        "options": { "cwd": "${workspaceFolder:frontend-react}" },
+        "isBackground": true,
+        "problemMatcher": {
+          "pattern": { "regexp": "^(?!)$", "file": 1, "message": 2 },
+          "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "Local:" }
+        }
+      }
+    ],
+    "inputs": [
+      { "id": "pytestTarget", "type": "promptString", "description": "明确的 tests/...py 文件或 ::node（相对 backend）" }
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Backend: WSL",
+        "type": "debugpy",
+        "request": "attach",
+        "connect": { "host": "127.0.0.1", "port": 5679 },
+        "pathMappings": [{ "localRoot": "${workspaceFolder:backend}", "remoteRoot": "." }],
+        "justMyCode": true,
+        "clientOS": "windows",
+        "subProcess": true,
+        "preLaunchTask": "Backend: debug in WSL",
+        "postDebugTask": "Backend: stop owned process"
+      },
+      {
+        "name": "Frontend: Windows Chrome",
+        "type": "pwa-chrome",
+        "request": "launch",
+        "url": "http://127.0.0.1:3000",
+        "webRoot": "${workspaceFolder:frontend-react}",
+        "preLaunchTask": "Frontend: dev on Windows"
+      }
+    ],
+    "compounds": [
+      { "name": "MC Admin: Windows + WSL", "configurations": ["Backend: WSL", "Frontend: Windows Chrome"], "stopAll": true }
+    ]
+  }
+}
