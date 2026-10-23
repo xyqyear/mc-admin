@@ -110,28 +110,42 @@ func dnsTraffic(ctx context.Context, t *engine.Scope, config providerConfig, hos
 	if err != nil {
 		return err
 	}
-	srv, err := dnsQuery(ctx, servers[0], "_minecraft._tcp."+host, wire.TypeSRV, true)
+	address, err := trafficDestination(ctx, servers[0], host, expectedPort)
 	if err != nil {
 		return err
 	}
-	var target *wire.SRV
-	for _, answer := range srv.Answer {
-		if record, ok := answer.(*wire.SRV); ok && strings.EqualFold(record.Hdr.Name, wire.Fqdn("_minecraft._tcp."+host)) {
-			target = record
+	return assertTraffic(ctx, t, address, host, motd, expectedPort)
+}
+
+func trafficDestination(ctx context.Context, endpoint, host string, expectedPort int) (string, error) {
+	deadline, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	var destination string
+	// Delegation lookups can select a different replica than the publication check.
+	err := api.Wait(deadline, 2*time.Second, "traffic DNS publication at "+endpoint, func(probe context.Context) (bool, error) {
+		name := "_minecraft._tcp." + host
+		srv, err := dnsQuery(probe, endpoint, name, wire.TypeSRV, true)
+		if err != nil {
+			return false, err
 		}
-	}
-	if target == nil || int(target.Port) != expectedPort || target.Target != wire.Fqdn(host) {
-		return fmt.Errorf("unexpected Minecraft SRV destination")
-	}
-	address, err := dnsQuery(ctx, servers[0], target.Target, wire.TypeA, true)
-	if err != nil {
-		return err
-	}
-	values := answerValues(address, target.Target, wire.TypeA)
-	if len(values) != 1 || values[0] != "127.0.0.1" {
-		return fmt.Errorf("DNS-derived traffic destination is outside the owned loopback listener: %v", values)
-	}
-	return assertTraffic(ctx, t, net.JoinHostPort(values[0], fmt.Sprint(target.Port)), host, motd, int(target.Port))
+		values := answerValues(srv, name, wire.TypeSRV)
+		expected := fmt.Sprintf("0 5 %d %s", expectedPort, strings.TrimSuffix(host, "."))
+		if len(values) != 1 || values[0] != expected {
+			return false, fmt.Errorf("Minecraft SRV at %s returned %v; expected %s", endpoint, values, expected)
+		}
+		fields := strings.Fields(values[0])
+		address, err := dnsQuery(probe, endpoint, fields[3], wire.TypeA, true)
+		if err != nil {
+			return false, err
+		}
+		ips := answerValues(address, fields[3], wire.TypeA)
+		if len(ips) != 1 || ips[0] != "127.0.0.1" {
+			return false, api.Permanent(fmt.Errorf("DNS-derived traffic destination is outside the owned loopback listener: %v", ips))
+		}
+		destination = net.JoinHostPort(ips[0], fields[2])
+		return true, nil
+	})
+	return destination, err
 }
 
 func checkRecursive(ctx context.Context, t *engine.Scope, host string, port int) error {
