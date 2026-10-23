@@ -38,6 +38,11 @@ pnpm --dir frontend-react install --frozen-lockfile
 code mc-admin.code-workspace
 ```
 
+The root `mc-admin.code-workspace` owns shared editor settings, tasks and
+debug configurations. Folder-local `.vscode` files are not required; duplicate
+settings can override the workspace and duplicate tasks can obscure its
+launchers. Tailwind IntelliSense excludes the generated `src/shared/ui` files.
+
 The Windows `backend/.venv` supplies Python completion and static analysis.
 The workspace sets `ruff.path` to its Windows Ruff executable, keeping the
 editor on the version pinned by the backend instead of the extension's bundled
@@ -89,10 +94,15 @@ and Windows Chrome with Vite. The post-debug task stops the recorded backend;
 whatever happens to occupy a port. Terminate the foreground frontend task with
 Ctrl+C. Port conflicts fail instead of silently selecting another server.
 
-Existing folder-local `.vscode/settings.json` overrides workspace settings.
-Select `backend/.venv/Scripts/python.exe` if an old interpreter was selected,
-and disable local backend pytest discovery. Use **Backend: test selected file
-or node in WSL** or the CLI below. Windows Python does not run the Linux tests.
+**Frontend: Windows Chrome Preview** runs `pnpm build` before serving the
+production build on `http://127.0.0.1:4173`. It uses the same WSL backend as
+development; start **Backend: WSL** separately when API access is needed.
+Terminate the preview task with Ctrl+C when finished.
+
+Select `backend/.venv/Scripts/python.exe` if an old interpreter was selected.
+The workspace disables local backend pytest discovery. Use **Backend: test
+selected file or node in WSL** or the CLI below. Windows Python does not run
+the Linux tests.
 
 ### Targeted verification
 

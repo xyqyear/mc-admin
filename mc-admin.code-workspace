@@ -9,6 +9,7 @@
     "python.testing.pytestEnabled": false,
     "python.testing.unittestEnabled": false,
     "ruff.path": ["${workspaceFolder:backend}/.venv/Scripts/ruff.exe"],
+    "tailwindCSS.files.exclude": ["**/src/shared/ui/**"],
     "npm.packageManager": "pnpm"
   },
   "extensions": {
@@ -38,7 +39,7 @@
         "args": ["-NoProfile", "-File", "${workspaceFolder:mc-admin}/scripts/dev/backend.ps1", "debug"],
         "isBackground": true,
         "problemMatcher": {
-          "pattern": { "regexp": "^(?!)$", "file": 1, "message": 2 },
+          "pattern": { "regexp": "^(?!)$", "kind": "file", "file": 1, "message": 2 },
           "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "MC_ADMIN_DEBUG_READY" }
         }
       },
@@ -63,7 +64,26 @@
         "options": { "cwd": "${workspaceFolder:frontend-react}" },
         "isBackground": true,
         "problemMatcher": {
-          "pattern": { "regexp": "^(?!)$", "file": 1, "message": 2 },
+          "pattern": { "regexp": "^(?!)$", "kind": "file", "file": 1, "message": 2 },
+          "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "Local:" }
+        }
+      },
+      {
+        "label": "Frontend: build on Windows",
+        "type": "shell",
+        "command": "pnpm build",
+        "options": { "cwd": "${workspaceFolder:frontend-react}" },
+        "problemMatcher": []
+      },
+      {
+        "label": "Frontend: preview on Windows",
+        "type": "shell",
+        "command": "pnpm preview --host 127.0.0.1 --port 4173 --strictPort",
+        "options": { "cwd": "${workspaceFolder:frontend-react}" },
+        "dependsOn": "Frontend: build on Windows",
+        "isBackground": true,
+        "problemMatcher": {
+          "pattern": { "regexp": "^(?!)$", "kind": "file", "file": 1, "message": 2 },
           "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "Local:" }
         }
       }
@@ -94,6 +114,14 @@
         "url": "http://127.0.0.1:3000",
         "webRoot": "${workspaceFolder:frontend-react}",
         "preLaunchTask": "Frontend: dev on Windows"
+      },
+      {
+        "name": "Frontend: Windows Chrome Preview",
+        "type": "pwa-chrome",
+        "request": "launch",
+        "url": "http://127.0.0.1:4173",
+        "webRoot": "${workspaceFolder:frontend-react}",
+        "preLaunchTask": "Frontend: preview on Windows"
       }
     ],
     "compounds": [
