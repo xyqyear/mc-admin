@@ -48,3 +48,20 @@ backup exclusions, world snapshot completeness, negative-coordinate MCA/MCC
 bytes, deletion of historically excluded data and exact safety rollback.
 
 Backend verification passed 97 unique selected tests (46 world/eligibility tests, 47 file/world/HTTP cleanup tests, three architecture checks and one reviewed API contract check). The six performance nodes were also run with timing output. Qualification is pending.
+
+## Qualification
+
+Run [41199573485](https://github.com/xyqyear/mc-admin/actions/runs/41199573485)
+tested `d75bd49f3b34ee8a5c453385382c91bf1e4f6e9f`. Candidate/Go, static/frontend,
+all 14 backend shards and their audit, both browser shards and their audit passed.
+API qualification failed: the file-scope E2E scenario still expected world
+target checks to apply exclusions; its assertions now check the current world
+contract while retaining file protection. Separate Huawei authoritative DNS TCP
+and Mojang profile requests timed out; the Huawei cleanup manifest confirmed
+`cleaned: true`. This run did not issue a successful qualification receipt.
+
+The corrected `snapshots.logical-exclusions-and-shared-rules` scenario passed
+normally (`e2e-70fd0b038b3b`) and with `--no-reuse` (`e2e-4c2d60fe040e`),
+both in 50.4 s with owned teardown. Go format/vet and runner build passed.
+Its file exclusion, shared-rule reads, persisted mapping and restart/rollback
+assertions remain intact; world validity checks assert the current contract.
