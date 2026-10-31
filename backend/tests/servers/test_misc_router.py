@@ -1,108 +1,57 @@
-"""Unit tests for /servers/ (the overview) under the DB-driven discovery model.
+"""Server discovery retains the database boundary when files drift."""
 
-Covers the drifted-row path: an ACTIVE row whose compose can't be read must
-not surface in the response but MUST produce a warning log so operators can
-correlate with the sync endpoint.
-"""
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
 
 import pytest
 
-from app.minecraft import MCServerInfo
-from app.minecraft.compose import ServerType
+from app.auth.schemas import UserPublic
 from app.routers.servers.misc import get_server, get_servers
-from tests.support.runtime import patch_runtime_resource
+from app.servers.models import Server
+from tests.fixtures.test_utils import create_mc_server_compose_yaml
 
 
-def _row(server_id: str) -> MagicMock:
-    row = MagicMock()
-    row.server_id = server_id
-    return row
+@pytest.fixture
+def owner():
+    return UserPublic(id=1, username="owner", created_at=datetime.now(UTC))
 
 
-def _info(name: str, *, game_port: int = 25565, rcon_port: int = 25575) -> MCServerInfo:
-    return MCServerInfo(
-        name=name,
-        path=f"/servers/{name}",
-        java_version=17,
-        max_memory_bytes=2048 * 1024 * 1024,
-        server_type=ServerType.VANILLA,
-        game_version="1.20.1",
-        game_port=game_port,
-        rcon_port=rcon_port,
+async def test_get_servers_filters_drifted_row_and_logs(database, isolated_runtime, owner, caplog):
+    manager = isolated_runtime.docker_mc_manager
+    await manager.get_instance("good").create(create_mc_server_compose_yaml("good", 25565, 25575))
+    async with database.session_factory() as session:
+        session.add_all([Server(server_id="good"), Server(server_id="drifted")])
+        await session.commit()
+    with caplog.at_level(logging.WARNING):
+        async with database.session_factory() as session:
+            result = await get_servers(db=session, _=owner)
+
+    assert [server.id for server in result] == ["good"]
+    assert any("drifted" in record.message and "cannot read compose" in record.message for record in caplog.records)
+
+
+async def test_get_servers_empty_when_no_active_rows(database, isolated_runtime, owner):
+    await isolated_runtime.docker_mc_manager.get_instance("orphan").create(
+        create_mc_server_compose_yaml("orphan", 25565, 25575),
     )
-
-
-@pytest.mark.asyncio
-async def test_get_servers_filters_drifted_row_and_logs(caplog):
-    """ACTIVE row whose compose read raises is filtered with a warning;
-    the surviving row still appears in the response."""
-    good_instance = MagicMock()
-    good_instance.get_name = MagicMock(return_value="good")
-    good_instance.get_server_info = AsyncMock(return_value=_info("good"))
-
-    bad_instance = MagicMock()
-    bad_instance.get_name = MagicMock(return_value="drifted")
-    bad_instance.get_server_info = AsyncMock(
-        side_effect=FileNotFoundError("compose.yml missing")
-    )
-
-    fake_manager = MagicMock()
-    fake_manager.get_instance = MagicMock(
-        side_effect={"good": good_instance, "drifted": bad_instance}.__getitem__
-    )
-
-    rows = [_row("good"), _row("drifted")]
-
-    with (
-        patch_runtime_resource('docker_mc_manager', fake_manager),
-        patch(
-            "app.routers.servers.misc.get_active_servers",
-            AsyncMock(return_value=rows),
-        ),
-        caplog.at_level(logging.WARNING),
-    ):
-        result = await get_servers(db=AsyncMock(), _=MagicMock())
-
-    assert [s.id for s in result] == ["good"]
-    assert any(
-        "drifted" in record.message and "cannot read compose" in record.message
-        for record in caplog.records
-    )
-
-
-@pytest.mark.asyncio
-async def test_get_servers_empty_when_no_active_rows():
-    """Short-circuit on empty DB — no filesystem call, no warnings."""
-    fake_manager = MagicMock()
-    fake_manager.get_instance = MagicMock(side_effect=AssertionError("should not be called"))
-
-    with (
-        patch_runtime_resource('docker_mc_manager', fake_manager),
-        patch(
-            "app.routers.servers.misc.get_active_servers",
-            AsyncMock(return_value=[]),
-        ),
-    ):
-        result = await get_servers(db=AsyncMock(), _=MagicMock())
-
+    async with database.session_factory() as session:
+        result = await get_servers(db=session, _=owner)
     assert result == []
 
 
 @pytest.mark.parametrize("generation", [42, None])
-async def test_server_detail_exposes_current_generation_without_hiding_unregistered_data(generation):
-    instance = MagicMock()
-    instance.exists = AsyncMock(return_value=True)
-    instance.get_server_info = AsyncMock(return_value=_info("survival"))
-    manager = MagicMock()
-    manager.get_instance.return_value = instance
-    row = MagicMock(id=generation) if generation is not None else None
-    with (
-        patch_runtime_resource("docker_mc_manager", manager),
-        patch("app.routers.servers.misc.get_active_server_by_id", AsyncMock(return_value=row)),
-    ):
-        result = await get_server("survival", db=AsyncMock(), _=MagicMock())
+async def test_server_detail_exposes_current_generation_without_hiding_unregistered_data(
+    database, isolated_runtime, owner, generation,
+):
+    await isolated_runtime.docker_mc_manager.get_instance("survival").create(
+        create_mc_server_compose_yaml("survival", 25565, 25575),
+    )
+    if generation is not None:
+        async with database.session_factory() as session:
+            session.add(Server(id=generation, server_id="survival"))
+            await session.commit()
+    async with database.session_factory() as session:
+        result = await get_server("survival", db=session, _=owner)
     assert result.id == "survival"
     assert result.server_generation == generation
     assert result.gamePort == 25565

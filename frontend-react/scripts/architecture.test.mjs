@@ -61,6 +61,13 @@ test('rejects reverse dependencies, old layers, and private cross-feature import
   ]) assert.ok(importBoundaryViolation(from, to), `${from} -> ${to}`)
 })
 
+test('Windows paths retain the same import boundaries', () => {
+  assert.equal(importBoundaryViolation('features\\files\\FileBrowserScreen.tsx', 'features\\files\\useFileBrowser'), null)
+  assert.equal(importBoundaryViolation('pages\\server\\servers\\ServerCompose.tsx', 'features/configuration/ConfigurationScreen'), null)
+  assert.ok(importBoundaryViolation('shared\\http\\api.ts', 'features/users/api'))
+  assert.ok(importBoundaryViolation('features\\files\\commands.ts', 'features\\servers\\useServerDetailData'))
+})
+
 test('allows explicit feature composition and local implementations', () => {
   for (const [from, to] of [
     ['App.tsx', 'features/users/LoginScreen'],

@@ -7,9 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import api_app
-from app.minecraft import MCServerInfo, MCServerStatus
-from app.minecraft.compose import ServerType
-from app.players.crud.query.session_query import OnlinePlayerLite
+from app.minecraft import MCServerStatus
 from app.routers.servers.misc import get_servers_overview
 from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource
@@ -160,77 +158,51 @@ def test_message_rejects_selector_target(client):
     assert "target_player" in response.json()["detail"]
 
 
-def row(server_id: str) -> MagicMock:
-    server_row = MagicMock()
-    server_row.server_id = server_id
-    return server_row
 
 
-def server_info(server_id: str, game_port: int) -> MCServerInfo:
-    return MCServerInfo(
-        name=server_id,
-        path=f"/servers/{server_id}",
-        java_version=17,
-        max_memory_bytes=2048,
-        server_type=ServerType.VANILLA,
-        game_version="1.20.1",
-        game_port=game_port,
-        rcon_port=25575,
-    )
 
 
-def overview_instance(
-    server_id: str,
-    *,
-    status: MCServerStatus,
-    game_port: int = 25565,
-):
-    instance = MagicMock()
-    instance.get_name.return_value = server_id
-    instance.get_server_info = AsyncMock(return_value=server_info(server_id, game_port))
-    instance.get_status = AsyncMock(return_value=status)
-    return instance
 
 
 @pytest.mark.asyncio
-async def test_overview_skips_drift_and_hides_players_for_stopped_servers(caplog):
-    rows = [row("running"), row("stopped"), row("drifted")]
-    running = overview_instance("running", status=MCServerStatus.HEALTHY)
-    stopped = overview_instance("stopped", status=MCServerStatus.CREATED)
-    drifted = overview_instance("drifted", status=MCServerStatus.HEALTHY)
-    drifted.get_server_info = AsyncMock(side_effect=FileNotFoundError("missing"))
+async def test_overview_skips_drift_and_hides_players_for_stopped_servers(
+    database, isolated_runtime, monkeypatch, caplog,
+):
+    from datetime import UTC, datetime
 
-    manager = MagicMock()
-    manager.get_instance.side_effect = {
-        "running": running,
-        "stopped": stopped,
-        "drifted": drifted,
-    }.__getitem__
+    from app.auth.schemas import UserPublic
+    from app.minecraft import MCInstance
+    from app.players.models import Player, PlayerSession
+    from app.servers.models import Server
+    from tests.fixtures.test_utils import create_mc_server_compose_yaml
 
-    players = {
-        "running": [
-            OnlinePlayerLite(name="Notch", uuid="069a79f4", player_db_id=7)
-        ],
-        "stopped": [
-            OnlinePlayerLite(name="Ghost", uuid="00000000", player_db_id=8)
-        ],
-    }
+    now = datetime.now(UTC)
+    async with database.session_factory() as session:
+        running, stopped, drifted = [Server(server_id=name) for name in ("running", "stopped", "drifted")]
+        notch = Player(uuid="069a79f444e94726a5befca90e38aaf5", current_name="Notch", created_at=now)
+        ghost = Player(uuid="123e4567e89b42d3a456426614174000", current_name="Ghost", created_at=now)
+        session.add_all([running, stopped, drifted, notch, ghost])
+        await session.flush()
+        session.add_all([
+            PlayerSession(player_db_id=notch.player_db_id, server_db_id=running.id, joined_at=now),
+            PlayerSession(player_db_id=ghost.player_db_id, server_db_id=stopped.id, joined_at=now),
+        ])
+        await session.commit()
+    manager = isolated_runtime.docker_mc_manager
+    for name in ("running", "stopped"):
+        await manager.get_instance(name).create(create_mc_server_compose_yaml(name, 25565, 25575))
 
-    with (
-        patch_runtime_resource('docker_mc_manager', manager),
-        patch("app.routers.servers.misc.get_active_servers", AsyncMock(return_value=rows)),
-        patch(
-            "app.routers.servers.misc.get_online_players_grouped_by_server",
-            AsyncMock(return_value=players),
-        ),
-        caplog.at_level(logging.WARNING),
-    ):
-        result = await get_servers_overview(
-            db=AsyncMock(),
-            _=MagicMock(),
-        )
+    async def docker_status(instance):
+        return MCServerStatus.HEALTHY if instance.get_name() == "running" else MCServerStatus.CREATED
+
+    monkeypatch.setattr(MCInstance, "get_status", docker_status)
+    with caplog.at_level(logging.WARNING):
+        async with database.session_factory() as session:
+            result = await get_servers_overview(
+                db=session, _=UserPublic(id=1, username="owner", created_at=now),
+            )
 
     assert [server.id for server in result] == ["running", "stopped"]
-    assert result[0].online_players == players["running"]
+    assert [player.name for player in result[0].online_players] == ["Notch"]
     assert result[1].online_players == []
     assert any("drifted" in record.message for record in caplog.records)

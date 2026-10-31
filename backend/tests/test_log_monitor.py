@@ -1,262 +1,165 @@
-"""Unit tests for LogMonitor class."""
 import asyncio
 import os
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
+from sqlalchemy import select
 from watchfiles import Change, awatch
 
-from app.log_monitor.events import PlayerJoinedEvent, PlayerUuidDiscoveredEvent
+from app.log_monitor.events import PlayerLeftEvent, PlayerUuidDiscoveredEvent
 from app.log_monitor.monitor import LogMonitor
+from app.operations.context import current_execution
+from app.operations.execution import operation_scope
+from app.operations.journal import OperationJournal
+from app.operations.journal_types import OperationState
+from app.players.models import Player, PlayerChatMessage, PlayerSession
+from app.runtime_resources import current_runtime
+from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_online_uuid
-from tests.support.runtime import patch_runtime_resource
+
+
+def identity_line(name):
+    return f"[12:00:00] [Server thread/INFO]: UUID of player {name} is {UUID(make_online_uuid(name))}\n"
+
+
+def chat_line(name, message):
+    return f"[12:00:01] [Server thread/INFO]: <{name}> {message}\n"
 
 
 @pytest.fixture
-def mock_config():
-    """Mock dynamic config for LogParser."""
-    from app.dynamic_config.configs.log_parser import LogParserConfig
-
-    mock_log_parser_config = LogParserConfig.model_validate({})
-    mock_config_obj = MagicMock()
-    mock_config_obj.log_parser = mock_log_parser_config
-
-    with patch_runtime_resource('dynamic_configuration', mock_config_obj):
-        yield mock_config_obj
+async def log_monitor_instance(db_session_factory, runtime_config, isolated_runtime, monkeypatch):
+    async with db_session_factory() as session:
+        session.add_all([Server(id=index, server_id=name, status=ServerStatus.ACTIVE)
+                         for index, name in enumerate(("test_server", "other_server"), start=1)])
+        await session.commit()
+    monkeypatch.setattr(isolated_runtime.player_service.skin_client, "fetch_player_skin", AsyncMock(return_value=None))
+    monitor = LogMonitor()
+    try:
+        yield monitor
+    finally:
+        await monitor.stop_all()
 
 
 class TestLogMonitor:
-    """Test LogMonitor class."""
+    async def test_watcher_persists_player_events_after_parent_operation_finishes(
+        self, log_monitor_instance, tmp_path, db_session_factory, isolated_runtime, monkeypatch,
+    ):
+        journal = OperationJournal(db_session_factory)
+        isolated_runtime.journal = journal
+        log_path = tmp_path / "latest.log"
+        log_path.touch()
+        observed = []
+        processed = asyncio.Event()
+        handle_event = log_monitor_instance._handle_event
 
-    @pytest.fixture
-    def log_monitor_instance(self, mock_config):
-        """Create LogMonitor instance."""
-        return LogMonitor()
+        async def observe(event):
+            observed.append((current_runtime(), current_execution()))
+            await handle_event(event)
+            if isinstance(event, PlayerLeftEvent):
+                processed.set()
 
-    @pytest.mark.asyncio
-    async def test_watch_server(self, log_monitor_instance):
-        """Test starting to watch a server's log file."""
-        server_id = "test_server"
-        log_path = Path("/test/server/logs/latest.log")
+        monkeypatch.setattr(log_monitor_instance, "_handle_event", observe)
+        async with operation_scope("server_create", []) as parent:
+            assert parent is not None
+            await log_monitor_instance._watch_server("test_server", log_path)
+            async with asyncio.timeout(5):
+                while "test_server" not in log_monitor_instance._file_pointers:
+                    await asyncio.sleep(0)
+        before = await journal.get(parent.operation_id)
+        assert before is not None and before.state is OperationState.SUCCEEDED
 
-        with patch("asyncio.create_task") as mock_create_task:
-            mock_task = MagicMock()
-            mock_create_task.return_value = mock_task
-
-            await log_monitor_instance._watch_server(server_id, log_path)
-
-            assert server_id in log_monitor_instance._watch_tasks
-            assert log_monitor_instance._watch_tasks[server_id] == mock_task
-            mock_create_task.assert_called_once()
-            mock_create_task.call_args.args[0].close()
-
-    @pytest.mark.asyncio
-    async def test_watch_server_already_watching(self, log_monitor_instance, caplog):
-        """Test watching a server that is already being watched."""
-        server_id = "test_server"
-        log_path = Path("/test/server/logs/latest.log")
-
-        existing_task = MagicMock()
-        log_monitor_instance._watch_tasks[server_id] = existing_task
-
-        await log_monitor_instance._watch_server(server_id, log_path)
-
-        assert log_monitor_instance._watch_tasks[server_id] == existing_task
-        assert any("Already watching" in record.message for record in caplog.records)
-
-    @pytest.mark.asyncio
-    async def test_stop_watching(self, log_monitor_instance):
-        """Test stopping watching a server's log file."""
-        server_id = "test_server"
-
-        async def dummy_coro():
-            await asyncio.sleep(10)
-
-        task = asyncio.create_task(dummy_coro())
-        log_monitor_instance._watch_tasks[server_id] = task
-        log_monitor_instance._file_pointers[server_id] = 100
-
-        await log_monitor_instance.stop_watching(server_id)
-
-        assert server_id not in log_monitor_instance._watch_tasks
-        assert server_id not in log_monitor_instance._file_pointers
-        assert task.cancelled()
-
-    @pytest.mark.asyncio
-    async def test_stop_watching_not_watching(self, log_monitor_instance, caplog):
-        """Test stopping watching a server that isn't being watched."""
-        server_id = "test_server"
-
-        await log_monitor_instance.stop_watching(server_id)
-
-        assert any("Not watching" in record.message for record in caplog.records)
-
-    @pytest.mark.asyncio
-    async def test_stop_all(self, log_monitor_instance):
-        """Test stopping all watches."""
-
-        async def dummy_coro():
-            await asyncio.sleep(10)
-
-        task1 = asyncio.create_task(dummy_coro())
-        task2 = asyncio.create_task(dummy_coro())
-
-        log_monitor_instance._watch_tasks["server1"] = task1
-        log_monitor_instance._watch_tasks["server2"] = task2
-
-        await log_monitor_instance.stop_all()
-
-        assert len(log_monitor_instance._watch_tasks) == 0
-        assert task1.cancelled()
-        assert task2.cancelled()
-        assert log_monitor_instance._stop_flag is True
-
-    @pytest.mark.asyncio
-    async def test_process_log_changes_new_content(self, log_monitor_instance):
-        """Test processing new log content."""
-        server_id = "test_server"
-        log_path = Path("/test/logs/latest.log")
-
-        with (
-            patch("aiofiles.os.path.exists", new_callable=AsyncMock) as mock_exists,
-            patch("aiofiles.os.path.getsize", new_callable=AsyncMock) as mock_getsize,
-            patch("aiofiles.open") as mock_aioopen,
-            patch.object(
-                log_monitor_instance.players, "process_player_join", new_callable=AsyncMock
-            ) as mock_join,
-        ):
-            mock_exists.return_value = True
-            mock_getsize.return_value = 200
-
-            log_content = "[12:34:56] [Server thread/INFO]: TestPlayer[/127.0.0.1:12345] logged in with entity id 1 at (0, 0, 0)"
-
-            mock_file = AsyncMock()
-            mock_file.read = AsyncMock(return_value=log_content)
-            mock_file.seek = AsyncMock()
-            mock_file.tell = AsyncMock(return_value=200)
-
-            mock_ctx = AsyncMock()
-            mock_ctx.__aenter__.return_value = mock_file
-            mock_ctx.__aexit__.return_value = None
-            mock_aioopen.return_value = mock_ctx
-
-            log_monitor_instance._file_pointers[server_id] = 0
-
-            await log_monitor_instance._process_log_changes(server_id, log_path)
-
-            assert log_monitor_instance._file_pointers[server_id] == 200
-            mock_join.assert_called_once()
-            assert mock_join.call_args[0][1] == "TestPlayer"
-
-    @pytest.mark.asyncio
-    async def test_process_log_changes_truncated_file(self, log_monitor_instance):
-        """Test processing log when file is truncated (log rotation)."""
-        server_id = "test_server"
-        log_path = Path("/test/logs/latest.log")
-
-        with (
-            patch("aiofiles.os.path.exists", new_callable=AsyncMock) as mock_exists,
-            patch("aiofiles.os.path.getsize", new_callable=AsyncMock) as mock_getsize,
-            patch("aiofiles.open") as mock_aioopen,
-            patch.object(log_monitor_instance, "_handle_event", new_callable=AsyncMock),
-        ):
-            mock_exists.return_value = True
-            mock_getsize.return_value = 10
-
-            mock_file = AsyncMock()
-            mock_file.read = AsyncMock(return_value="")
-            mock_file.seek = AsyncMock()
-            mock_file.tell = AsyncMock(return_value=10)
-
-            mock_ctx = AsyncMock()
-            mock_ctx.__aenter__.return_value = mock_file
-            mock_ctx.__aexit__.return_value = None
-            mock_aioopen.return_value = mock_ctx
-
-            log_monitor_instance._file_pointers[server_id] = 1000
-
-            await log_monitor_instance._process_log_changes(server_id, log_path)
-
-            assert log_monitor_instance._file_pointers[server_id] == 10
-            mock_file.seek.assert_called_with(0)
-
-    @pytest.mark.asyncio
-    async def test_process_log_changes_no_new_content(self, log_monitor_instance):
-        """Test processing log when there's no new content."""
-        server_id = "test_server"
-        log_path = Path("/test/logs/latest.log")
-
-        with (
-            patch("aiofiles.os.path.exists", new_callable=AsyncMock) as mock_exists,
-            patch("aiofiles.os.path.getsize", new_callable=AsyncMock) as mock_getsize,
-            patch("aiofiles.open") as mock_aioopen,
-        ):
-            mock_exists.return_value = True
-            mock_getsize.return_value = 100
-
-            log_monitor_instance._file_pointers[server_id] = 100
-
-            await log_monitor_instance._process_log_changes(server_id, log_path)
-
-            mock_aioopen.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_handle_event_player_joined(self, log_monitor_instance):
-        """Test handling PlayerJoinedEvent calls process_player_join."""
-        event = PlayerJoinedEvent(server_id="test_server", player_name="TestPlayer")
-
-        with patch.object(
-            log_monitor_instance.players, "process_player_join", new_callable=AsyncMock
-        ) as mock_join:
-            await log_monitor_instance._handle_event(event)
-            mock_join.assert_called_once_with(
-                event.server_id, event.player_name, event.timestamp
-            )
-
-    @pytest.mark.asyncio
-    async def test_handle_event_uuid_discovered(self, log_monitor_instance):
-        """Test handling PlayerUuidDiscoveredEvent calls upsert_player."""
-        uuid = make_online_uuid("TestPlayer")
-        event = PlayerUuidDiscoveredEvent(
-            server_id="test_server",
-            player_name="TestPlayer",
-            uuid=uuid,
+        content = (
+            identity_line("TestPlayer")
+            + "[12:00:01] [Server thread/INFO]: TestPlayer[/127.0.0.1:12345] logged in with entity id 1 at (0, 0, 0)\n"
+            + chat_line("TestPlayer", "父操作结束后的聊天")
+            + "[12:00:02] [Server thread/INFO]: TestPlayer lost connection: Disconnected\n"
         )
+        await asyncio.to_thread(log_path.write_text, content)
+        await asyncio.wait_for(processed.wait(), 5)
+        await log_monitor_instance.stop_watching("test_server")
 
-        with patch.object(log_monitor_instance.players, "discover_identity", new_callable=AsyncMock) as discover:
-            await log_monitor_instance._handle_event(event)
-            discover.assert_awaited_once_with(uuid, "TestPlayer")
+        assert observed == [(isolated_runtime, None)] * 4
+        async with db_session_factory() as session:
+            player = (await session.scalars(select(Player))).one()
+            presence = (await session.scalars(select(PlayerSession))).one()
+            message = (await session.scalars(select(PlayerChatMessage))).one()
+            assert player.uuid == make_online_uuid("TestPlayer")
+            assert presence.player_db_id == message.player_db_id == player.player_db_id
+            assert presence.server_db_id == message.server_db_id == 1
+            assert presence.left_at is not None
+            assert message.message_text == "父操作结束后的聊天"
+        assert await journal.get(parent.operation_id) == before
+        assert len(await journal.list()) == 1
+        assert not log_monitor_instance.is_watching("test_server")
 
-    @pytest.mark.asyncio
-    async def test_watch_loop_file_not_exists_initially(self, log_monitor_instance):
-        """Test watch loop when log file doesn't exist initially."""
-        server_id = "test_server"
-        log_path = Path("/test/logs/latest.log")
+    async def test_appended_log_persists_identity_presence_and_chat_once(self, log_monitor_instance, tmp_path, db_session_factory):
+        log_path = tmp_path / "latest.log"
+        log_path.write_text(identity_line("TestPlayer"))
+        await log_monitor_instance._process_log_changes("test_server", log_path)
+        with log_path.open("a") as output:
+            output.write("[12:00:01] [Server thread/INFO]: TestPlayer[/127.0.0.1:12345] logged in with entity id 1 at (0, 0, 0)\n")
+            output.write(chat_line("TestPlayer", "你好，世界"))
+        await log_monitor_instance._process_log_changes("test_server", log_path)
+        await log_monitor_instance._process_log_changes("test_server", log_path)
+        async with db_session_factory() as session:
+            players = list(await session.scalars(select(Player)))
+            presence = list(await session.scalars(select(PlayerSession)))
+            messages = list(await session.scalars(select(PlayerChatMessage)))
+            assert [(p.current_name, p.uuid) for p in players] == [("TestPlayer", make_online_uuid("TestPlayer"))]
+            assert len(presence) == 1 and presence[0].left_at is None
+            assert presence[0].player_db_id == players[0].player_db_id and presence[0].server_db_id == 1
+            assert [(m.message_text, m.server_db_id) for m in messages] == [("你好，世界", 1)]
 
-        with (
-            patch("aiofiles.os.path.exists", new_callable=AsyncMock) as mock_exists,
-            patch("aiofiles.os.path.getsize"),
-        ):
-            mock_exists.return_value = False
+    async def test_truncated_log_reads_new_content_without_replaying_old_chat(self, log_monitor_instance, tmp_path, db_session_factory):
+        log_path = tmp_path / "latest.log"
+        log_path.write_text(identity_line("TestPlayer") + chat_line("TestPlayer", "old message"))
+        await log_monitor_instance._process_log_changes("test_server", log_path)
+        log_path.write_text(chat_line("TestPlayer", "new"))
+        await log_monitor_instance._process_log_changes("test_server", log_path)
+        await log_monitor_instance._process_log_changes("test_server", log_path)
+        async with db_session_factory() as session:
+            assert list(await session.scalars(select(PlayerChatMessage.message_text).order_by(PlayerChatMessage.message_id))) == ["old message", "new"]
 
-            task = asyncio.create_task(
-                log_monitor_instance._watch_loop(server_id, log_path)
-            )
+    async def test_duplicate_watch_and_stop_all_close_real_watchers(self, log_monitor_instance, tmp_path, isolated_runtime):
+        for name in ("test_server", "other_server"):
+            path = tmp_path / name
+            path.mkdir()
+            log_path = path / "latest.log"
+            log_path.touch()
+            await log_monitor_instance._watch_server(name, log_path)
+            await log_monitor_instance._watch_server(name, log_path)
+        async with asyncio.timeout(5):
+            while len(log_monitor_instance._file_pointers) != 2:
+                await asyncio.sleep(0)
+        subscription = isolated_runtime.event_bus.subscribe()
+        try:
+            first = tmp_path / "test_server" / "latest.log"
+            first.write_text(identity_line("TestPlayer") + chat_line("TestPlayer", "observed"))
+            frame = await asyncio.wait_for(subscription.queue.get(), 5)
+            assert frame.type == "chat" and frame.message == "observed"
+            tasks = list(log_monitor_instance._watch_tasks.values())
+            await log_monitor_instance.stop_watching("test_server")
+            await log_monitor_instance.stop_watching("test_server")
+            assert not log_monitor_instance.is_watching("test_server")
+            assert log_monitor_instance.is_watching("other_server")
+            await log_monitor_instance.stop_all()
+            assert not log_monitor_instance.is_watching("other_server")
+            assert all(task.done() for task in tasks)
+            assert log_monitor_instance._file_pointers == {}
+            assert subscription.queue.empty()
+        finally:
+            isolated_runtime.event_bus.unsubscribe(subscription)
 
-            await asyncio.sleep(0.05)
-
-            assert log_monitor_instance._file_pointers[server_id] == 0
-
-            log_monitor_instance._stop_flag = True
-            await asyncio.sleep(0.05)
-
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+    async def test_missing_log_can_be_stopped_without_creating_files(self, log_monitor_instance, tmp_path):
+        log_path = tmp_path / "missing" / "latest.log"
+        await log_monitor_instance._watch_server("test_server", log_path)
+        async with asyncio.timeout(5):
+            while "test_server" not in log_monitor_instance._file_pointers:
+                await asyncio.sleep(0)
+        await log_monitor_instance.stop_watching("test_server")
+        assert not log_path.exists()
+        assert not log_monitor_instance.is_watching("test_server")
 
     @pytest.mark.asyncio
     async def test_polling_watch_reconciles_unreported_same_mtime_tail(

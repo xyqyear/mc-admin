@@ -1,8 +1,8 @@
 import json
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI, Request, Response
+from httpx2 import ASGITransport, AsyncClient
 
 from app.audit import OperationAuditMiddleware
 from app.config import AuditSettings, get_settings
@@ -50,17 +50,40 @@ def test_sensitive_data_masking(middleware):
 ])
 @pytest.mark.parametrize("path", ["/api/auth/token", "/api/servers/test/operations", "/api/admin/users/123"])
 def test_audit_patterns(middleware, method, expected, path):
-    request = MagicMock(spec=Request)
-    request.method = method
-    request.url.path = path
+    request = Request({"type": "http", "method": method, "path": path, "headers": []})
     assert middleware._should_audit_request(request) is expected
 
 
 @pytest.mark.parametrize("authorization", [None, "InvalidToken", "Bearer invalid-token"])
 async def test_invalid_authentication_has_no_user(middleware, authorization):
-    request = MagicMock(spec=Request)
-    request.headers.get.return_value = authorization
+    headers = [(b"authorization", authorization.encode())] if authorization else []
+    request = Request({"type": "http", "method": "GET", "path": "/api/user/me", "headers": headers})
     assert await middleware._get_user_info(request) is None
+
+
+async def test_http_audit_preserves_request_body_and_redacts_log(middleware, tmp_path):
+    application = FastAPI()
+    application.add_middleware(OperationAuditMiddleware)
+
+    @application.post("/api/settings")
+    async def save(request: Request):
+        body = await request.json()
+        assert body == {"name": "visible", "password": "never-log-this"}
+        return {"saved": body["name"]}
+
+    async with AsyncClient(transport=ASGITransport(app=application), base_url="http://test") as client:
+        response = await client.post("/api/settings", json={"name": "visible", "password": "never-log-this"})
+    assert response.status_code == 200
+    assert response.json() == {"saved": "visible"}
+    for handler in middleware.logger.handlers:
+        handler.flush()
+    written = (tmp_path / get_settings().audit.log_file).read_text()
+    assert "never-log-this" not in written
+    entries = [json.loads(line) for line in written.splitlines()]
+    assert len(entries) == 1
+    assert entries[0]["request_body"] == {"name": "visible", "password": "***MASKED***"}
+    assert entries[0]["status_code"] == 200
+    assert entries[0]["success"] is True
 
 
 @pytest.mark.parametrize("field,payload", [

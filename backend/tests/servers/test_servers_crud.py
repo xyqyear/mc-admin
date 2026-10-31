@@ -4,16 +4,12 @@ Unit tests for Server CRUD operations.
 Tests database operations for server records.
 """
 
-import tempfile
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.metadata import Base
 from app.servers.crud import (
     create_server_record,
     get_active_servers,
@@ -30,30 +26,8 @@ from app.servers.models import Server, ServerStatus
 
 
 @pytest.fixture
-async def test_database():
-    """Create isolated test database."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    db_url = f"sqlite+aiosqlite:///{db_path}"
-    engine = create_async_engine(db_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async_session_maker = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-
-    @asynccontextmanager
-    async def get_session():
-        async with async_session_maker() as session:
-            yield session
-
-    yield get_session
-
-    await engine.dispose()
-    Path(db_path).unlink(missing_ok=True)
+async def test_database(db_session_factory):
+    return db_session_factory
 
 
 async def _create_server_directly(

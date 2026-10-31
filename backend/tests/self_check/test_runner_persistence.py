@@ -1,41 +1,16 @@
-import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.self_check.models import SelfCheckFinding, SelfCheckRun
 from app.self_check.types import SelfCheckFindingResult
 
 
 @pytest.fixture
-async def self_check_db(monkeypatch: pytest.MonkeyPatch):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-
-    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    session_factory = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-
-    from app.self_check.service import get_self_check_service
-
-    monkeypatch.setattr(get_self_check_service(), "session_factory", session_factory)
-    yield session_factory
-
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def self_check_db(db_session_factory):
+    return db_session_factory
 
 
 def _finding(check_id: str, severity: str, status: str) -> SelfCheckFindingResult:

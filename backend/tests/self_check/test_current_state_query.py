@@ -1,31 +1,15 @@
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.metadata import Base
 from app.self_check import crud
 from app.self_check.models import SelfCheckFinding, SelfCheckRun
 
 
 @pytest.fixture
-async def self_check_db(tmp_path: Path):
-    db_path = tmp_path / "self_check_current_state.sqlite3"
-    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    session_factory = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-    yield session_factory
-
-    await engine.dispose()
+async def self_check_db(db_session_factory):
+    return db_session_factory
 
 
 BASE_TIME = datetime(2026, 6, 6, 12, 0, tzinfo=UTC)

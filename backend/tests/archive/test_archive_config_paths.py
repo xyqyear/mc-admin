@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from httpx2 import ASGITransport, AsyncClient
 
 from app.config import Settings
-from app.db.metadata import Base
 from app.main import api_app
 from app.operations.coordinator import ConflictPolicy, ResourceClaim, ResourceKind
 from app.operations.journal import OperationJournal
@@ -124,11 +123,8 @@ def test_upload_publication_rejects_parent_retarget_after_init_and_hash(tmp_path
 
 
 async def test_accepted_publication_rechecks_canonical_parent_after_lease_wait(
-    tmp_path, monkeypatch, isolated_runtime,
-):
+    tmp_path, monkeypatch, isolated_runtime, database):
     runtime = isolated_runtime
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal
     runtime.task_manager.journal = journal

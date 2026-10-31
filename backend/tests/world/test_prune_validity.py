@@ -15,7 +15,6 @@ from app.chunk_prune.inputs import PrunePreviewConflict
 from app.chunk_prune.lifecycle import PrunePreviewRegistry
 from app.chunk_prune.models import ChunkPrunePreviewRequest
 from app.chunk_prune.service import ChunkPruneService
-from app.db.metadata import Base
 from app.dynamic_config import get_config, get_config_manager
 from app.mcmap import runner
 from app.minecraft import DockerMCManager, MCServerStatus
@@ -66,7 +65,7 @@ class StoppedDocker:
 
 
 @pytest.fixture
-async def prune_case(isolated_runtime, tmp_path):
+async def prune_case(isolated_runtime, tmp_path, database):
     runtime = isolated_runtime
     project = runtime.settings.server_path / "survival"
     data = project / "data"
@@ -82,8 +81,6 @@ async def prune_case(isolated_runtime, tmp_path):
     teams = data / "world" / "ftbteams" / "party"
     teams.mkdir(parents=True)
     (teams / f"{TEAM}.snbt").write_text('{type: "party", properties: {"ftbteams:display_name": "builders"}}')
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
         session.add(Server(server_id="survival"))
         await session.commit()

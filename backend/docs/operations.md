@@ -53,6 +53,11 @@ writers also claim their filesystem output paths. Nested safety snapshots reuse
 an explicitly validated parent lease, and never acquire a broader scope while
 holding a narrower one. All required resources are reserved atomically.
 
+Nested scope admission rejects an already settled execution or an absent/terminal
+durable parent before entering business work. A covering resource scope does not
+make an ended operation reusable. Independent scheduler and log-watcher entrypoints
+clear inherited ownership; actual nested commands keep their active parent.
+
 A global FILES claim covers the server root, including future servers; creation
 and adoption take their destination FILES and port claims together. This closes
 the gap between global backup target discovery and concurrent server creation.

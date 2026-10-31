@@ -23,12 +23,7 @@ from ..operations.context import current_execution
 from ..operations.finalization import finalize
 from ..runtime_resources import current_runtime
 from ..utils import async_fs
-from .coverage import covers
-from .evidence import (
-    selection_tags,
-    snapshot_selection,
-    snapshot_source_path,
-)
+from .evidence import selection_tags
 from .ignores import (
     InstanceProvider,
     backup_excludes,
@@ -53,6 +48,7 @@ from .planner import (
 from .protection import SnapshotProtection
 from .repository_use import RepositoryUse
 from .restic import BackupProgressCallback, ResticClient
+from .source import SnapshotSource
 
 
 class SnapshotService:
@@ -79,58 +75,8 @@ class SnapshotService:
             current, retained, data_paths=data_paths
         )
         if snapshot_id is not None:
-            return await self.with_source_protection(
-                protection, await self.get_snapshot(snapshot_id)
-            )
+            return await SnapshotSource(await self.get_snapshot(snapshot_id)).protect(protection)
         return protection
-
-    async def with_source_protection(
-        self, protection: SnapshotProtection, source: ResticSnapshot
-    ) -> SnapshotProtection:
-        excluded = list(protection.excluded)
-        selection = snapshot_selection(source)
-        if selection is not None:
-            excluded.extend(selection.excluded)
-            source_roots = {Path(value) for value in source.paths}
-            selected_roots: set[Path] = set()
-            checked: set[Path] = set()
-            for item in protection.mappings:
-                parent = item.logical
-                while parent not in checked:
-                    checked.add(parent)
-                    if parent in source_roots:
-                        selected_roots.add(parent)
-                    parent = parent.parent
-            roots = tuple(sorted(selected_roots))
-            executions = await async_fs.resolve_many(roots)
-            for root, execution in zip(roots, executions, strict=True):
-                if execution != root:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="源快照对应的链接目标已变化，请重新选择范围",
-                    )
-        if not protection.mappings:
-            excluded.extend(Path(path) for path in source.excludes)
-        for mapping in protection.mappings:
-            source_root = snapshot_source_path(
-                source, mapping.logical, mapping.execution
-            )
-            if source_root != mapping.execution:
-                raise HTTPException(
-                    status_code=409, detail="源快照对应的链接目标已变化，请重新选择范围"
-                )
-            for value in source.excludes:
-                path = Path(value)
-                if source_root.is_relative_to(path):
-                    excluded.append(mapping.logical)
-                elif path.is_relative_to(source_root):
-                    excluded.append(mapping.logical / path.relative_to(source_root))
-        return SnapshotProtection.capture(
-            protection.current,
-            excluded,
-            data_paths=protection.data_paths,
-            mappings=protection.mappings,
-        )
 
     async def _bind_paths(
         self, paths: Sequence[Path], protection: SnapshotProtection
@@ -160,18 +106,6 @@ class SnapshotService:
                     if ignored.is_relative_to(path)
                 }
             )
-        )
-
-    @staticmethod
-    def source_covers(
-        source: ResticSnapshot, path: Path, protection: SnapshotProtection
-    ) -> bool:
-        execution = protection.execution_path(path)
-        source_path = snapshot_source_path(source, path, execution)
-        return protection.permits(path) and covers(
-            source_path,
-            [Path(value) for value in source.paths],
-            [Path(value) for value in source.excludes],
         )
 
     async def revalidate_protection(self, protection: SnapshotProtection) -> None:
@@ -204,9 +138,7 @@ class SnapshotService:
         protection = await self._bind_paths(
             paths, protection or await self.protection()
         )
-        protection = await self.with_source_protection(
-            protection, await self.get_snapshot(snapshot_id)
-        )
+        protection = await SnapshotSource(await self.get_snapshot(snapshot_id)).protect(protection)
         await self.revalidate_protection(protection)
         removed: list[Path] = []
 
@@ -338,9 +270,7 @@ class SnapshotService:
         protection = await self._bind_paths(
             targets, protection or await self.protection()
         )
-        protection = await self.with_source_protection(
-            protection, await self.get_snapshot(snapshot_id)
-        )
+        protection = await SnapshotSource(await self.get_snapshot(snapshot_id)).protect(protection)
         await self.revalidate_protection(protection)
         targets = protection.select_targets(targets)
         groups: dict[tuple[Path, ...], list[SnapshotPathMapping]] = {}
@@ -623,13 +553,14 @@ class SnapshotService:
         )
         filtered: list[ResticSnapshot] = []
         for snapshot in snapshots:
+            source = SnapshotSource(snapshot)
             try:
-                protected = await self.with_source_protection(protection, snapshot)
+                protected = await source.protect(protection)
             except HTTPException as error:
                 if error.status_code == 409:
                     continue
                 raise
-            if self.source_covers(snapshot, path_filter, protected):
+            if source.covers(path_filter, protected):
                 filtered.append(snapshot)
         await self._project_notes(filtered)
         return filtered
@@ -653,25 +584,18 @@ class SnapshotService:
 
         matching: list[ResticSnapshot] = []
         for snapshot in all_snapshots:
+            source = SnapshotSource(snapshot)
             try:
-                protected = await self.with_source_protection(protection, snapshot)
+                protected = await source.protect(protection)
             except HTTPException as error:
                 if error.status_code == 409:
                     continue
                 raise
-            if all(self.source_covers(snapshot, target, protected) for target in paths):
+            if all(source.covers(target, protected) for target in paths):
                 matching.append(snapshot)
         matching.sort(key=lambda s: s.time, reverse=True)
         await self._project_notes(matching)
         return matching
-
-    @staticmethod
-    async def _resolved_coverage_paths(
-        snapshot: ResticSnapshot,
-    ) -> tuple[list[Path], list[Path]]:
-        paths = [Path(p) for p in snapshot.paths]
-        excludes = [Path(e) for e in snapshot.excludes]
-        return paths, excludes
 
     async def forget_id(
         self, snapshot_id: str, prune: bool = True, *, reservation: object | None = None

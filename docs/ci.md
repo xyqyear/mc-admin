@@ -49,7 +49,7 @@ Committed backend log intervals and embedded API costs are cold-start scheduling
 
 Follow the repository's [delivery and test requirements](../AGENTS.md#交付与测试要求). Local execution is limited to tests for changed behavior and affected call paths, selected by explicit files, node IDs, packages or case filters. Never run the full project or a component's full test suite locally, including through accumulated directory, shard or subagent runs. Required lint, type checks and build checks remain in place. Documentation-only changes need no local tests.
 
-Use the existing `Qualify and Publish Application` workflow's manual dispatch on the implementation branch with `publish=false`. It executes candidate, static, backend, integrated API and browser gates without changing registry tags. Confirm the source SHA, complete successful gates, all three exact-once audits and owned cleanup before comparing elapsed times. For E2E engine changes, also run the API workflow with reuse disabled to check isolation.
+Changes limited to Markdown files require neither local tests nor CI. For other changes, use the existing `Qualify and Publish Application` workflow's manual dispatch on the implementation branch with `publish=false`. It executes candidate, static, backend, integrated API and browser gates without changing registry tags. Confirm the source SHA, complete successful gates, all three exact-once audits and owned cleanup before comparing elapsed times. For E2E engine changes, also run the API workflow with reuse disabled to check isolation.
 
 Bind the dispatched run ID to the latest pushed commit, then have the primary agent start a single persistent wait command:
 

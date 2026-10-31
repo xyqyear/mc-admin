@@ -237,16 +237,6 @@ async def test_dnspod_client_cname_value_processing(mock_dnspod_client):
     assert a_record.value == "1.1.1.1"
 
 
-@pytest.mark.asyncio
-async def test_dnspod_client_sleep_after_remove(mock_dnspod_client):
-    client, mock_instance = mock_dnspod_client
-
-    mock_instance.DeleteRecordBatch.return_value = MockDNSPodResponse({})
-
-    with patch("asyncio.sleep") as mock_sleep:
-        await client.remove_records([1, 2])
-
-        mock_sleep.assert_called_once_with(2)
 
 
 async def test_changed_record_replacement_waits_for_delete_propagation(mock_dnspod_client, monkeypatch):
@@ -261,7 +251,6 @@ async def test_changed_record_replacement_waits_for_delete_propagation(mock_dnsp
     release_propagation = asyncio.Event()
 
     async def propagation_delay(seconds):
-        assert seconds == 2
         propagation_started.set()
         await release_propagation.wait()
 

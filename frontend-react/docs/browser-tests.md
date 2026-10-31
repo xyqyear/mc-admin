@@ -25,6 +25,40 @@ BROWSER_OUTPUT_DIR=/tmp/browser-report \
 
 This example selects the lifecycle acceptance journey; choose the explicit related titles for the actual change. Unfiltered `pnpm test:browser` is a full-suite CI command. Complete qualification uses the frozen case assignments described below. The complete GitHub Actions gates must pass for the latest commit SHA under `../AGENTS.md` and the [repository rules](../../AGENTS.md).
 
+## Windows browser with a WSL-owned deployment
+
+In the shared Windows checkout, install the browser with Windows pnpm:
+
+```powershell
+pnpm --dir frontend-react exec playwright install chromium
+.\scripts\dev\e2e.ps1 build
+.\scripts\dev\e2e.ps1 browser --backend-image mc-admin:dev --recipe server -- browser/navigation.spec.ts --grep 'EXACT_RELATED_TITLE$'
+```
+
+Choose the recipe required by the selected journey and replace the title filter
+with explicit related titles. Build `mc-admin:dev` from the current source first.
+The wrapper still requires `--backend-image`, a spec file and a title filter.
+Windows Node/Playwright use the existing Windows `node_modules`; Linux does not
+install or overwrite frontend dependencies.
+
+The WSL Go runner creates the private fixture, deployment and cleanup journal.
+Its child `scripts/dev/browser_bridge.py` launches PowerShell 7 and Windows
+Node. A Windows Job Object owns the Playwright process tree; the child waits
+for assignment before starting tests. Completion or loss of the WSL owner's
+stdin closes the job and terminates its descendants before the bridge exits.
+The original Go cleanup and result reporting then run normally.
+
+`browser/host.ts` maps owned Linux paths through the selected distribution's
+`\\wsl.localhost\DISTRIBUTION` share. It checks credential file permissions in
+Linux and retains canonical runtime confinement checks. Docker subprocesses
+and ownership changes execute in that same distribution. No fixture credentials
+are copied into the checkout. Playwright reports default to the Windows
+`frontend-react/test-results/browser` directory; deployment evidence remains in
+the Linux E2E output directory described in [development](../../docs/development.md).
+
+Native Linux CI uses the same fixture checks and direct host commands without
+the Windows bridge. Browser transport and business assertions are shared.
+
 ## Fixture and evidence ownership
 
 The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owned URL, credentials, server path and image/environment/manifest identities. Tests validate its local URL, directory ownership and private permissions. Never publish the runtime directory or private fixture. Publish the runner's redacted report/cleanup evidence and the Playwright results/report/artifacts; traces belong to short-lived test credentials and should still have restricted retention.
@@ -91,6 +125,12 @@ The file-layout cases retain the actual server-rule GET response behind a transp
 ### Task acceptance and file recovery
 
 Lifecycle acceptance has a dedicated journey: actual Docker startup returns 202; delaying delivery of real task-detail responses keeps the original controls blocked, exposes the reason/task-center link, and releases controls only after confirmed completion. The transport gate never fabricates task or server state.
+
+The journey opens the task center from the pending operation's status region;
+an observation-failure notification may independently offer the same action.
+Cleanup restores observation and waits for the accepted task's real terminal
+state before restoring the server, while preserving the original assertion
+failure alongside any cleanup errors.
 
 The file recovery journey creates a mixed-selection snapshot from the actual UI, checks source-specific skips and preview bytes, restores after a reload, and rolls back through filtered history after removing the current ignore rule. Individually ignored directories remain disabled; mixed selections skip them and rollback retains their recorded protection. File and map reload cases temporarily stop the next Restic backup worker only inside their owned application container, using a verified PID handle; they release it after checking resumed progress and close guards. The helper resumes automatically on input closure or its bounded timeout, and declared cleanup awaits its exit. These cases retain real task and filesystem results rather than synthesizing a running response.
 

@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 import pytest
 
+from app.dynamic_config.configs.mcmap import MCMapConfig
 from app.mcmap.cache import ServerMapCache
 from app.mcmap.queue import ServerRenderQueue
-from tests.support.mcmap import mcmap_config
-from tests.support.runtime import patch_runtime_resource
+from app.runtime_resources import current_runtime
 
 
 class FakeProc:
@@ -65,7 +65,7 @@ def _patched_runner(events_per_call):
 
 
 @pytest.fixture
-async def cache_and_queue():
+async def cache_and_queue(runtime_config):
     with tempfile.TemporaryDirectory() as d:
         data_path = Path(d)
         cache = ServerMapCache(data_path=data_path)
@@ -88,9 +88,8 @@ async def test_request_resolves_with_png_path(cache_and_queue):
     )
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = mcmap_config()
+        await current_runtime().config_manager.update_config("mcmap", MCMapConfig(batch_size=4, thread_count=2, request_timeout_seconds=30).model_dump())
         png = await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
         assert png == cache.png_path("world/region", 0, 0)
         # Render was called once with one MCA
@@ -105,9 +104,8 @@ async def test_duplicate_requests_coalesce_to_single_render(cache_and_queue):
     )
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = mcmap_config()
+        await current_runtime().config_manager.update_config("mcmap", MCMapConfig(batch_size=4, thread_count=2, request_timeout_seconds=30).model_dump())
         results = await asyncio.wait_for(
             asyncio.gather(queue.request(0, 0), queue.request(0, 0)),
             timeout=2.0,
@@ -132,9 +130,8 @@ async def test_batched_requests_in_single_render(cache_and_queue):
     )
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = mcmap_config(batch_size=8)
+        await current_runtime().config_manager.update_config("mcmap", MCMapConfig(batch_size=8, thread_count=2, request_timeout_seconds=30).model_dump())
         results = await asyncio.wait_for(
             asyncio.gather(
                 queue.request(0, 0),
@@ -159,9 +156,8 @@ async def test_missing_status_raises_filenotfound(cache_and_queue):
     )
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = mcmap_config()
+        await current_runtime().config_manager.update_config("mcmap", MCMapConfig(batch_size=4, thread_count=2, request_timeout_seconds=30).model_dump())
         with pytest.raises(FileNotFoundError):
             await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
 
@@ -175,9 +171,8 @@ async def test_error_status_raises_render_error(cache_and_queue):
     )
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = mcmap_config()
+        await current_runtime().config_manager.update_config("mcmap", MCMapConfig(batch_size=4, thread_count=2, request_timeout_seconds=30).model_dump())
         with pytest.raises(MCMapError):
             await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
 
@@ -193,9 +188,8 @@ async def test_missing_event_for_requested_region_raises(cache_and_queue):
     )
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = mcmap_config(batch_size=4)
+        await current_runtime().config_manager.update_config("mcmap", MCMapConfig(batch_size=4, thread_count=2, request_timeout_seconds=30).model_dump())
         # Ask for two; only one event will arrive
         results = await asyncio.wait_for(
             asyncio.gather(
@@ -220,12 +214,11 @@ async def test_worker_reads_mcmap_config_for_each_batch(cache_and_queue):
     )
     with (
         patch("app.mcmap.queue.runner.render", fake_render),
-        patch_runtime_resource('dynamic_configuration') as config_mock,
     ):
-        config_mock.mcmap = mcmap_config(batch_size=1, thread_count=2)
+        await current_runtime().config_manager.update_config("mcmap", MCMapConfig(batch_size=1, thread_count=2, request_timeout_seconds=30).model_dump())
         first = await asyncio.wait_for(queue.request(0, 0), timeout=2.0)
 
-        config_mock.mcmap = mcmap_config(batch_size=1, thread_count=7)
+        await current_runtime().config_manager.update_config("mcmap", MCMapConfig(batch_size=1, thread_count=7, request_timeout_seconds=30).model_dump())
         second = await asyncio.wait_for(queue.request(1, 0), timeout=2.0)
 
         assert first == cache.png_path("world/region", 0, 0)

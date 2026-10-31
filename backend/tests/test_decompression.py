@@ -62,7 +62,7 @@ async def test_decompression_progress_arrives_before_process_exit(temp_dir, mock
         try:
             async with asyncio.timeout(5):
                 async for progress in stream:
-                    if progress.progress == 27:
+                    if progress.progress is not None and 0 < progress.progress < 100 and "25%" in progress.message:
                         assert "解压" in progress.message
                         assert not target.exists()
                         break
@@ -379,28 +379,6 @@ class TestNoSevenZip:
 class TestExtractArchiveStream:
     """Test the low-level extract_archive_stream async generator."""
 
-    async def test_stream_yields_int_percentages(self, temp_dir, mock_settings):
-        """Test that extract_archive_stream yields integer percentages."""
-        # Create archive with test files
-        archive_path = temp_dir / "test.zip"
-        server_structure = {
-            "server.properties": "server-port=25565\n",
-            "world/level.dat": "world data" * 1000,  # Larger file
-            "plugins/plugin.jar": "plugin content" * 500,
-        }
-        create_test_archive(archive_path, server_structure)
-
-        output_dir = temp_dir / "extracted"
-        await aioos.makedirs(output_dir, exist_ok=True)
-
-        progress_values = []
-        async for percent in extract_archive_stream(str(archive_path), str(output_dir)):
-            assert isinstance(percent, int)
-            assert 0 <= percent <= 100
-            progress_values.append(percent)
-
-        # Should have at least one progress update
-        assert len(progress_values) >= 1
 
     async def test_stream_extracts_files(self, temp_dir, mock_settings):
         """Test that extract_archive_stream actually extracts files."""
@@ -414,13 +392,10 @@ class TestExtractArchiveStream:
         output_dir = temp_dir / "extracted"
         await aioos.makedirs(output_dir, exist_ok=True)
 
-        # Consume the generator
-        async for _ in extract_archive_stream(str(archive_path), str(output_dir)):
-            pass
-
-        # Verify files were extracted
-        assert (output_dir / "file.txt").exists()
-        assert (output_dir / "folder" / "nested.txt").exists()
+        progress = [value async for value in extract_archive_stream(str(archive_path), str(output_dir))]
+        assert progress and all(isinstance(value, int) and 0 <= value <= 100 for value in progress)
+        assert (output_dir / "file.txt").read_text() == "test content"
+        assert (output_dir / "folder" / "nested.txt").read_text() == "nested content"
 
     async def test_stream_7z_archive(self, temp_dir, mock_settings):
         """Test extraction of 7z format archive."""
@@ -453,36 +428,6 @@ class TestExtractArchiveStream:
 class TestExtractMinecraftServer:
     """Test the high-level extract_minecraft_server async generator."""
 
-    async def test_stream_yields_task_progress(self, temp_dir, mock_settings):
-        """Test that stream yields TaskProgress objects."""
-        archive_path = temp_dir / "server.zip"
-        server_structure = {
-            "server/server.properties": "server-port=25565\n",
-            "server/world/level.dat": "world data",
-        }
-        create_test_archive(archive_path, server_structure)
-
-        target_path = temp_dir / "extracted"
-        await aioos.makedirs(target_path, exist_ok=True)
-
-        progress_updates = []
-        async for progress in extract_minecraft_server(
-            str(archive_path), str(target_path)
-        ):
-            assert isinstance(progress, TaskProgress)
-            assert progress.message is not None
-            progress_updates.append(progress)
-
-        # Should have multiple progress updates
-        assert len(progress_updates) >= 2
-
-        # First should be 0%
-        assert progress_updates[0].progress == 0
-
-        # Last should be 100% with result
-        assert progress_updates[-1].progress == 100
-        assert progress_updates[-1].result is not None
-        assert progress_updates[-1].result.get("success") is True
 
     async def test_stream_handles_deep_nested_structure(self, temp_dir, mock_settings):
         """Test extraction with deeply nested server.properties."""
@@ -517,14 +462,20 @@ class TestExtractMinecraftServer:
 
         progress_values = []
         messages = []
+        updates = []
         async for progress in extract_minecraft_server(
             str(archive_path), str(target_path)
         ):
+            assert isinstance(progress, TaskProgress)
+            updates.append(progress)
             if progress.progress is not None:
                 progress_values.append(progress.progress)
             messages.append(progress.message)
 
-        # Verify progress is non-decreasing
+        assert progress_values[0] == 0 and progress_values[-1] == 100
+        assert updates[-1].result == {"success": True}
+        assert (target_path / "server.properties").read_text() == server_structure["server/server.properties"]
+        assert (target_path / "world/level.dat").read_text() == server_structure["server/world/level.dat"]
         for i in range(1, len(progress_values)):
             assert progress_values[i] >= progress_values[i - 1], (
                 f"Progress went backwards: {progress_values}"

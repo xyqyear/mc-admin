@@ -1,2 +1,3 @@
 # Preserve the checksummed SQL dump emitted by the released database.
 backend/tests/contracts/fixtures/releases/v5.3.0.sql whitespace=-blank-at-eol
+scripts/dev/*.sh text eol=lf

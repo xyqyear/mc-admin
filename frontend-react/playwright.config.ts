@@ -1,14 +1,15 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { defineConfig, devices } from '@playwright/test'
+import { hostPath } from './browser/host'
 
-const output = path.resolve(process.env.BROWSER_OUTPUT_DIR ?? 'test-results/browser')
+const output = path.resolve(process.env.BROWSER_OUTPUT_DIR || 'test-results/browser')
 const fixturePath = process.env.MC_ADMIN_BROWSER_FIXTURE
-const fixture = fixturePath ? JSON.parse(readFileSync(fixturePath, 'utf8')) : undefined
+const fixture = fixturePath ? JSON.parse(readFileSync(hostPath(fixturePath), 'utf8')) : undefined
 
 export default defineConfig({
   testDir: './browser',
-  testIgnore: '**/shardReporter.test.mjs',
+  testIgnore: ['**/shardReporter.test.mjs', '**/host.test.mjs'],
   fullyParallel: false,
   workers: 1,
   retries: 0,

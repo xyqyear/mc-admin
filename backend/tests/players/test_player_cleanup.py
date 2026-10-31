@@ -3,9 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.metadata import Base
 from app.dynamic_config.configs.players import PlayersConfig
 from app.players.crud.player_cleanup import (
     delete_player_cleanup_candidates,
@@ -23,16 +22,8 @@ from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
-async def test_db_session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with maker() as session:
-        yield session
-
-    await engine.dispose()
+async def test_db_session(db_session):
+    return db_session
 
 
 def _set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
@@ -211,3 +202,25 @@ async def test_cleanup_does_not_reuse_chat_replay_cursor(test_db_session, monkey
     assert new.message_id > cursor
     replay = await get_chat_messages_after(test_db_session, cursor)
     assert [(message.message_id, message.message_text) for message in replay] == [(new.message_id, "after cleanup")]
+
+
+async def test_cleanup_recomputes_candidates_after_preview(
+    database, runtime_config, isolated_runtime,
+):
+    values = runtime_config.players.model_dump()
+    values["ignored_name_prefixes"] = ["bot_"]
+    await isolated_runtime.config_manager.update_config("players", values)
+    async with database.session_factory() as session:
+        await _add_player(session, 1, "bot_retained", make_online_uuid("retained"))
+        await _add_player(session, 2, "npc_removed", make_online_uuid("removed"))
+    async with database.session_factory() as session:
+        preview = await get_player_cleanup_preview(session, "ignored_name_prefix")
+        assert [row.current_name for row in preview.candidates] == ["bot_retained"]
+
+    values["ignored_name_prefixes"] = ["npc_"]
+    await isolated_runtime.config_manager.update_config("players", values)
+    async with database.session_factory() as session:
+        deleted = await delete_player_cleanup_candidates(session, "ignored_name_prefix")
+        assert [row.current_name for row in deleted.deleted_players] == ["npc_removed"]
+    async with database.session_factory() as session:
+        assert list(await session.scalars(select(Player.current_name))) == ["bot_retained"]

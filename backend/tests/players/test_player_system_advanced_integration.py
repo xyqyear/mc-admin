@@ -4,28 +4,21 @@ Advanced integration tests for player management system.
 Tests system crash recovery and RCON validation scenarios.
 """
 import asyncio
-import tempfile
-from contextlib import asynccontextmanager
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
-from app.dynamic_config.configs.players import PlayersConfig
 from app.minecraft.instance import MCServerStatus
-from app.players import get_player_service
 from app.players.heartbeat import HeartbeatManager
 from app.players.models import Player, PlayerSession, SystemHeartbeat
 from app.players.player_syncer import PlayerSyncer
 from app.players.skin_fetcher import SkinFetcher
 from app.servers.models import Server, ServerStatus
 from tests.players.helpers import make_online_uuid
-from tests.support.runtime import patch_runtime_resource, set_runtime_resource
+from tests.support.runtime import patch_runtime_resource
 
 # ============================================================================
 # Fixtures
@@ -33,38 +26,15 @@ from tests.support.runtime import patch_runtime_resource, set_runtime_resource
 
 
 @pytest.fixture
-async def test_database():
-    """Create isolated test database for each test."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    db_url = f"sqlite+aiosqlite:///{db_path}"
-    engine = create_async_engine(db_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async_session_maker = async_sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-
-    @asynccontextmanager
-    async def get_session():
-        async with async_session_maker() as session:
-            yield session
-
-    yield get_session
-
-    await engine.dispose()
-    Path(db_path).unlink(missing_ok=True)
+async def test_database(db_session_factory):
+    return db_session_factory
 
 
 @pytest.fixture
 def mock_skin_fetcher():
-    """Mock skin fetcher with 200ms network delay."""
+    """Controlled external skin response."""
 
     async def fetch_skin(uuid: str):
-        await asyncio.sleep(0.2)
         return (b"skin_" + uuid.encode(), b"avatar_" + uuid.encode())
 
     return AsyncMock(side_effect=fetch_skin)
@@ -72,32 +42,43 @@ def mock_skin_fetcher():
 
 @pytest.fixture
 def mock_mojang_api():
-    """Mock Mojang API with 200ms network delay."""
+    """Controlled external identity response."""
 
     async def fetch_uuid(player_name: str):
-        await asyncio.sleep(0.2)
         return make_online_uuid(player_name)
 
     return AsyncMock(side_effect=fetch_uuid)
 
 
 @pytest.fixture
-def mock_config():
-    """Mock dynamic configuration."""
-    config = MagicMock()
+async def mock_config(runtime_config, isolated_runtime):
+    values = runtime_config.players.model_dump()
+    values["heartbeat"]["crash_threshold_minutes"] = 1
+    values["heartbeat"]["heartbeat_interval_seconds"] = 10
+    await isolated_runtime.config_manager.update_config("players", values)
+    return runtime_config
 
-    # Heartbeat config
-    heartbeat_config = MagicMock()
-    heartbeat_config.heartbeat_interval_seconds = 0.1  # Fast for testing
-    heartbeat_config.crash_threshold_minutes = 1
-    config.players.heartbeat = heartbeat_config
 
-    # RCON validation config
-    rcon_config = MagicMock()
-    rcon_config.validation_interval_seconds = 0.1  # Fast for testing
-    config.players.rcon_validation = rcon_config
+async def wait_for_heartbeat(database, *, after=None, timeout=5):
+    async with asyncio.timeout(timeout):
+        while True:
+            heartbeat = await get_heartbeat(database)
+            if heartbeat is not None and (after is None or heartbeat.timestamp > after):
+                return heartbeat
+            await asyncio.sleep(0.01)
 
-    return config
+
+async def start_syncer_and_wait(syncer):
+    completed = asyncio.Event()
+    validate = syncer.validate_all_servers
+
+    async def observed_cycle():
+        await validate()
+        completed.set()
+
+    with patch.object(syncer, "validate_all_servers", observed_cycle):
+        await syncer.start()
+        await asyncio.wait_for(completed.wait(), timeout=5)
 
 
 # ============================================================================
@@ -183,11 +164,8 @@ async def set_player_online(db, player_db_id: int, server_db_id: int):
 
 
 def set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
-    """Patch runtime player-name filters for integration tests."""
-    runtime_config = SimpleNamespace(
-        players=PlayersConfig(ignored_name_prefixes=prefixes)
-    )
-    set_runtime_resource(monkeypatch, 'dynamic_configuration', runtime_config)
+    from app.dynamic_config import get_config
+    monkeypatch.setattr(get_config().players, "ignored_name_prefixes", prefixes)
 
 
 # ============================================================================
@@ -205,30 +183,24 @@ async def test_heartbeat_normal_startup(test_database, mock_config):
     await create_heartbeat(db, recent_time)
 
     patches = [
-        patch("app.players.heartbeat.get_async_session", db),
-        patch.object(get_player_service(), "session_factory", db),
-        patch_runtime_resource('dynamic_configuration', mock_config),
     ]
 
-    for p in patches:
-        p.start()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
 
-    heartbeat_manager = HeartbeatManager()
-    try:
-        # Start heartbeat (should detect normal restart)
-        await heartbeat_manager.start()
-        await asyncio.sleep(0.2)  # Let it run
-
-        # Should have new heartbeat
-        heartbeat = await get_heartbeat(db)
-        assert heartbeat is not None
-        assert heartbeat.timestamp > recent_time
-    finally:
+        heartbeat_manager = HeartbeatManager()
         try:
-            await heartbeat_manager.stop()
+            # Start heartbeat (should detect normal restart)
+            await heartbeat_manager.start()
+            await wait_for_heartbeat(db, after=recent_time)
+
+            # Should have new heartbeat
+            heartbeat = await get_heartbeat(db)
+            assert heartbeat is not None
+            assert heartbeat.timestamp > recent_time
         finally:
-            for p in patches:
-                p.stop()
+            await heartbeat_manager.stop()
 
 
 @pytest.mark.asyncio
@@ -271,49 +243,42 @@ async def test_heartbeat_crash_detection(
     mock_validate = AsyncMock()
 
     patches = [
-        patch("app.players.heartbeat.get_async_session", db),
-        patch.object(get_player_service(), "session_factory", db),
-        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
         patch.object(get_ps_singleton(), "validate_all_servers", mock_validate),
     ]
 
-    for p in patches:
-        p.start()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
 
-    heartbeat_manager = HeartbeatManager()
-    try:
-        # Start heartbeat (should detect crash and call process_player_left)
-        await heartbeat_manager.start()
-
-        # Give time for crash recovery to complete
-        await asyncio.sleep(0.3)
-
-        # Verify all players marked offline (no open sessions)
-        online = await get_online_players(db, server_db_id)
-        assert len(online) == 0
-
-        async with db() as session:
-            result = await session.execute(
-                select(PlayerSession).where(PlayerSession.server_db_id == server_db_id)
-            )
-            sessions = list(result.scalars().all())
-            for player_session in sessions:
-                assert player_session.left_at is not None
-                assert player_session.duration_seconds is not None
-                assert player_session.joined_at > stale_time
-                assert player_session.left_at == player_session.joined_at
-                assert player_session.duration_seconds == 0
-
-        # validate_all_servers should have been called during crash recovery
-        mock_validate.assert_called_once()
-    finally:
+        heartbeat_manager = HeartbeatManager()
         try:
-            await heartbeat_manager.stop()
+            # Start heartbeat (should detect crash and call process_player_left)
+            await heartbeat_manager.start()
+
+            # Give time for crash recovery to complete
+
+            # Verify all players marked offline (no open sessions)
+            online = await get_online_players(db, server_db_id)
+            assert len(online) == 0
+
+            async with db() as session:
+                result = await session.execute(
+                    select(PlayerSession).where(PlayerSession.server_db_id == server_db_id)
+                )
+                sessions = list(result.scalars().all())
+                for player_session in sessions:
+                    assert player_session.left_at is not None
+                    assert player_session.duration_seconds is not None
+                    assert player_session.joined_at > stale_time
+                    assert player_session.left_at == player_session.joined_at
+                    assert player_session.duration_seconds == 0
+
+            # validate_all_servers should have been called during crash recovery
+            mock_validate.assert_called_once()
         finally:
-            for p in patches:
-                p.stop()
+            await heartbeat_manager.stop()
 
 
 @pytest.mark.asyncio
@@ -322,40 +287,34 @@ async def test_heartbeat_continuous_updates(test_database, mock_config):
     db = test_database
 
     patches = [
-        patch("app.players.heartbeat.get_async_session", db),
-        patch.object(get_player_service(), "session_factory", db),
-        patch_runtime_resource('dynamic_configuration', mock_config),
     ]
 
-    for p in patches:
-        p.start()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
 
-    heartbeat_manager = HeartbeatManager()
-    try:
-        await heartbeat_manager.start()
-
-        # Get initial timestamp
-        await asyncio.sleep(0.1)
-        first_heartbeat = await get_heartbeat(db)
-        assert first_heartbeat is not None
-        first_timestamp = first_heartbeat.timestamp
-
-        # Wait for multiple heartbeat intervals
-        await asyncio.sleep(0.5)  # Should have ~5 updates
-
-        # Check that only one record exists and it was updated
-        async with db() as session:
-            result = await session.execute(select(SystemHeartbeat))
-            heartbeats = list(result.scalars().all())
-            assert len(heartbeats) == 1  # Should have exactly one heartbeat record
-            assert heartbeats[0].id == 1  # Should be id=1
-            assert heartbeats[0].timestamp > first_timestamp  # Should be updated
-    finally:
+        heartbeat_manager = HeartbeatManager()
         try:
-            await heartbeat_manager.stop()
+            await heartbeat_manager.start()
+
+            # Get initial timestamp
+            await wait_for_heartbeat(db)
+            first_heartbeat = await get_heartbeat(db)
+            assert first_heartbeat is not None
+            first_timestamp = first_heartbeat.timestamp
+
+            # Wait for multiple heartbeat intervals
+            await wait_for_heartbeat(db, after=first_timestamp, timeout=15)
+
+            # Check that only one record exists and it was updated
+            async with db() as session:
+                result = await session.execute(select(SystemHeartbeat))
+                heartbeats = list(result.scalars().all())
+                assert len(heartbeats) == 1  # Should have exactly one heartbeat record
+                assert heartbeats[0].id == 1  # Should be id=1
+                assert heartbeats[0].timestamp > first_timestamp  # Should be updated
         finally:
-            for p in patches:
-                p.stop()
+            await heartbeat_manager.stop()
 
 
 # ============================================================================
@@ -401,43 +360,36 @@ async def test_player_syncer_corrects_false_positives(
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch.object(get_player_service(), "session_factory", db),
-        patch("app.players.player_syncer.get_async_session", db),
         patch_runtime_resource('docker_mc_manager', mock_mc_manager),
-        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
-    for p in patches:
-        p.start()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
 
-    player_syncer = PlayerSyncer()
-    try:
-        await player_syncer.start()
-
-        # Wait for validation
-        await asyncio.sleep(0.3)
-
-        # Bob should have been marked offline
-        # Verify database state
-        online = await get_online_players(db, server_db_id)
-        online_names = set()
-        for status in online:
-            async with db() as session:
-                result = await session.execute(
-                    select(Player).where(Player.player_db_id == status.player_db_id)
-                )
-                player = result.scalar_one()
-                online_names.add(player.current_name)
-
-        assert online_names == {"Steve", "Alex"}
-    finally:
+        player_syncer = PlayerSyncer()
         try:
-            await player_syncer.stop()
+            await start_syncer_and_wait(player_syncer)
+
+            # Wait for validation
+
+            # Bob should have been marked offline
+            # Verify database state
+            online = await get_online_players(db, server_db_id)
+            online_names = set()
+            for status in online:
+                async with db() as session:
+                    result = await session.execute(
+                        select(Player).where(Player.player_db_id == status.player_db_id)
+                    )
+                    player = result.scalar_one()
+                    online_names.add(player.current_name)
+
+            assert online_names == {"Steve", "Alex"}
         finally:
-            for p in patches:
-                p.stop()
+            await player_syncer.stop()
 
 
 @pytest.mark.asyncio
@@ -475,33 +427,26 @@ async def test_player_syncer_corrects_false_negatives(
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch.object(get_player_service(), "session_factory", db),
-        patch("app.players.player_syncer.get_async_session", db),
         patch_runtime_resource('docker_mc_manager', mock_mc_manager),
-        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
-    for p in patches:
-        p.start()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
 
-    player_syncer = PlayerSyncer()
-    try:
-        await player_syncer.start()
-
-        # Wait for validation (need enough time for both players to be processed)
-        await asyncio.sleep(0.8)
-
-        # Both should have been marked online
-        online = await get_online_players(db, server_db_id)
-        assert len(online) == 2
-    finally:
+        player_syncer = PlayerSyncer()
         try:
-            await player_syncer.stop()
+            await start_syncer_and_wait(player_syncer)
+
+            # Wait for validation (need enough time for both players to be processed)
+
+            # Both should have been marked online
+            online = await get_online_players(db, server_db_id)
+            assert len(online) == 2
         finally:
-            for p in patches:
-                p.stop()
+            await player_syncer.stop()
 
 
 @pytest.mark.asyncio
@@ -532,44 +477,37 @@ async def test_player_syncer_filters_ignored_rcon_players(
     mock_config.players.ignored_name_prefixes = ["bot_"]
 
     patches = [
-        patch.object(get_player_service(), "session_factory", db),
-        patch("app.players.player_syncer.get_async_session", db),
         patch_runtime_resource('docker_mc_manager', mock_mc_manager),
-        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
-    for p in patches:
-        p.start()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
 
-    player_syncer = PlayerSyncer()
-    try:
-        await player_syncer.start()
-        await asyncio.sleep(0.4)
-
-        mock_mojang_api.assert_not_called()
-
-        async with db() as session:
-            result = await session.execute(select(Player))
-            players = list(result.scalars().all())
-            assert [player.current_name for player in players] == ["Steve"]
-
-        online = await get_online_players(db, server_db_id)
-        assert len(online) == 1
-
-        async with db() as session:
-            result = await session.execute(
-                select(Player).where(Player.player_db_id == online[0].player_db_id)
-            )
-            online_player = result.scalar_one()
-            assert online_player.current_name == "Steve"
-    finally:
+        player_syncer = PlayerSyncer()
         try:
-            await player_syncer.stop()
+            await start_syncer_and_wait(player_syncer)
+
+            mock_mojang_api.assert_not_called()
+
+            async with db() as session:
+                result = await session.execute(select(Player))
+                players = list(result.scalars().all())
+                assert [player.current_name for player in players] == ["Steve"]
+
+            online = await get_online_players(db, server_db_id)
+            assert len(online) == 1
+
+            async with db() as session:
+                result = await session.execute(
+                    select(Player).where(Player.player_db_id == online[0].player_db_id)
+                )
+                online_player = result.scalar_one()
+                assert online_player.current_name == "Steve"
         finally:
-            for p in patches:
-                p.stop()
+            await player_syncer.stop()
 
 
 @pytest.mark.asyncio
@@ -589,28 +527,21 @@ async def test_player_syncer_skips_unhealthy_servers(test_database, mock_config)
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch.object(get_player_service(), "session_factory", db),
-        patch("app.players.player_syncer.get_async_session", db),
         patch_runtime_resource('docker_mc_manager', mock_mc_manager),
-        patch_runtime_resource('dynamic_configuration', mock_config),
     ]
 
-    for p in patches:
-        p.start()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
 
-    player_syncer = PlayerSyncer()
-    try:
-        await player_syncer.start()
-        await asyncio.sleep(0.3)
-
-        # Should not crash, list_players should not be called
-        mock_instance.list_players.assert_not_called()
-    finally:
+        player_syncer = PlayerSyncer()
         try:
-            await player_syncer.stop()
+            await start_syncer_and_wait(player_syncer)
+
+            # Should not crash, list_players should not be called
+            mock_instance.list_players.assert_not_called()
         finally:
-            for p in patches:
-                p.stop()
+            await player_syncer.stop()
 
 
 # ============================================================================
@@ -659,42 +590,33 @@ async def test_crash_recovery_triggers_rcon_validation(
     mock_mc_manager.get_instance = MagicMock(return_value=mock_instance)
 
     patches = [
-        patch("app.players.heartbeat.get_async_session", db),
-        patch_runtime_resource('dynamic_configuration', mock_config),
-        patch.object(get_player_service(), "session_factory", db),
-        patch("app.players.player_syncer.get_async_session", db),
         patch_runtime_resource('docker_mc_manager', mock_mc_manager),
-        patch_runtime_resource('dynamic_configuration', mock_config),
         patch("app.players.mojang_api.fetch_player_uuid_from_mojang", mock_mojang_api),
         patch.object(SkinFetcher, "fetch_player_skin", mock_skin_fetcher),
     ]
 
-    for p in patches:
-        p.start()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
 
-    heartbeat_manager = HeartbeatManager()
-    try:
-        # Start heartbeat (detects crash, calls process_player_left for all,
-        # then calls player_syncer.validate_all_servers)
-        await heartbeat_manager.start()
-
-        # Wait for crash recovery to complete
-        await asyncio.sleep(0.5)
-
-        # All players should be marked offline by crash recovery first
-        # Then RCON validation (called during crash recovery) should re-add Steve
-        online = await get_online_players(db, server_db_id)
-        assert len(online) == 1
-
-        async with db() as session:
-            result = await session.execute(
-                select(Player).where(Player.player_db_id == online[0].player_db_id)
-            )
-            online_player = result.scalar_one()
-            assert online_player.current_name == "Steve"
-    finally:
+        heartbeat_manager = HeartbeatManager()
         try:
-            await heartbeat_manager.stop()
+            # Start heartbeat (detects crash, calls process_player_left for all,
+            # then calls player_syncer.validate_all_servers)
+            await heartbeat_manager.start()
+
+            # Wait for crash recovery to complete
+
+            # All players should be marked offline by crash recovery first
+            # Then RCON validation (called during crash recovery) should re-add Steve
+            online = await get_online_players(db, server_db_id)
+            assert len(online) == 1
+
+            async with db() as session:
+                result = await session.execute(
+                    select(Player).where(Player.player_db_id == online[0].player_db_id)
+                )
+                online_player = result.scalar_one()
+                assert online_player.current_name == "Steve"
         finally:
-            for p in patches:
-                p.stop()
+            await heartbeat_manager.stop()

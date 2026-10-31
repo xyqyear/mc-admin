@@ -1,5 +1,4 @@
 import json
-import os
 import stat
 import tempfile
 from pathlib import Path
@@ -15,10 +14,8 @@ from tests.support.mcmap import build_minimal_world
 pytestmark = [pytest.mark.binary('fd')]
 
 
-def _write_fake_mcmap(payload: dict) -> Path:
-    fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_ftb_mcmap_")
-    os.close(fd)
-    p = Path(path)
+def _write_fake_mcmap(payload: dict, directory: Path) -> Path:
+    p = directory / "mcmap-result.sh"
     payload = {
         "mcmap_extract_ftb_claims_version": 1,
         "world_dir": "/tmp/world",
@@ -41,10 +38,8 @@ def _write_fake_mcmap(payload: dict) -> Path:
     return p
 
 
-def _write_fake_mcmap_error(message: str) -> Path:
-    fd, path = tempfile.mkstemp(suffix=".sh", prefix="fake_ftb_mcmap_err_")
-    os.close(fd)
-    p = Path(path)
+def _write_fake_mcmap_error(message: str, directory: Path) -> Path:
+    p = directory / "mcmap-error.sh"
     line = json.dumps({"type": "error", "message": message}).replace("'", "'\\''")
     p.write_text("#!/bin/sh\n" f"echo '{line}'\n")
     p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -60,7 +55,7 @@ def world_data_path():
 
 
 async def test_unavailable_when_mcmap_reports_no_data(world_data_path):
-    fake = _write_fake_mcmap_error("could not detect FTB claim format in world directory")
+    fake = _write_fake_mcmap_error("could not detect FTB claim format in world directory", world_data_path)
     with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_claims_for_server(world_data_path)
     fake.unlink()
@@ -131,7 +126,7 @@ async def test_extract_resolves_dim_and_groups_clusters(world_data_path):
             },
         ],
     }
-    fake = _write_fake_mcmap(payload)
+    fake = _write_fake_mcmap(payload, world_data_path)
     with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_claims_for_server(world_data_path)
     fake.unlink()
@@ -179,7 +174,7 @@ async def test_extract_does_not_require_full_dimension_scan(world_data_path, mon
         "dimensions": [{"id": "minecraft:overworld", "folder": ".", "exists": True}],
         "teams": [],
     }
-    fake = _write_fake_mcmap(payload)
+    fake = _write_fake_mcmap(payload, world_data_path)
     monkeypatch.setattr(get_settings(), "fd_binary_path", Path("/missing/fd"))
     with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_claims_for_server(world_data_path)
@@ -192,7 +187,7 @@ async def test_extract_does_not_require_full_dimension_scan(world_data_path, mon
 async def test_extract_error_other_than_no_data_propagates(world_data_path):
     from app.ftb_claims import FtbExtractError
 
-    fake = _write_fake_mcmap_error("world directory not found: /nonexistent")
+    fake = _write_fake_mcmap_error("world directory not found: /nonexistent", world_data_path)
     with (
         patch.object(runner.get_settings(), 'mcmap_binary_path', str(fake)),
         pytest.raises(FtbExtractError),
@@ -226,7 +221,7 @@ async def test_extract_rejects_malformed_mcmap_payload(world_data_path):
             }
         ],
     }
-    fake = _write_fake_mcmap(payload)
+    fake = _write_fake_mcmap(payload, world_data_path)
     with (
         patch.object(runner.get_settings(), 'mcmap_binary_path', str(fake)),
         pytest.raises(FtbExtractError, match='invalid JSON event'),
@@ -255,8 +250,57 @@ async def test_display_name_falls_back_to_id_prefix(world_data_path):
             }
         ],
     }
-    fake = _write_fake_mcmap(payload)
+    fake = _write_fake_mcmap(payload, world_data_path)
     with patch.object(runner.get_settings(), "mcmap_binary_path", str(fake)):
         result = await extract_claims_for_server(world_data_path)
     fake.unlink()
     assert result.teams[0].display_name == "12345678"
+
+
+@pytest.mark.binary("mcmap")
+async def test_real_snbt_claims_preserve_team_dimensions_and_protected_chunks(world_data_path):
+    world = world_data_path / "world"
+    claims = world / "ftbchunks"
+    teams = world / "ftbteams" / "party"
+    claims.mkdir()
+    teams.mkdir(parents=True)
+    team_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    claims_file = claims / f"{team_id}.snbt"
+    claims_file.write_text('''{
+        chunks: {
+            "minecraft:overworld": [
+                {x: -1, z: 0, force_loaded: 0L},
+                {x: 0, z: 0, force_loaded: 1L},
+                {x: 1, z: 1, force_loaded: 0L}
+            ],
+            "minecraft:the_nether": [{x: 5, z: 5, force_loaded: 0L}],
+            "custom:missing": [{x: 3, z: 4, force_loaded: 1L}]
+        }
+    }''')
+    team_file = teams / f"{team_id}.snbt"
+    team_file.write_text('''{
+        type: "party",
+        properties: {"ftbteams:display_name": "共同家园"},
+        ranks: {"11111111-2222-3333-4444-555555555555": "owner"}
+    }''')
+    before = {path: path.read_bytes() for path in (claims_file, team_file)}
+
+    result = await extract_claims_for_server(world_data_path)
+
+    assert result.available and result.detected_format == "snbt"
+    assert len(result.teams) == 1
+    team = result.teams[0]
+    assert team.id == team_id and team.display_name == "共同家园"
+    assert team.type == "party" and team.total_chunks == 5
+    assert team.owner is not None and team.owner.uuid == "11111111-2222-3333-4444-555555555555"
+    overworld = [cluster for cluster in team.clusters if cluster.region_dir_relpath == "world/region"]
+    assert {frozenset(cluster.chunks) for cluster in overworld} == {
+        frozenset({(-1, 0), (0, 0)}), frozenset({(1, 1)}),
+    }
+    connected = next(cluster for cluster in overworld if (-1, 0) in cluster.chunks)
+    assert connected.force_loaded == [(0, 0)]
+    assert set(connected.regions) == {(-1, 0), (0, 0)}
+    unresolved = next(cluster for cluster in team.clusters if cluster.region_dir_relpath is None)
+    assert unresolved.chunks == [(3, 4)] and unresolved.force_loaded == [(3, 4)]
+    assert any(cluster.region_dir_relpath == "world/DIM-1/region" for cluster in team.clusters)
+    assert all(path.read_bytes() == content for path, content in before.items())

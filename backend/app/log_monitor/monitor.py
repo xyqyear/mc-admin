@@ -10,7 +10,7 @@ from watchfiles import Change, awatch
 from ..logger import get_logger
 from ..minecraft import get_docker_mc_manager
 from ..players import PlayerService, get_player_service
-from ..runtime_resources import current_runtime
+from ..runtime_resources import current_runtime, runtime_context
 from .events import (
     LogEvent,
     PlayerAchievementEvent,
@@ -61,7 +61,10 @@ class LogMonitor:
             logger.warning(f"Already watching logs for server {server_id}")
             return
 
-        task = asyncio.create_task(self._watch_loop(server_id, log_path))
+        task = asyncio.create_task(
+            self._watch_loop(server_id, log_path),
+            context=runtime_context(current_runtime()),
+        )
         self._watch_tasks[server_id] = task
         logger.info(f"Started watching logs for server {server_id}")
 

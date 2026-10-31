@@ -8,6 +8,8 @@ import pytest
 
 from app.routers.servers.map import _list_regions
 
+pytestmark = pytest.mark.usefixtures("runtime_config")
+
 
 def _coords_only(triples):
     return [(x, z) for x, z, _ in triples]

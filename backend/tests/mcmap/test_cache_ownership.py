@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -52,22 +53,20 @@ async def test_chown_noop_when_not_root():
             ch.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_chown_calls_os_chown_when_root():
-    with tempfile.TemporaryDirectory() as d:
-        cache = ServerMapCache(data_path=Path(d))
-        target = cache.cache_dir
-        target.mkdir()
-        # Real stat on data_path; only mock chown + geteuid.
-        with patch("app.mcmap.cache.os.geteuid", return_value=0), patch(
-            "app.mcmap.cache.async_fs.chown", new=AsyncMock()
-        ) as ch:
-            await cache.chown_to_data_owner(target)
-            ch.assert_called_once()
-            # uid/gid match the actual data_path owner
-            import os as _os
-            st = _os.stat(d)
-            assert ch.call_args.args == (target, st.st_uid, st.st_gid)
+async def test_root_chown_uses_data_owner_instead_of_process_identity(tmp_path):
+    cache = ServerMapCache(data_path=tmp_path)
+    target = cache.cache_dir
+    target.mkdir()
+    with (
+        patch("app.mcmap.cache.os.geteuid", return_value=0),
+        patch("app.mcmap.cache.aioos.stat", new=AsyncMock(
+            return_value=SimpleNamespace(st_uid=12345, st_gid=23456),
+        )),
+        patch("app.mcmap.cache.async_fs.chown", new=AsyncMock()) as chown,
+    ):
+        await cache.chown_to_data_owner(target)
+
+    chown.assert_awaited_once_with(target, 12345, 23456)
 
 
 @pytest.mark.asyncio
@@ -78,32 +77,6 @@ async def test_chown_noop_when_data_path_missing():
             "app.mcmap.cache.async_fs.chown", new=AsyncMock()
         ) as ch:
             await cache.chown_to_data_owner(Path(d))
-            ch.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_ensure_dir_does_not_chown_data_path_itself():
-    with tempfile.TemporaryDirectory() as d:
-        cache = ServerMapCache(data_path=Path(d))
-        with patch.object(
-            ServerMapCache, "chown_to_data_owner", new=AsyncMock()
-        ) as ch:
-            await cache.ensure_dir(cache.cache_dir)
-            chowned = [call.args[0] for call in ch.call_args_list]
-            assert cache.data_path not in chowned
-            assert chowned == [cache.cache_dir]
-
-
-@pytest.mark.asyncio
-async def test_ensure_dir_idempotent_skips_chown_for_existing_levels():
-    with tempfile.TemporaryDirectory() as d:
-        cache = ServerMapCache(data_path=Path(d))
-        target = cache.tiles_dir("world/region")
-        target.mkdir(parents=True)  # everything already there
-        with patch.object(
-            ServerMapCache, "chown_to_data_owner", new=AsyncMock()
-        ) as ch:
-            await cache.ensure_dir(target)
             ch.assert_not_called()
 
 
@@ -119,3 +92,25 @@ async def test_chown_swallows_oserror():
         ):
             # Should not raise
             await cache.chown_to_data_owner(target)
+
+
+async def test_cache_creation_preserves_existing_tree_and_inherits_data_owner(tmp_path):
+    cache = ServerMapCache(data_path=tmp_path)
+    data_before = tmp_path.stat()
+    cache.cache_dir.mkdir()
+    existing = cache.cache_dir / "retained.png"
+    existing.write_bytes(b"previous rendered data")
+    existing_before = existing.stat()
+    target = cache.tiles_dir("world/region")
+
+    await cache.ensure_dir(target)
+    await cache.ensure_dir(target)
+
+    assert target.is_dir()
+    for directory in (cache.cache_dir / "tiles", cache.cache_dir / "tiles/world", target):
+        owner = directory.stat()
+        assert (owner.st_uid, owner.st_gid) == (data_before.st_uid, data_before.st_gid)
+    assert existing.read_bytes() == b"previous rendered data"
+    assert existing.stat().st_ino == existing_before.st_ino
+    assert existing.stat().st_mtime_ns == existing_before.st_mtime_ns
+    assert (tmp_path.stat().st_uid, tmp_path.stat().st_gid) == (data_before.st_uid, data_before.st_gid)

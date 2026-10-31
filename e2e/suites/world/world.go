@@ -12,6 +12,7 @@ import (
 
 func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "world.snapshot-query-responsiveness", Suite: "world", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: snapshotQueryResponsiveness},
 		{ID: "world.prune-preview-validity", Suite: "world", Tags: []string{"regression", "mcmap"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: prunePreviewValidity},
 		{ID: "world.prune-dismiss-active", Suite: "world", Tags: []string{"regression", "mcmap"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: pruneDismissActive},
 		{ID: "world.restoration-generation", Suite: "world", Tags: []string{"regression", "restic"}, Recipe: recipes.Backup, Isolation: engine.Fresh, Timeout: 3 * time.Minute, Run: restorationGeneration},

@@ -304,6 +304,12 @@ The runner SHALL reserve capacity before starting the deployment deadline, let l
 
 玩家资料有限流必须（SHALL）在没有终态的 EOF 或消费失败时显示可重试错误；已有资料缓存、玩家位置及地图必须（SHALL）保持可用。用户取消或离开页面不得（SHALL NOT）被展示为资料服务失败，资料错误不得（SHALL NOT）改变恢复或裁剪任务状态。
 
+资料响应必须（SHALL）保留全部可空字段，以 JSON `null` 表示缺失资料。未解析身份属于正常结果，不得（SHALL NOT）阻止同批其他玩家的名称与头像显示。
+
+#### Scenario: 首次加载混合玩家资料
+- **WHEN** 无资料缓存的地图回档或清理页面加载离线 UUID、缺少头像的玩家和资料完整的玩家
+- **THEN** 未解析身份保留自身 UUID 占位，其他玩家仍显示已知名称与可用头像，资料流正常完成且不显示格式错误
+
 #### Scenario: 资料流提前结束
 - **WHEN** 世界页面的玩家资料流在完成事件前结束
 - **THEN** 玩家面板显示资料加载错误和重试入口，已缓存名称与位置保持可见

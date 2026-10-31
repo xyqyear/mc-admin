@@ -84,28 +84,19 @@ async def test_source_excluding_one_selected_root_skips_it_and_allows_other_root
     assert other.read_text() == "other"
 
 
-async def test_notes_are_isolated_by_repository_and_full_snapshot_identity(tmp_path):
-    from app.db.database import Database
-    from app.db.metadata import Base
-
-    database = Database(f"sqlite:///{tmp_path / 'notes.db'}")
-    try:
-        async with database.engine.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
-        notes = SnapshotNotes(database.session_factory)
-        snapshot = "a" * 64
-        await notes.save("1" * 64, snapshot, "仓库一")
-        await notes.save("2" * 64, snapshot, "仓库二")
-        await notes.save("1" * 64, "a" * 63 + "b", "另一快照")
-        assert await notes.read("1" * 64, [snapshot, "a" * 63 + "b"]) == {
-            snapshot: "仓库一", "a" * 63 + "b": "另一快照",
-        }
-        assert await notes.read("2" * 64, [snapshot]) == {snapshot: "仓库二"}
-        with pytest.raises(ValueError):
-            await notes.save("1" * 64, snapshot, "字" * 501)
-        assert await notes.read("1" * 64, [snapshot]) == {snapshot: "仓库一"}
-    finally:
-        await database.close()
+async def test_notes_are_isolated_by_repository_and_full_snapshot_identity(database):
+    notes = SnapshotNotes(database.session_factory)
+    snapshot = "a" * 64
+    await notes.save("1" * 64, snapshot, "仓库一")
+    await notes.save("2" * 64, snapshot, "仓库二")
+    await notes.save("1" * 64, "a" * 63 + "b", "另一快照")
+    assert await notes.read("1" * 64, [snapshot, "a" * 63 + "b"]) == {
+        snapshot: "仓库一", "a" * 63 + "b": "另一快照",
+    }
+    assert await notes.read("2" * 64, [snapshot]) == {snapshot: "仓库二"}
+    with pytest.raises(ValueError):
+        await notes.save("1" * 64, snapshot, "字" * 501)
+    assert await notes.read("1" * 64, [snapshot]) == {snapshot: "仓库一"}
 
 
 def test_note_request_limits_count_unicode_characters():

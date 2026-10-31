@@ -93,28 +93,6 @@ def _decode_selection(tag: str) -> SnapshotSelection:
         raise PublicOperationError("快照逻辑路径记录无效，未执行恢复") from error
 
 
-def snapshot_source_path(
-    snapshot: ResticSnapshot, logical: Path, execution: Path
-) -> Path:
-    selection = snapshot_selection(snapshot)
-    if selection is None:
-        return execution
-    roots = _snapshot_roots(tuple(snapshot.paths))
-    mapping = selection.mapping_for(logical)
-    if mapping is not None:
-        mapped = mapping.execution_path(logical)
-        if mapped in roots or any(parent in roots for parent in mapped.parents):
-            return mapped
-    if logical in roots:
-        return logical
-    return execution
-
-
-@lru_cache(maxsize=128)
-def _snapshot_roots(paths: tuple[str, ...]) -> frozenset[Path]:
-    return frozenset(Path(path) for path in paths)
-
-
 def absence_tags(paths: Sequence[Path]) -> list[str]:
     if not paths:
         return []

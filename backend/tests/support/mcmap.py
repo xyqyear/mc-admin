@@ -2,11 +2,15 @@ import os
 import stat
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
+
+from app.dynamic_config.configs.mcmap import MCMapConfig
+from app.runtime_resources import current_runtime
 
 
 def write_fake_mcmap(content: str, *, prefix: str = "fake_mcmap_") -> Path:
-    descriptor, filename = tempfile.mkstemp(suffix=".sh", prefix=prefix)
+    root = current_runtime().settings.server_path.parent / "protocol-processes"
+    root.mkdir(exist_ok=True)
+    descriptor, filename = tempfile.mkstemp(suffix=".sh", prefix=prefix, dir=root)
     os.close(descriptor)
     path = Path(filename)
     path.write_text(content)
@@ -23,12 +27,8 @@ def owned_chown_args(directory: Path) -> list[str]:
     return ["--chown", f"{owner.st_uid}:{owner.st_gid}"] if os.geteuid() == 0 else []
 
 
-def mcmap_config(batch_size: int = 4, thread_count: int = 2) -> Mock:
-    config = Mock()
-    config.batch_size = batch_size
-    config.thread_count = thread_count
-    config.request_timeout_seconds = 30
-    return config
+def mcmap_config(batch_size: int = 4, thread_count: int = 2) -> MCMapConfig:
+    return MCMapConfig(batch_size=batch_size, thread_count=thread_count, request_timeout_seconds=30)
 
 
 def build_minimal_world(data_path: Path) -> None:

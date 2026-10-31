@@ -12,8 +12,6 @@ from app.cron import crud
 from app.cron.jobs import restart
 from app.cron.manager import CronManager
 from app.cron.models import ExecutionStatus
-from app.db.metadata import Base
-from app.dynamic_config.configs.world import WorldConfig
 from app.minecraft import MCServerStatus
 from app.operation_admission import get_server_write_admission
 from app.operations.context import current_execution
@@ -43,10 +41,8 @@ from tests.support.runtime import replace_runtime_resource, set_runtime_resource
 
 
 @pytest.fixture
-async def daemon_runtime(isolated_runtime, monkeypatch):
+async def daemon_runtime(isolated_runtime, monkeypatch, database, runtime_config):
     runtime = isolated_runtime
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
         session.add_all(
             [Server(id=1, server_id="first"), Server(id=2, server_id="other")]
@@ -220,9 +216,6 @@ async def test_cancelled_cli_cannot_release_restore_before_daemon_block(
     getattr(
         env.instance, "restart" if action == "cron" else action
     ).side_effect = cli_command
-    replace_runtime_resource(env.runtime, "dynamic_configuration", SimpleNamespace(
-        world=WorldConfig()
-    ))
     world = env.runtime.settings.server_path / "first" / "data" / "world"
     region = world / "region"
     region.mkdir(parents=True)

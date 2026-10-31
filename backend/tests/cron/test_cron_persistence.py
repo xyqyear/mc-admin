@@ -1,5 +1,6 @@
+from tests.cron.test_cronjobs import assert_next_calendar_day
+
 """Cron job persistence and recovery across simulated restarts."""
-import asyncio
 
 import pytest
 from sqlalchemy import select
@@ -7,15 +8,18 @@ from sqlalchemy import select
 from app.cron.models import CronJob, CronJobExecution, CronJobStatus, ExecutionStatus
 from app.db.database import get_async_session
 
-from .test_cron_manager import TestCronManager, test_cron_registry
-from .test_cronjobs import SampleCronJobParams
+from .test_cronjobs import (
+    SampleCronJobParams,
+    deferred_cron_expression,
+    run_scheduled_once,
+)
 
 pytestmark = pytest.mark.usefixtures("setup_test_db")
 
 
 class TestCronJobPersistence:
-    async def test_cronjob_recovery_after_restart(self):
-        manager1 = TestCronManager()
+    async def test_cronjob_recovery_after_restart(self, manager_factory):
+        manager1 = manager_factory()
         await manager1.initialize()
 
         params1 = SampleCronJobParams(message="Recovery test 1", delay_seconds=0)
@@ -52,7 +56,7 @@ class TestCronJobPersistence:
 
         await manager1.shutdown()
 
-        manager2 = TestCronManager()
+        manager2 = manager_factory()
         await manager2.initialize()
 
         assert manager2.scheduler.get_job(active_cronjob_id) is not None, (
@@ -60,7 +64,7 @@ class TestCronJobPersistence:
         )
         recovered_job = manager2.scheduler.get_job(active_cronjob_id)
         assert recovered_job is not None
-        assert str(recovered_job.trigger.fields[4]) == "0"
+        assert_next_calendar_day(recovered_job, 0)
 
         assert manager2.scheduler.get_job(paused_cronjob_id) is None, (
             "Paused cron job should not be recovered after restart"
@@ -89,8 +93,8 @@ class TestCronJobPersistence:
 
         await manager2.shutdown()
 
-    async def test_paused_cronjob_can_be_resumed_after_restart(self):
-        manager1 = TestCronManager()
+    async def test_paused_cronjob_can_be_resumed_after_restart(self, manager_factory):
+        manager1 = manager_factory()
         await manager1.initialize()
 
         params = SampleCronJobParams(message="Resume after restart test")
@@ -109,7 +113,7 @@ class TestCronJobPersistence:
 
         await manager1.shutdown()
 
-        manager2 = TestCronManager()
+        manager2 = manager_factory()
         await manager2.initialize()
 
         assert manager2.scheduler.get_job(cronjob_id) is None
@@ -118,7 +122,7 @@ class TestCronJobPersistence:
 
         resumed_job = manager2.scheduler.get_job(cronjob_id)
         assert resumed_job is not None
-        assert str(resumed_job.trigger.fields[4]) == "0"
+        assert_next_calendar_day(resumed_job, 0)
 
         config = await manager2.get_cronjob_config(cronjob_id)
         assert config is not None
@@ -126,8 +130,8 @@ class TestCronJobPersistence:
 
         await manager2.shutdown()
 
-    async def test_duplicate_cronjob_id_recovery(self):
-        manager = TestCronManager()
+    async def test_duplicate_cronjob_id_recovery(self, manager_factory):
+        manager = manager_factory()
         await manager.initialize()
 
         original_params = SampleCronJobParams(
@@ -177,8 +181,8 @@ class TestCronJobPersistence:
 
         await manager.shutdown()
 
-    async def test_execution_history_persistence(self):
-        manager = TestCronManager()
+    async def test_execution_history_persistence(self, manager_factory):
+        manager = manager_factory()
         await manager.initialize()
 
         params = SampleCronJobParams(message="Execution history test", delay_seconds=0)
@@ -186,22 +190,21 @@ class TestCronJobPersistence:
         cronjob_id = await manager.create_cronjob(
             identifier="test_cronjob",
             params=params,
-            cron="* * * * *",
-            second="*",
+            cron=deferred_cron_expression(),
             name="History Test CronJob",
         )
 
-        await asyncio.sleep(3)
+        await run_scheduled_once(manager, cronjob_id)
 
         executions = await manager.get_execution_history(cronjob_id, limit=10)
 
-        assert len(executions) >= 1, "Should have at least one execution"
+        assert len(executions) == 1
 
         for execution in executions:
             assert execution.cronjob_id == cronjob_id
             assert execution.execution_id is not None
             assert execution.started_at is not None
-            assert execution.status in [s for s in ExecutionStatus]
+            assert execution.status is ExecutionStatus.COMPLETED
             assert isinstance(execution.messages, list)
 
             if execution.status == ExecutionStatus.COMPLETED:
@@ -217,13 +220,14 @@ class TestCronJobPersistence:
             )
             db_executions = result.scalars().all()
 
-            assert len(db_executions) >= 1
+            assert len(db_executions) == 1
+            assert db_executions[0].execution_id == executions[0].execution_id
             assert all(ex.cronjob_id == cronjob_id for ex in db_executions)
 
         await manager.shutdown()
 
-    async def test_cronjob_parameter_serialization(self):
-        manager = TestCronManager()
+    async def test_cronjob_parameter_serialization(self, manager_factory):
+        manager = manager_factory()
         await manager.initialize()
 
         params = SampleCronJobParams(
@@ -244,7 +248,7 @@ class TestCronJobPersistence:
             )
             db_cronjob = result.scalar_one()
 
-            schema_cls = test_cron_registry.get_schema_class("test_cronjob")
+            schema_cls = manager.registry.get_schema_class("test_cronjob")
             assert schema_cls is not None
             deserialized_params = schema_cls.model_validate_json(db_cronjob.params_json)
             assert isinstance(deserialized_params, SampleCronJobParams)
@@ -265,8 +269,8 @@ class TestCronJobPersistence:
 
         await manager.shutdown()
 
-    async def test_execution_count_persistence(self):
-        manager1 = TestCronManager()
+    async def test_execution_count_persistence(self, manager_factory):
+        manager1 = manager_factory()
         await manager1.initialize()
 
         params = SampleCronJobParams(message="Count persistence test", delay_seconds=0)
@@ -274,32 +278,31 @@ class TestCronJobPersistence:
         cronjob_id = await manager1.create_cronjob(
             identifier="test_cronjob",
             params=params,
-            cron="* * * * *",
-            second="*",
+            cron=deferred_cron_expression(),
             name="Count Test",
         )
 
-        await asyncio.sleep(3)
+        first_execution = (await run_scheduled_once(manager1, cronjob_id))[0]
 
         config1 = await manager1.get_cronjob_config(cronjob_id)
         assert config1 is not None
         initial_count = config1.execution_count
 
-        assert initial_count >= 1, "Should have at least one execution"
+        assert initial_count == 1
 
         await manager1.shutdown()
 
-        manager2 = TestCronManager()
+        manager2 = manager_factory()
         await manager2.initialize()
 
-        await asyncio.sleep(2)
+        completed = await run_scheduled_once(manager2, cronjob_id, count=2)
 
         config2 = await manager2.get_cronjob_config(cronjob_id)
         assert config2 is not None
         final_count = config2.execution_count
 
-        assert final_count > initial_count, (
-            f"Execution count should increase after restart: {initial_count} -> {final_count}"
-        )
+        assert final_count == 2
+        assert first_execution.execution_id in {row.execution_id for row in completed}
+        assert len({row.execution_id for row in completed}) == 2
 
         await manager2.shutdown()

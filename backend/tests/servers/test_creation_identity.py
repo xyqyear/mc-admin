@@ -7,9 +7,7 @@ import pytest
 import yaml
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.errors import PublicOperationError
 from app.minecraft import DockerMCManager, MCInstance
 from app.minecraft.docker.manager import ComposeManager
@@ -36,11 +34,8 @@ def compose(server_id: str, game_port: int, rcon_port: int) -> str:
 
 
 @pytest.fixture
-async def creation_environment(tmp_path, monkeypatch):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'creation.db'}")
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
+async def creation_environment(tmp_path, monkeypatch, db_session_factory):
+    sessions = db_session_factory
     root = tmp_path / "identity-servers"
     root.mkdir()
     manager = DockerMCManager(root)
@@ -52,7 +47,6 @@ async def creation_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(port_utils, "get_system_used_ports", Mock(return_value=set()))
     monkeypatch.setattr(ComposeManager, "created", AsyncMock(return_value=False))
     yield sessions, manager
-    await engine.dispose()
 
 
 @pytest.mark.parametrize("second_name", ["first", "second"])

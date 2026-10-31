@@ -9,6 +9,10 @@ and [the coverage inventory](docs/coverage.md).
 
 Run from `e2e/`. These are examples for directly related cases, not a checklist:
 
+From a Windows checkout, use `scripts/dev/e2e.ps1` from the repository root.
+The executable and owned environments stay in WSL; see
+[development](../docs/development.md) for build, case filters and Linux paths.
+
 ```bash
 make lint
 go vet ./internal/engine

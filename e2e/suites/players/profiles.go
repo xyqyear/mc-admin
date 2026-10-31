@@ -52,6 +52,20 @@ db.commit()
 				if !ok {
 					return fmt.Errorf("profile event missing payload")
 				}
+				for _, field := range []string{"uuid", "resolved", "player_db_id", "current_name", "avatar_base64", "last_skin_update"} {
+					if _, exists := p[field]; !exists {
+						return fmt.Errorf("profile %v omitted required nullable field %s", p["uuid"], field)
+					}
+				}
+				if p["uuid"] == playerUUID {
+					if p["resolved"] != true || p["current_name"] != "CachedFixture" || p["avatar_base64"] != profile["avatar_base64"] {
+						return fmt.Errorf("unresolved entries prevented delivery of the cached name and avatar")
+					}
+				} else {
+					if p["resolved"] != false || p["player_db_id"] != nil || p["current_name"] != nil || p["avatar_base64"] != nil || p["last_skin_update"] != nil {
+						return fmt.Errorf("unresolved profile did not retain explicit null values")
+					}
+				}
 				seen[fmt.Sprint(p["uuid"])]++
 			}
 			return nil

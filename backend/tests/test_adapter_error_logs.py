@@ -1,12 +1,12 @@
 import asyncio
 import logging
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 
 import pytest
 
 from app.mcmap.events import MCMAP_RENDER_EVENT_ADAPTER, MCMapProtocolError
 from app.mcmap.runner import MCMapProcess
+from app.minecraft import DockerMCManager
 from app.minecraft.instance import MCInstance
 from app.servers import port_utils
 from tests.fixtures.test_utils import create_mc_server_compose_yaml
@@ -30,19 +30,25 @@ async def test_compose_validation_does_not_log_authored_values(tmp_path, caplog)
     assert not instance.get_project_path().exists()
 
 
-async def test_port_scan_skips_invalid_compose_without_logging_secrets(monkeypatch, tmp_path, caplog):
+async def test_port_scan_skips_compose_replaced_after_discovery_without_logging_secrets(monkeypatch, tmp_path, caplog):
     secret = "synthetic-port-scan-password-value"
-    invalid = SimpleNamespace(
-        get_name=lambda: "invalid",
-        get_compose_file_path=AsyncMock(return_value=tmp_path / "invalid.yml"),
-        get_compose_file=AsyncMock(return_value=invalid_compose(secret)),
-    )
-    valid = SimpleNamespace(
-        get_name=lambda: "valid",
-        get_compose_file_path=AsyncMock(return_value=tmp_path / "valid.yml"),
-        get_compose_file=AsyncMock(return_value=create_mc_server_compose_yaml("valid", 25565, 25575)),
-    )
-    set_runtime_resource(monkeypatch, 'docker_mc_manager', SimpleNamespace(get_all_instances=AsyncMock(return_value=[invalid, valid])))
+    manager = DockerMCManager(tmp_path)
+    for name, content in (
+        ("invalid", create_mc_server_compose_yaml("invalid", 25566, 25576)),
+        ("valid", create_mc_server_compose_yaml("valid", 25565, 25575)),
+    ):
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "docker-compose.yml").write_text(content)
+    discover = manager.get_all_instances
+
+    async def discover_before_replacement():
+        instances = await discover()
+        (tmp_path / "invalid/docker-compose.yml").write_text(invalid_compose(secret))
+        return instances
+
+    monkeypatch.setattr(manager, "get_all_instances", discover_before_replacement)
+    set_runtime_resource(monkeypatch, "docker_mc_manager", manager)
     with caplog.at_level(logging.DEBUG):
         assert await port_utils.get_server_used_ports() == {25565, 25575}
     assert secret not in caplog.text

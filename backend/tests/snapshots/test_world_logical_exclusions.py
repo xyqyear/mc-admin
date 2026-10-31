@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 import app.world.scope_execution as chunk_execution
-from app.dynamic_config.configs.mcmap import MCMapConfig
 from app.mcmap.types import MCMapError
 from app.runtime_resources import current_runtime
 from app.snapshots.restoration_models import RestorationType
@@ -119,7 +118,6 @@ async def test_alias_map_preview_uses_logical_mcc_rules_and_preserves_live_data(
     world_case, kind, ignored_name,
 ):
     case = world_case
-    case.config.mcmap = MCMapConfig()
     (case.data / "world_alias").symlink_to(
         case.region.parent, target_is_directory=True
     )
@@ -301,7 +299,6 @@ async def test_file_level_world_preview_groups_mca_and_mcc_without_live_writes(
     world_case, kind, linked_kind,
 ):
     case = world_case
-    case.config.mcmap = MCMapConfig()
     paths, link, actual = linked_external_region(case, linked_kind)
     source = await complete(case, await case.commands.create(file_scope(case, paths), 1))
     for chunk, path in enumerate(paths[1:]):

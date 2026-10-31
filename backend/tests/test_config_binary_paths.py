@@ -12,11 +12,7 @@ def _write_executable(path: Path) -> None:
 def test_binary_default_uses_path(monkeypatch, tmp_path):
     binary = tmp_path / "path-bin" / "fd"
     _write_executable(binary)
-    monkeypatch.setattr(
-        config.shutil,
-        "which",
-        lambda name: str(binary) if name == "fd" else None,
-    )
+    monkeypatch.setenv("PATH", str(binary.parent))
 
     assert config._resolve_binary_default("fd") == binary
 
@@ -28,7 +24,7 @@ def test_binary_default_falls_back_to_usr_local_before_usr(monkeypatch, tmp_path
     usr_binary = usr / "mcmap"
     _write_executable(usr_local_binary)
     _write_executable(usr_binary)
-    monkeypatch.setattr(config.shutil, "which", lambda _: None)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
     monkeypatch.setattr(config, "_BINARY_FALLBACK_DIRS", (usr_local, usr))
 
     assert config._resolve_binary_default("mcmap") == usr_local_binary
@@ -39,14 +35,14 @@ def test_binary_default_falls_back_to_usr(monkeypatch, tmp_path):
     usr = tmp_path / "usr-bin"
     usr_binary = usr / "restic"
     _write_executable(usr_binary)
-    monkeypatch.setattr(config.shutil, "which", lambda _: None)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
     monkeypatch.setattr(config, "_BINARY_FALLBACK_DIRS", (usr_local, usr))
 
     assert config._resolve_binary_default("restic") == usr_binary
 
 
 def test_binary_default_returns_name_when_missing(monkeypatch, tmp_path):
-    monkeypatch.setattr(config.shutil, "which", lambda _: None)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
     monkeypatch.setattr(config, "_BINARY_FALLBACK_DIRS", (tmp_path / "bin",))
 
     assert config._resolve_binary_default("fd") == Path("fd")

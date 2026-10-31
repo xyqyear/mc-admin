@@ -1,35 +1,15 @@
 """Integration tests for default variables API endpoints."""
-import tempfile
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import get_db
-from app.db.metadata import Base
-from app.main import api_app
+from app.main import create_api_app
 from app.runtime_resources import current_runtime
 
 
 @pytest.fixture
-async def test_db():
-    """Create a test database."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    TestSessionLocal = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
-    yield TestSessionLocal
-
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db(db_session_factory):
+    return db_session_factory
 
 
 @pytest.fixture
@@ -37,17 +17,12 @@ def test_client(test_db):
     """Create TestClient with test database."""
     from unittest.mock import patch
 
-    async def override_get_db():
-        async with test_db() as session:
-            yield session
-
-    api_app.dependency_overrides[get_db] = override_get_db
-
-    with patch.object(current_runtime().settings, 'master_token', "test-master-token"):
-        client = TestClient(api_app, raise_server_exceptions=False)
+    with (
+        patch.object(current_runtime().settings, "master_token", "test-master-token"),
+        TestClient(create_api_app(current_runtime()), raise_server_exceptions=False) as client,
+    ):
         yield client
 
-    api_app.dependency_overrides.pop(get_db, None)
 
 
 def auth_headers():
@@ -84,10 +59,15 @@ class TestUpdateDefaultVariables:
             headers=auth_headers(),
         )
         assert response.status_code == 200
-        assert len(response.json()["variable_definitions"]) == 2
+        saved = response.json()["variable_definitions"]
+        assert [(row["name"], row["type"]) for row in saved] == [("custom_var", "string"), ("port", "int")]
+        reloaded = test_client.get("/api/templates/default-variables", headers=auth_headers())
+        assert reloaded.status_code == 200
+        assert reloaded.json()["variable_definitions"] == saved
 
     def test_update_duplicate_names_rejected(self, test_client):
         """Test updating with duplicate names fails."""
+        before = test_client.get("/api/templates/default-variables", headers=auth_headers()).json()
         response = test_client.put(
             "/api/templates/default-variables",
             json={
@@ -100,3 +80,4 @@ class TestUpdateDefaultVariables:
         )
         assert response.status_code == 400
         assert "重复" in response.json()["detail"]
+        assert test_client.get("/api/templates/default-variables", headers=auth_headers()).json() == before

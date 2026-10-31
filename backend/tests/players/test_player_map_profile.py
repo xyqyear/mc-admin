@@ -9,10 +9,8 @@ import pytest
 from fastapi import HTTPException
 from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.auth.schemas import UserPublic
-from app.db.metadata import Base
 from app.dependencies import get_current_user
 from app.dynamic_config.configs.players import PlayersConfig
 from app.main import api_app
@@ -36,24 +34,13 @@ def _test_user() -> UserPublic:
 
 
 @pytest.fixture
-async def test_db_session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with maker() as session:
-        yield session
-    await engine.dispose()
+async def test_db_session(db_session):
+    return db_session
 
 
 @pytest.fixture
-async def test_db_maker():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    yield maker
-    await engine.dispose()
+async def test_db_maker(db_session_factory):
+    return db_session_factory
 
 
 async def _collect_profile_stream(uuids):
@@ -222,41 +209,50 @@ async def test_profile_rejects_invalid_uuid(test_db_session):
 
 
 @pytest.mark.asyncio
-async def test_profile_stream_returns_cached_players_first(
-    test_db_maker,
-    monkeypatch,
+async def test_profile_stream_preserves_nullable_fields_for_mixed_players(
+    db_session_factory, monkeypatch,
 ):
-    async with test_db_maker() as session:
-        session.add(
-            Player(
-                uuid="0b4c41928eb34f0b90228e2cb2ee6fc0",
-                current_name="CachedName",
-                avatar_data=b"avatar",
-                created_at=datetime.now(UTC),
-            )
-        )
+    cached_uuid = "0b4c41928eb34f0b90228e2cb2ee6fc0"
+    partial_uuid = "123e4567e89b42d3a456426614174000"
+    offline_uuid = make_offline_uuid("OfflinePlayer")
+    async with db_session_factory() as session:
+        session.add_all([
+            Player(uuid=cached_uuid, current_name="CachedName", avatar_data=b"avatar", created_at=datetime.now(UTC)),
+            Player(uuid=partial_uuid, current_name="KnownWithoutAvatar", created_at=datetime.now(UTC)),
+        ])
         await session.commit()
 
-    async def fail_fetch(uuid: str):
-        raise AssertionError("Mojang should not be called")
+    fetched = []
 
-    monkeypatch.setattr(
-        "app.routers.players.players.get_async_session",
-        test_db_maker,
-    )
-    monkeypatch.setattr(current_runtime().skin_fetcher, 'fetch_player_profile', fail_fetch)
+    async def unavailable_profile(uuid: str):
+        fetched.append(uuid)
 
-    events = await _collect_profile_stream(
-        ["0b4c4192-8eb3-4f0b-9022-8e2cb2ee6fc0"]
-    )
-
-    assert [event["event_type"] for event in events] == ["profile", "complete"]
-    profile = events[0]["profile"]
-    assert profile["uuid"] == "0b4c41928eb34f0b90228e2cb2ee6fc0"
-    assert profile["current_name"] == "CachedName"
-    assert profile["avatar_base64"] == "YXZhdGFy"
-    assert events[-1]["total"] == 1
-    assert events[-1]["resolved"] == 1
+    monkeypatch.setattr(current_runtime().skin_fetcher, "fetch_player_profile", unavailable_profile)
+    monkeypatch.setitem(api_app.dependency_overrides, get_current_user, _test_user)
+    async with AsyncClient(transport=ASGITransport(app=api_app), base_url="http://test") as client:
+        response = await client.post("/players/profiles/stream", json={
+            "uuids": [cached_uuid.upper(), partial_uuid, offline_uuid, cached_uuid, "invalid"],
+        })
+    assert response.status_code == 200
+    events = [json.loads(line.removeprefix("data: "))
+              for line in response.text.splitlines() if line.startswith("data: ")]
+    profiles = {event["profile"]["uuid"]: event["profile"]
+                for event in events if event["event_type"] == "profile"}
+    assert len(profiles) == 4
+    for uuid in ["invalid", offline_uuid]:
+        assert profiles[uuid] == {
+            "uuid": uuid, "resolved": False, "player_db_id": None,
+            "current_name": None, "avatar_base64": None, "last_skin_update": None,
+        }
+    assert profiles[cached_uuid]["current_name"] == "CachedName"
+    assert profiles[cached_uuid]["avatar_base64"] == "YXZhdGFy"
+    assert profiles[cached_uuid]["last_skin_update"] is None
+    assert profiles[partial_uuid]["current_name"] == "KnownWithoutAvatar"
+    assert profiles[partial_uuid]["avatar_base64"] is None
+    assert profiles[partial_uuid]["last_skin_update"] is None
+    assert all(profiles[uuid]["resolved"] for uuid in [cached_uuid, partial_uuid])
+    assert fetched == [partial_uuid]
+    assert events[-1] == {"event_type": "complete", "total": 4, "resolved": 2}
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,7 @@ import app.cron.manager as manager_module
 from app.cron.manager import CronManager
 from tests.support.runtime import patch_runtime_resource
 
-from .test_cronjobs import test_cron_registry
+from .test_cronjobs import create_test_registry
 
 
 class TestCronManager(CronManager):
@@ -17,7 +17,8 @@ class TestCronManager(CronManager):
 
     def __init__(self):
         super().__init__()
-        self._registry_patch = patch_runtime_resource('cron_registry', test_cron_registry)
+        self.registry = create_test_registry()
+        self._registry_patch = patch_runtime_resource('cron_registry', self.registry)
 
     async def initialize(self) -> None:
         if self._initialized:
@@ -35,9 +36,6 @@ class TestCronManager(CronManager):
         finally:
             self._registry_patch.stop()
             self._initialized = False
-
-
-test_cron_manager = TestCronManager()
 
 
 def test_manager_construction_does_not_replace_global_registry():
@@ -78,7 +76,7 @@ async def test_shutdown_failure_restores_global_registry(monkeypatch):
         CronManager, "shutdown", AsyncMock(side_effect=RuntimeError("shutdown failed"))
     )
     await manager.initialize()
-    assert manager_module.get_cron_registry() is test_cron_registry
+    assert manager_module.get_cron_registry() is manager.registry
 
     with pytest.raises(RuntimeError, match="shutdown failed"):
         await manager.shutdown()

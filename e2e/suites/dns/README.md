@@ -68,6 +68,13 @@ Recovery locks the manifest and refuses a scope while a matching environment con
 
 `dns.huawei-minecraft-connectivity` verifies cloud records through independent SDK reads and authoritative DNS over TCP, checks initial recursive SRV resolution, then uses actual SRV/A answers to connect to the router and verify the unique Minecraft MOTD. It checks startup repair, automatic create/remove/sync triggers, changed router/SRV port and preservation for stopped ACTIVE servers. Unique run names avoid previous-run caches; subsequent changes use authoritative answers because recursive caches may retain prior TTLs. The router destination is the runner's loopback address, so Internet inbound firewalls/NAT and external player reachability remain outside this contract.
 
+The authority selected for each traffic probe must itself converge to the exact
+single expected SRV answer before resolving its address. Delegation lookups may
+select another provider replica after the broader publication check. A stale,
+wrong-host or duplicate SRV answer cannot become a connection destination;
+non-loopback A answers fail immediately. Once DNS converges, the real Minecraft
+status request and unique MOTD assertion execute without retries.
+
 ## CI configuration and evidence
 
 [API scheduling](../../docs/scheduling.md) owns the immutable current-catalog

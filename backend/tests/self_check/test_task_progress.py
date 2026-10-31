@@ -1,29 +1,59 @@
-from datetime import UTC, datetime
-from types import SimpleNamespace
+import asyncio
+from dataclasses import replace
+
+from sqlalchemy import select
 
 from app.self_check import tasks
-from app.self_check.types import SelfCheckFindingResult, SelfCheckRunEvent
+from app.self_check.checks import CHECK_DEFINITIONS
+from app.self_check.models import SelfCheckRun
 
 
-async def test_running_check_exposes_current_findings_without_a_final_result(monkeypatch):
-    finding = SelfCheckFindingResult(
-        check_id="one", category="系统", severity="warning", status="warning",
-        title="检查项", message="需要处理", created_at=datetime.now(UTC),
-    )
+async def test_running_check_exposes_current_findings_before_durable_completion(
+    database, runtime_config, isolated_runtime,
+):
+    service = isolated_runtime.self_check_service
+    first = CHECK_DEFINITIONS["dependency.binaries"]
+    second = CHECK_DEFINITIONS["storage.server_directory_usage"]
+    started = asyncio.Event()
+    release = asyncio.Event()
+    updates = []
 
-    async def events(**kwargs):
-        yield SelfCheckRunEvent(type="check_started", run_id="run", trigger="manual", scope="full", check_id="one", total_checks=2)
-        yield SelfCheckRunEvent(type="check_finished", run_id="run", trigger="manual", scope="full", check_id="one", total_checks=2, findings=[finding])
-        yield SelfCheckRunEvent(type="check_started", run_id="run", trigger="manual", scope="full", check_id="two", total_checks=2)
+    async def held_storage_check(context):
+        started.set()
+        await release.wait()
+        return await second.function(context)
 
-    service = SimpleNamespace(iter_self_check_events=events, validate_check_id=lambda _: SimpleNamespace(title="检查项"))
-    monkeypatch.setattr(tasks, "get_self_check_service", lambda: service)
-    updates = [update async for update in tasks.self_check_task(1, None)]
-    assert all(update.result is None for update in updates)
-    assert updates[-1].progress == 50
-    details = updates[-1].progress_details
-    assert details is not None
-    assert details["checking"] and details["check_id"] == "two"
-    assert details["completed_checks"] == 1 and details["total_checks"] == 2
-    assert details["findings"] == [finding.model_dump(mode="json")]
-    assert details["findings_total"] == 1
+    service.definitions = {
+        first.check_id: first,
+        second.check_id: replace(second, function=held_storage_check),
+    }
+    service.check_ids = tuple(service.definitions)
+
+    async def observe():
+        async for update in tasks.self_check_task(73, None):
+            updates.append(update)
+
+    observer = asyncio.create_task(observe())
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        assert not observer.done()
+        assert all(update.result is None for update in updates)
+        details = updates[-1].progress_details
+        assert updates[-1].progress == 50
+        assert details is not None
+        assert details["checking"] and details["check_id"] == second.check_id
+        assert details["completed_checks"] == 1 and details["total_checks"] == 2
+        assert details["findings"] and details["findings_total"] >= 1
+        assert all(finding["check_id"] == first.check_id for finding in details["findings"])
+        async with database.session_factory() as session:
+            assert list(await session.scalars(select(SelfCheckRun))) == []
+    finally:
+        release.set()
+        await asyncio.wait_for(observer, timeout=5)
+
+    final = updates[-1]
+    assert final.progress == 100 and final.result is not None
+    async with database.session_factory() as session:
+        run = (await session.scalars(select(SelfCheckRun))).one()
+        assert run.id == final.result["id"]
+        assert run.requested_by_user_id == 73 and run.finished_at is not None

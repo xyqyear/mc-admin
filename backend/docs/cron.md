@@ -174,6 +174,16 @@ The automatic self-check job is registered as:
 
 ## Execution Model
 
+The scheduler owns a fresh runtime context for every wakeup, including callbacks
+and timers triggered by schedule changes inside another operation. Dispatch
+binds that same runtime and clears inherited operation ownership in its existing
+worker task. Registering a server's restart schedule cannot transfer its creation
+operation into later backups, self-checks or existing jobs.
+
+Durable terminal-state projection requires both cron origin and this occurrence's
+execution reference. A different operation's success cannot hide a failed run;
+success already committed by this occurrence still survives late cancellation.
+
 Each registered job function is `async (context: ExecutionContext) -> None`.
 `ExecutionContext` carries the cron job ID, identifier, execution ID, typed
 params, timestamps, status, and log messages.
@@ -275,6 +285,7 @@ and stack locations without exception values, causes or locals.
 ## Files
 
 - `manager.py` — `CronManager` and typed `get_cron_manager()` accessor for the active runtime
+- `scheduler.py` — runtime-bound scheduler wakeups with independent operation context
 - `registry.py` — `CronRegistry` and explicit `register_func` metadata registration
 - `restart_scheduler.py` — restart-minute selection
 - `weekdays.py` — conventional-crontab weekday normalization for APScheduler 3

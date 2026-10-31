@@ -24,27 +24,30 @@ test.describe('owned administration journeys', () => {
       proxy.disconnect(taskId)
       await route.fulfill({ response })
     })
-    try {
+    await withCleanup(async () => {
       await page.goto(`${proxy.url}/server/${owned.server_id}/console`)
       const start = page.getByRole('button', { name: '启动', exact: true })
       await expect(start).toBeEnabled()
       await start.click()
       await proxy.interrupted
-      await expect(page.getByRole('status').filter({ hasText: /正在/ }).first()).toBeVisible()
+      const pendingOperation = page.getByRole('status').filter({ hasText: /正在/ })
+      await expect(pendingOperation).toBeVisible()
       await expect(start).toBeDisabled()
       await expect(page.getByRole('button', { name: '下线', exact: true })).toBeDisabled()
-      await page.getByRole('button', { name: '查看任务', exact: true }).click()
+      await pendingOperation.getByRole('button', { name: '查看任务', exact: true }).click()
       await expect(page.getByText('任务中心', { exact: true }).first()).toBeVisible()
       await api.task(taskId)
       await expect(page.getByRole('button', { name: '下线', exact: true })).toBeDisabled()
       proxy.resume()
       await expect(page.getByRole('button', { name: '下线', exact: true })).toBeEnabled()
-    } finally {
-      proxy.resume()
-      await page.unrouteAll({ behavior: 'wait' })
-      await proxy.close()
+    },
+    { label: 'resume task observation', run: async () => { proxy.resume() } },
+    { label: 'remove lifecycle route', run: () => page.unrouteAll({ behavior: 'wait' }) },
+    { label: 'close observation proxy', run: () => proxy.close() },
+    { label: 'settle lifecycle task and restore running server', run: async () => {
+      if (taskId) await api.task(taskId, false)
       await api.running()
-    }
+    } })
   })
 
   journey('file loading and save failures retain the draft, retry writes exact and deliberately empty bytes', async ({ page, api, owned }) => {

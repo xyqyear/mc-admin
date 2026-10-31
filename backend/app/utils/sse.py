@@ -24,7 +24,7 @@ class _SSEStreamingResponse(StreamingResponse):
 
 
 def sse_encode(payload: Any) -> bytes:
-    payload = jsonable_encoder(payload, exclude_none=True)
+    payload = jsonable_encoder(payload)
     return f"data: {json.dumps(payload, separators=(',', ':'))}\n\n".encode()
 
 

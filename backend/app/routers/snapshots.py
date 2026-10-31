@@ -1,11 +1,12 @@
 """Global snapshot management endpoints using restic"""
 
+import asyncio
 import posixpath
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi import Path as PathParameter
 from fastapi.responses import Response
 
@@ -34,6 +35,7 @@ from ..db.database import get_session_factory
 from ..dependencies import get_current_user
 from ..dynamic_config import get_config
 from ..minecraft import get_docker_mc_manager
+from ..operations.finalization import finalize
 from ..snapshots import (
     TargetIgnoredError,
     get_snapshot_service,
@@ -139,14 +141,28 @@ async def update_snapshot_note(
 
 @router.post("/eligible", response_model=ListSnapshotSourcesResponse)
 async def eligible_snapshots(
-    request: CreateSnapshotRequest, _: UserPublic = Depends(get_current_user)
+    request: CreateSnapshotRequest, http_request: Request,
+    _: UserPublic = Depends(get_current_user),
 ):
+    async def disconnected() -> None:
+        while (await http_request.receive())["type"] != "http.disconnect":
+            pass
+
+    lookup = asyncio.create_task(_commands().eligible(request.scope))
+    disconnect = asyncio.create_task(disconnected())
     try:
-        return ListSnapshotSourcesResponse(
-            snapshots=await _commands().eligible(request.scope)
-        )
+        await asyncio.wait((lookup, disconnect), return_when=asyncio.FIRST_COMPLETED)
+        if lookup.done():
+            return ListSnapshotSourcesResponse(snapshots=lookup.result())
+        disconnect.result()
+        raise HTTPException(status_code=499, detail="候选快照查询已取消")
     except TargetIgnoredError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    finally:
+        for task in (lookup, disconnect):
+            if not task.done():
+                task.cancel()
+        await finalize(asyncio.gather(lookup, disconnect, return_exceptions=True))
 
 
 @router.get("/targets/rules", response_model=SnapshotTargetRules)

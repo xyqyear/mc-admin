@@ -54,11 +54,13 @@ class ComplexConfigSchema(BaseConfigSchema):
 class TestBaseConfigSchema:
     """Test the BaseConfigSchema functionality."""
 
-    def test_schema_version_generation(self):
-        """Test that schema version is generated correctly."""
+    def test_schema_version_is_stable_and_changes_with_defaults(self):
+        class ChangedDefaults(TestConfigSchema):
+            number_field: int = Field(default=43, description="A number field")
+
         version = TestConfigSchema.get_schema_version()
-        assert isinstance(version, str)
-        assert len(version) == 16  # SHA256 hash truncated to 16 chars
+        assert version == TestConfigSchema.get_schema_version()
+        assert version != ChangedDefaults.get_schema_version()
 
     def test_json_schema_default_handling(self):
         """Test new default handling logic with BaseModel instances."""
@@ -212,7 +214,7 @@ class TestConfigManager:
 
         # Should register successfully
         manager.register_config("test_module", TestConfigSchema)
-        assert "test_module" in manager._schemas
+        assert manager.get_schema_info("test_module")["json_schema"]["properties"]["number_field"]["default"] == 42
 
         # Should raise error for duplicate registration
         with pytest.raises(ValueError, match="already registered"):
