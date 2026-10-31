@@ -14,4 +14,4 @@
 
 - [x] 3.1 Record the 385-snapshot/six-region benchmark and targeted regression results; pass backend/frontend static checks and frontend build.
 - [x] 3.2 Update snapshot ownership documentation and validate coherent OpenSpec artifacts with no production or map changes.
-- [ ] 3.3 Commit and push the branch, then pass complete publish=false qualification on the latest SHA and record its Actions link and audited outcome.
+- [x] 3.3 Commit and push the branch, then pass complete publish=false qualification on the latest SHA and record its Actions link and audited outcome.

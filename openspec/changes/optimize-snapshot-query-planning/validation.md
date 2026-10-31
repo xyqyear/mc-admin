@@ -52,10 +52,22 @@ Owned run IDs: `e2e-9d1f1c0f6d8d` and `e2e-ae9c6bd1745d`.
 
 ## Complete qualification
 
-Required after committing and pushing: `Qualify and Publish Application` on the
-implementation branch with `publish=false`, bound to the pushed SHA. Local
-success does not satisfy this gate; the run and final audited outcome must be
-recorded after completion.
+Successful run: [41177247415](https://github.com/xyqyear/mc-admin/actions/runs/41177247415),
+source `a9757ea925bd8ee08fffed20e8656f411e7063f0`, branch
+`refactor/snapshot-query-planning`, `publish=false`.
+
+Final SHA and completed/success conclusion were verified after the single watch
+process exited. Candidate construction and Go tests, all static/frontend gates,
+all 14 backend shards and their coverage audit, all six API shards and their
+coverage/identity/cloud-cleanup audit, all three browser shards and their
+coverage/identity/cleanup audit, and final qualification succeeded. Promotion
+was skipped as requested. The API workflow's alternate build job was skipped
+because every shard consumed the caller's successful immutable candidate.
+
+The subsequent specification sync, completed checklist and this evidence record
+are Markdown-only follow-up changes; they do not change the qualified executable
+or workflow. The repository's Markdown-only exemption requires no additional
+test or CI run for that documentation commit.
 
 First run: [41176222208](https://github.com/xyqyear/mc-admin/actions/runs/41176222208),
 source `367120c9495fe482875619beaecce23a71223988`. Candidate/Go, all static and
@@ -64,5 +76,5 @@ API/browser shards failed before test execution at candidate loading: the
 containerd image store's local image ID differed from the OCI config digest.
 Their audits and final qualification correctly failed. The CI setup now
 explicitly selects classic `overlay2` for these disposable runtime runners,
-preserving every candidate digest, outcome and cleanup assertion. Complete
-qualification must be rerun for the resulting commit.
+preserving every candidate digest, outcome and cleanup assertion. The successful
+complete run above validates the resulting commit.
