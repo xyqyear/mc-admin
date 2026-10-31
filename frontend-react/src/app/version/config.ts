@@ -685,6 +685,15 @@ export const versionUpdates: VersionUpdate[] = [
       '修复定时备份、巡检和重启任务失败及状态误报',
     ],
   },
+  {
+    version: '7.0.1',
+    date: '2026-10-31',
+    title: '备份列表加载修复',
+    description: '优化备份列表加载，避免管理系统卡顿。',
+    fixes: [
+      '修复加载备份列表时管理系统无响应的问题 #183',
+    ],
+  },
 ]
 
 function parseVersion(version: string) {
