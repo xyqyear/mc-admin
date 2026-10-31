@@ -140,77 +140,22 @@ def test_expand_services_with_dicts():
     }
 
 
-def test_compose_file_file_operations():
-    """测试ComposeFile的文件操作方法"""
-    import os
-    import tempfile
-    from typing import Any
-
-    # 创建测试数据
-    test_data: dict[str, Any] = {
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_compose_file_round_trip_preserves_configuration(tmp_path, asynchronous):
+    path = tmp_path / "compose.yml"
+    configuration = {
         "version": "3.8",
-        "services": {"web": {"image": "nginx", "ports": ["80:80"]}},
+        "services": {"web": {"image": "nginx", "ports": ["8080:80"], "environment": {"VALUE": "value=with=equals"}}},
     }
-
-    # 测试to_dict方法
-    compose_file = ComposeFile.from_dict(test_data)
-    result_dict = compose_file.to_dict()
-    assert "version" in result_dict
-    assert "services" in result_dict
-
-    # 测试文件写入和读取
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as tmp_file:
-        temp_path = tmp_file.name
-
-    try:
-        # 测试to_file方法
-        compose_file.to_file(temp_path)
-
-        # 测试from_file方法
-        loaded_compose = ComposeFile.from_file(temp_path)
-        assert loaded_compose.version == "3.8"
-        assert loaded_compose.services is not None
-        assert "web" in loaded_compose.services
-
-    finally:
-        # 清理临时文件
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-
-
-async def test_compose_file_async_file_operations():
-    """测试ComposeFile的异步文件操作方法"""
-    import os
-    import tempfile
-    from typing import Any
-
-    # 创建测试数据
-    test_data: dict[str, Any] = {
-        "version": "3.8",
-        "services": {"web": {"image": "nginx", "ports": ["80:80"]}},
-    }
-
-    compose_file = ComposeFile.from_dict(test_data)
-
-    # 测试异步文件写入和读取
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as tmp_file:
-        temp_path = tmp_file.name
-
-    try:
-        # 测试async_to_file方法
-        await compose_file.async_to_file(temp_path)
-
-        # 测试async_from_file方法
-        loaded_compose = await ComposeFile.async_from_file(temp_path)
-        assert loaded_compose.version == "3.8"
-        assert loaded_compose.services is not None
-        assert "web" in loaded_compose.services
-
-    finally:
-        # 清理临时文件
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-
-
-if __name__ == "__main__":
-    pytest.main()
+    original = ComposeFile.from_dict(configuration)
+    if asynchronous:
+        await original.async_to_file(path)
+        restored = await ComposeFile.async_from_file(path)
+    else:
+        original.to_file(path)
+        restored = ComposeFile.from_file(path)
+    assert restored.services is not None
+    assert restored.services["web"].image == "nginx"
+    assert restored.services["web"].ports == [Ports(published="8080", target="80")]
+    assert restored.services["web"].environment == {"VALUE": "value=with=equals"}
+    assert restored.version == "3.8"

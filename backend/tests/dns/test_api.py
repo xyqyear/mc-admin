@@ -1,480 +1,128 @@
-"""
-Tests for the DNS API router
-"""
-
-from unittest.mock import AsyncMock, Mock
+import asyncio
 
 import pytest
-from fastapi.testclient import TestClient
+from httpx2 import ASGITransport, AsyncClient
 
 from app.auth.models import UserRole
-from app.auth.schemas import UserPublic
-from app.dns.types import ReturnRecordT
+from app.auth.session import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
 from app.main import app
-from tests.dns.helpers import patch_accessor
+from app.operations.journal import OperationJournal
+from app.operations.models import OperationJournalEntry
+from tests.support.auth import PASSWORD, create_account
+from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
-def client():
-    """Create test client"""
-    # Mock settings to set up master token
-    with patch_accessor("app.dependencies.get_settings") as mock_settings:
-        mock_settings.master_token = "test_master_token"
-        yield TestClient(app, raise_server_exceptions=False)
+async def dns_api(connectivity, isolated_runtime, db_session_factory, runtime_config, monkeypatch):
+    isolated_runtime.journal = OperationJournal(db_session_factory)
+    account = await create_account(db_session_factory, username="dns-admin", role=UserRole.ADMIN)
+    connectivity.manager._configuration = lambda: runtime_config.dns
+    set_runtime_resource(monkeypatch, "dns_manager", connectivity.manager)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/auth/token", data={"username": account.username, "password": PASSWORD})
+            assert response.status_code == 200, response.text
+            client.headers[CSRF_HEADER_NAME] = client.cookies[CSRF_COOKIE_NAME]
+            yield client
+    finally:
+        await isolated_runtime.task_manager.shutdown()
 
 
-@pytest.fixture
-def mock_admin_user():
-    """Mock admin user"""
-    user = Mock(spec=UserPublic)
-    user.id = 1
-    user.username = "admin"
-    user.role = UserRole.ADMIN
-    return user
+async def test_dns_status_and_reads_observe_real_plan_without_writing(dns_api, connectivity):
+    status = await dns_api.get("/api/dns/status")
+    assert status.status_code == 200
+    assert status.json()["state"] == "pending"
+    assert {row["sub_domain"] for row in status.json()["dns_diff"]["records_to_add"]} == {"*.mc", "_minecraft._tcp.survival.mc"}
+    assert status.json()["router_diff"]["routes_to_add"] == {"survival.mc.example.com": "localhost:25565"}
+    assert (await dns_api.get("/api/dns/records")).json() == []
+    assert (await dns_api.get("/api/dns/routes")).json() == {}
+    assert (await dns_api.get("/api/dns/enabled")).json() == {"enabled": True}
+    assert connectivity.provider.calls == [] and connectivity.router.calls == []
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("initialized", [True, False])
-async def test_update_dns_endpoint_accepts_owned_task(mock_admin_user, initialized):
-    from app.background_tasks import get_task_manager
-    from app.routers.dns import update_dns
-    with (
-        patch_accessor("app.dns.tasks.get_dns_manager") as manager,
-        patch_accessor("app.routers.dns.get_config") as config,
-    ):
-        config.dns.enabled = True
-        manager.is_initialized = initialized
-        manager.update = AsyncMock()
-        accepted = await update_dns(mock_admin_user)
-        future = get_task_manager().get_future(accepted.task_id)
+async def test_dns_acceptance_precedes_remote_completion_and_reads_settled_state(dns_api, connectivity, isolated_runtime, db_session_factory):
+    connectivity.provider.started = asyncio.Event()
+    connectivity.provider.release = asyncio.Event()
+    try:
+        accepted = await dns_api.post("/api/dns/update")
+        assert accepted.status_code == 202, accepted.text
+        identity = accepted.json()["task_id"]
+        await asyncio.wait_for(connectivity.provider.started.wait(), 5)
+        pending = await dns_api.get(f"/api/tasks/{identity}")
+        assert pending.json()["status"] == "running"
+        duplicate = await dns_api.post("/api/dns/update")
+        assert duplicate.status_code == 423
+        assert duplicate.json()["detail"]["task_id"] == identity
+        future = isolated_runtime.task_manager.get_future(identity)
         assert future is not None
-        result = await future
-        assert result.success and result.data and result.data["success"]
-        manager.update.assert_awaited_once()
-        manager.initialize.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_update_dns_failure_is_reported_by_task(mock_admin_user):
-    from app.background_tasks import get_task_manager
-    from app.routers.dns import update_dns
-    with (
-        patch_accessor("app.dns.tasks.get_dns_manager") as manager,
-        patch_accessor("app.routers.dns.get_config") as config,
-    ):
-        config.dns.enabled = True
-        manager.update = AsyncMock(side_effect=RuntimeError("secret-provider-error"))
-        accepted = await update_dns(mock_admin_user)
-        future = get_task_manager().get_future(accepted.task_id)
-        assert future is not None
-        result = await future
-        assert not result.success and result.error
-        assert "secret-provider-error" not in result.error
-        manager.update.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_get_dns_status_success(client, mock_admin_user):
-    """Test getting DNS status"""
-    from app.dns.planning import ConnectivityObservation, RouteDiff
-    from app.dns.utils import RecordDiff
-    from app.routers.dns import get_dns_status
-
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
-    ):
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        # Mock DNS manager
-        dns_manager_mock.is_initialized = True
-
-        mock_dns_diff = RecordDiff(
-            records_to_add=[], records_to_remove=[], records_to_update=[]
-        )
-        mock_router_diff = {
-            "routes_to_add": {},
-            "routes_to_remove": {},
-            "routes_to_update": {},
-        }
-        dns_manager_mock.observe = AsyncMock(
-            return_value=ConnectivityObservation(mock_dns_diff, RouteDiff(**mock_router_diff))
-        )
-
-        result = await get_dns_status(mock_admin_user)
-
-        # Now result is a DNSStatusResponse object
-        assert result.initialized is True
-        assert result.dns_diff is not None
-        assert result.router_diff is not None
-
-
-@pytest.mark.asyncio
-async def test_get_dns_status_not_initialized(client, mock_admin_user):
-    """Uninitialized provider state remains visible without inventing an empty diff."""
-    from app.dns.planning import ConnectivityObservation, RouteDiff
-    from app.routers.dns import get_dns_status
-
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as dns_manager_mock,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
-    ):
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        # Mock DNS manager - not initialized
-        dns_manager_mock.is_initialized = False
-        dns_manager_mock.observe = AsyncMock(return_value=ConnectivityObservation(None, RouteDiff({}, {}, {}), issues=("DNS 状态未知",)))
-        result = await get_dns_status(mock_admin_user)
-        assert result.state == "degraded"
-        assert result.dns_diff is None
-        assert not result.dns_known
-        assert result.router_known
-        assert result.issues == ["DNS 状态未知"]
-        dns_manager_mock.observe.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_update_dns_endpoint_disabled(client, mock_admin_user):
-    """Test DNS update when DNS is disabled in config"""
-    from fastapi import HTTPException
-
-    from app.routers.dns import update_dns
-
-    with patch_accessor("app.routers.dns.get_config") as mock_config:
-        # Mock DNS config as disabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = False
-        mock_config.dns = mock_dns_config
-
-        # Should raise HTTPException 503 when DNS is disabled
-        with pytest.raises(HTTPException) as exc_info:
-            await update_dns(mock_admin_user)
-
-        assert exc_info.value.status_code == 503
-        assert "disabled" in str(exc_info.value.detail)
-
-
-@pytest.mark.asyncio
-async def test_get_dns_enabled_true(client, mock_admin_user):
-    """Test getting DNS enabled status when enabled"""
-    from app.routers.dns import get_dns_enabled
-
-    with patch_accessor("app.routers.dns.get_config") as mock_config:
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        result = await get_dns_enabled(mock_admin_user)
-
-        assert result.enabled is True
-
-
-@pytest.mark.asyncio
-async def test_get_dns_enabled_false(client, mock_admin_user):
-    """Test getting DNS enabled status when disabled"""
-    from app.routers.dns import get_dns_enabled
-
-    with patch_accessor("app.routers.dns.get_config") as mock_config:
-        # Mock DNS config as disabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = False
-        mock_config.dns = mock_dns_config
-
-        result = await get_dns_enabled(mock_admin_user)
-
-        assert result.enabled is False
-
-
-def test_get_dns_records_success(client):
-    """Test DNS records endpoint success"""
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as mock_manager,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
-    ):
-        # Mock manager as initialized
-        mock_manager.is_initialized = True
-
-        # Mock DNS config
-        mock_dns_config = Mock()
-        mock_dns_config.managed_sub_domain = "mc"
-        mock_config.dns = mock_dns_config
-
-        mock_manager.get_dns_records = AsyncMock(
-            return_value=[
-                ReturnRecordT(
-                    sub_domain="*.mc",
-                    value="192.168.1.100",
-                    record_id="12345",
-                    record_type="A",
-                    ttl=300,
-                ),
-                ReturnRecordT(
-                    sub_domain="_minecraft._tcp.server1.mc",
-                    value="0 5 25565 server1.mc.example.com",
-                    record_id="12346",
-                    record_type="SRV",
-                    ttl=300,
-                ),
-            ]
-        )
-
-        response = client.get(
-            "/api/dns/records", headers={"Authorization": "Bearer test_master_token"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert len(data) == 2
-        assert data[0]["sub_domain"] == "*.mc"
-        assert data[0]["value"] == "192.168.1.100"
-        assert data[0]["record_id"] == "12345"
-        assert data[0]["record_type"] == "A"
-        assert data[0]["ttl"] == 300
-
-        assert data[1]["sub_domain"] == "_minecraft._tcp.server1.mc"
-        assert data[1]["value"] == "0 5 25565 server1.mc.example.com"
-        assert data[1]["record_id"] == "12346"
-        assert data[1]["record_type"] == "SRV"
-        assert data[1]["ttl"] == 300
-
-
-def test_get_dns_records_not_initialized(client):
-    """Test DNS records endpoint when manager not initialized"""
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as mock_manager,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
-    ):
-        # Mock manager as not initialized
-        mock_manager.is_initialized = False
-        mock_manager.initialize = AsyncMock()
-
-        # Mock DNS config
-        mock_dns_config = Mock()
-        mock_dns_config.managed_sub_domain = "mc"
-        mock_config.dns = mock_dns_config
-
-        mock_manager.get_dns_records = AsyncMock(return_value=[])
-
-        response = client.get(
-            "/api/dns/records", headers={"Authorization": "Bearer test_master_token"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data == []
-
-        mock_manager.initialize.assert_not_called()
-        mock_manager.get_dns_records.assert_awaited_once()
-
-
-
-def test_get_router_routes_success(client):
-    """Test router routes endpoint success"""
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as mock_manager,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
-    ):
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        # Mock manager as initialized
-        mock_manager.is_initialized = True
-
-        mock_manager.get_router_routes = AsyncMock(
-            return_value={
-                "server1.example.com": "192.168.1.100:25565",
-                "server2.example.com": "192.168.1.101:25566",
-            }
-        )
-
-        response = client.get(
-            "/api/dns/routes", headers={"Authorization": "Bearer test_master_token"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-
-        assert "server1.example.com" in data
-        assert "server2.example.com" in data
-        assert data["server1.example.com"] == "192.168.1.100:25565"
-        assert data["server2.example.com"] == "192.168.1.101:25566"
-
-
-def test_get_router_routes_not_initialized(client):
-    """Test router routes endpoint when manager not initialized"""
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as mock_manager,
-        patch_accessor("app.routers.dns.get_config") as mock_config,
-    ):
-        # Mock DNS config as enabled
-        mock_dns_config = Mock()
-        mock_dns_config.enabled = True
-        mock_config.dns = mock_dns_config
-
-        # Mock manager as not initialized
-        mock_manager.is_initialized = False
-        mock_manager.initialize = AsyncMock()
-
-        mock_manager.get_router_routes = AsyncMock(return_value={})
-
-        response = client.get(
-            "/api/dns/routes", headers={"Authorization": "Bearer test_master_token"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data == {}
-
-        mock_manager.initialize.assert_not_called()
-        mock_manager.get_router_routes.assert_awaited_once()
-
-
-@pytest.mark.parametrize(
-    ("path", "method"),
-    [("records", "get_dns_records"), ("routes", "get_router_routes")],
-)
-def test_dns_read_failure_returns_500(client, path, method):
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as manager,
-        patch_accessor("app.routers.dns.get_config") as settings,
-    ):
-        settings.dns.enabled = True
-        operation = AsyncMock(side_effect=RuntimeError("Provider unavailable"))
-        setattr(manager, method, operation)
-        response = client.get(
-            f"/api/dns/{path}",
-            headers={"Authorization": "Bearer test_master_token"},
-        )
-        assert response.status_code == 500
-        assert response.json()["detail"] == "服务器内部错误，请稍后重试"
-        operation.assert_awaited_once()
-
-
-@pytest.mark.parametrize("path", ["status", "records", "routes"])
-def test_disabled_dns_reads_return_503_without_initialization(client, path):
-    with (
-        patch_accessor("app.routers.dns.get_dns_manager") as manager,
-        patch_accessor("app.routers.dns.get_config") as settings,
-    ):
-        settings.dns.enabled = False
-        response = client.get(
-            f"/api/dns/{path}",
-            headers={"Authorization": "Bearer test_master_token"},
-        )
-        assert response.status_code == 503
-        assert "disabled" in response.json()["detail"]
-        assert manager.mock_calls == []
-
-
-def test_dns_endpoints_authentication_required(client):
-    """Test that new DNS endpoints require authentication"""
-    from unittest.mock import patch
-
-    from app.background_tasks import get_task_manager
-
-    tasks = get_task_manager()
-    before = [task.model_dump(mode="json") for task in tasks.get_all_tasks()]
-    with (
-        patch_accessor("app.routers.dns.get_config") as config,
-        patch("app.routers.dns.submit_update", new_callable=AsyncMock) as submit,
-    ):
-        config.dns.enabled = True
-        response = client.post("/api/dns/update")
-        assert response.status_code == 401
-        submit.assert_not_awaited()
-    assert [task.model_dump(mode="json") for task in tasks.get_all_tasks()] == before
-
-    # Test DNS records endpoint
-    response = client.get("/api/dns/records")
-    assert response.status_code == 401
-
-    # Test router routes endpoint
-    response = client.get("/api/dns/routes")
-    assert response.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_list_relevant_records_filtering():
-    """Test that list_relevant_records properly filters DNS records"""
-    from app.dns.dns import DNSClient
-    from app.dns.types import ReturnRecordT
-
-    # Create a mock DNS client that implements list_records
-    class MockDNSClient(DNSClient):
-        def get_domain(self) -> str:
-            return "example.com"
-
-        def is_initialized(self) -> bool:
-            return True
-
-        async def init(self):
-            pass
-
-        async def list_records(self):
-            # Return a mix of relevant and irrelevant records
-            return [
-                # Relevant: Wildcard A record for managed subdomain
-                ReturnRecordT("*.mc", "192.168.1.100", "1", "A", 300),
-                # Relevant: SRV record for minecraft
-                ReturnRecordT(
-                    "_minecraft._tcp.server1.mc",
-                    "0 5 25565 server1.mc.example.com",
-                    "2",
-                    "SRV",
-                    300,
-                ),
-                # Irrelevant: Regular A record outside managed subdomain
-                ReturnRecordT("www", "192.168.1.200", "3", "A", 300),
-                # Irrelevant: Wildcard but wrong subdomain
-                ReturnRecordT("*.api", "192.168.1.300", "4", "A", 300),
-                # Irrelevant: SRV but not minecraft
-                ReturnRecordT(
-                    "_http._tcp.web.mc", "0 5 80 web.mc.example.com", "5", "SRV", 300
-                ),
-                # Relevant: Another minecraft SRV record
-                ReturnRecordT(
-                    "_minecraft._tcp.server2.backup.mc",
-                    "0 5 25566 server2.backup.mc.example.com",
-                    "6",
-                    "SRV",
-                    300,
-                ),
-            ]
-
-        def has_update_capability(self) -> bool:
-            return False
-
-        async def remove_records(self, record_ids):
-            pass
-
-        async def add_records(self, records):
-            pass
-
-    client = MockDNSClient()
-
-    # Test filtering
-    relevant_records = await client.list_relevant_records("mc")
-
-    # Should only return 3 relevant records
-    assert len(relevant_records) == 3
-
-    # Check that we got the right records
-    relevant_subdomains = [record.sub_domain for record in relevant_records]
-    assert "*.mc" in relevant_subdomains
-    assert "_minecraft._tcp.server1.mc" in relevant_subdomains
-    assert "_minecraft._tcp.server2.backup.mc" in relevant_subdomains
-
-    # Check that irrelevant records are filtered out
-    assert "www" not in relevant_subdomains
-    assert "*.api" not in relevant_subdomains
-    assert "_http._tcp.web.mc" not in relevant_subdomains
+        connectivity.provider.release.set()
+        assert (await asyncio.wait_for(future, 5)).success
+        task = await dns_api.get(f"/api/tasks/{identity}")
+        assert task.json()["status"] == "completed" and task.json()["result"]["success"]
+        assert task.json()["task_type"] == "dns_update"
+        async with db_session_factory() as session:
+            operation = await session.get(OperationJournalEntry, identity)
+            assert operation is not None
+            assert operation.kind == "dns_update" and operation.state == "succeeded"
+            assert operation.writers_stopped and operation.ended_at is not None
+        status = await dns_api.get("/api/dns/status")
+        assert status.json()["state"] == "ready"
+        records = (await dns_api.get("/api/dns/records")).json()
+        assert {row["sub_domain"] for row in records} == {"*.mc", "_minecraft._tcp.survival.mc"}
+        assert all(row["record_id"] for row in records)
+        assert (await dns_api.get("/api/dns/routes")).json() == {"survival.mc.example.com": "localhost:25565"}
+    finally:
+        connectivity.provider.release.set()
+
+
+async def test_dns_failure_is_terminal_and_retry_preserves_unrelated_progress(dns_api, connectivity, isolated_runtime):
+    connectivity.provider.unavailable = True
+    response = await dns_api.post("/api/dns/update")
+    assert response.status_code == 202
+    future = isolated_runtime.task_manager.get_future(response.json()["task_id"])
+    assert future is not None
+    assert not (await asyncio.wait_for(future, 5)).success
+    task = (await dns_api.get(f"/api/tasks/{response.json()['task_id']}")).json()
+    assert task["status"] == "failed"
+    assert "synthetic-provider-secret" not in str(task)
+    assert connectivity.router.routes == {"survival.mc.example.com": "localhost:25565"}
+    status = (await dns_api.get("/api/dns/status")).json()
+    assert status["state"] == "degraded" and not status["dns_known"] and status["router_known"]
+    assert status["dns_diff"] is None
+    connectivity.provider.unavailable = False
+    retry = await dns_api.post("/api/dns/update")
+    assert retry.status_code == 202
+    future = isolated_runtime.task_manager.get_future(retry.json()["task_id"])
+    assert future is not None and (await asyncio.wait_for(future, 5)).success
+    assert (await dns_api.get("/api/dns/status")).json()["state"] == "ready"
+
+
+@pytest.mark.parametrize("path,adapter", [("records", "provider"), ("routes", "router")])
+async def test_dns_read_failure_returns_safe_error(dns_api, connectivity, path, adapter):
+    getattr(connectivity, adapter).unavailable = True
+    response = await dns_api.get(f"/api/dns/{path}")
+    assert response.status_code == 500
+    assert response.json()["detail"] == "服务器内部错误，请稍后重试"
+    assert "secret" not in response.text
+
+
+async def test_disabled_dns_rejects_operations_without_remote_effects(dns_api, connectivity, isolated_runtime):
+    config = connectivity.configuration.model_copy(update={"enabled": False})
+    await isolated_runtime.config_manager.update_config("dns", config.model_dump())
+    assert (await dns_api.get("/api/dns/enabled")).json() == {"enabled": False}
+    for path in ("status", "records", "routes"):
+        assert (await dns_api.get(f"/api/dns/{path}")).status_code == 503
+    assert (await dns_api.post("/api/dns/update")).status_code == 503
+    assert connectivity.provider.calls == [] and connectivity.router.calls == []
+    assert isolated_runtime.task_manager.get_all_tasks() == []
+
+
+async def test_dns_endpoints_require_identity_and_mutations_require_csrf(dns_api, connectivity, isolated_runtime):
+    del dns_api.headers[CSRF_HEADER_NAME]
+    assert (await dns_api.post("/api/dns/update")).status_code == 403
+    dns_api.cookies.clear()
+    for path in ("status", "records", "routes", "enabled"):
+        assert (await dns_api.get(f"/api/dns/{path}")).status_code == 401
+    assert (await dns_api.post("/api/dns/update")).status_code == 401
+    assert connectivity.provider.calls == [] and connectivity.router.calls == []
+    assert isolated_runtime.task_manager.get_all_tasks() == []

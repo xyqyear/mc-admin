@@ -1,20 +1,14 @@
-from collections.abc import Iterator
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+import asyncio
 
 import pytest
-from fastapi.testclient import TestClient
+from httpx2 import ASGITransport, AsyncClient
 
 from app.auth.models import UserRole
-from app.auth.schemas import UserPublic
-from app.auth.service import get_identity_service, user_from_claims
 from app.auth.session import AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, CSRF_HEADER_NAME
-from app.background_tasks.manager import BackgroundTaskManager
-from app.background_tasks.models import BackgroundTask
-from app.background_tasks.types import TaskStatus, TaskType
+from app.background_tasks import TaskProgress, TaskType
 from app.config import get_settings
 from app.main import app
-from tests.support.runtime import set_runtime_resource
+from tests.support.auth import PASSWORD, create_account
 
 REQUESTS = [
     ("GET", "/api/tasks"),
@@ -28,121 +22,98 @@ MUTATIONS = [request for request in REQUESTS if request[0] != "GET"]
 
 
 @pytest.fixture
-def task_api(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[tuple[TestClient, BackgroundTaskManager]]:
-    manager = BackgroundTaskManager()
-    for task_id, status in (
-        ("auth-running", TaskStatus.RUNNING),
-        ("auth-finished", TaskStatus.COMPLETED),
-        ("auth-retained", TaskStatus.FAILED),
-    ):
-        manager._tasks[task_id] = BackgroundTask(
-            task_id=task_id,
-            task_type=TaskType.ARCHIVE_CREATE,
-            name=task_id,
-            status=status,
-            result={"test": "retained"},
-        )
-    set_runtime_resource(monkeypatch, 'task_manager', manager)
-    monkeypatch.setattr(
-        get_identity_service(), "get_current_session_user",
-        AsyncMock(side_effect=user_from_claims),
-    )
-    client = TestClient(app, raise_server_exceptions=False)
+async def task_api(database, isolated_runtime):
+    manager = isolated_runtime.task_manager
+    started, cleaned = asyncio.Event(), asyncio.Event()
+
+    async def running():
+        try:
+            yield TaskProgress(progress=10, result={"test": "retained"})
+            started.set()
+            await asyncio.Event().wait()
+        finally:
+            cleaned.set()
+
+    async def completed():
+        yield TaskProgress(progress=100, result={"large": ["payload"]})
+
+    async def failed():
+        yield TaskProgress(progress=20)
+        raise RuntimeError("synthetic failure")
+
     try:
-        yield client, manager
+        await manager.submit(TaskType.ARCHIVE_CREATE, "completed", completed(), task_id="auth-finished").awaitable
+        await manager.submit(TaskType.ARCHIVE_CREATE, "failed", failed(), task_id="auth-retained").awaitable
+        manager.submit(TaskType.ARCHIVE_CREATE, "running", running(), task_id="auth-running")
+        await asyncio.wait_for(started.wait(), 5)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            yield client, manager, cleaned
     finally:
-        client.close()
+        await manager.shutdown()
 
 
-def task_state(manager: BackgroundTaskManager):
-    return {
-        task.task_id: (task.model_dump(), task.cancel_requested)
-        for task in manager.get_all_tasks()
-    }
+def task_state(manager):
+    return {task.task_id: (task.model_dump(), task.cancel_requested) for task in manager.get_all_tasks()}
 
 
-def authenticate(client: TestClient, role: str) -> None:
+async def authenticate(client, sessions, role):
     if role == "master":
         client.headers["Authorization"] = f"Bearer {get_settings().master_token}"
         return
-    user = UserPublic(
-        id=42,
-        username=f"task-{role}",
-        role=UserRole(role),
-        created_at=datetime.now(UTC),
-    )
-    token, csrf = get_identity_service().create_session_token(user)
-    client.cookies.set(AUTH_COOKIE_NAME, token, path="/api")
-    client.cookies.set(CSRF_COOKIE_NAME, csrf, path="/")
-    client.headers[CSRF_HEADER_NAME] = csrf
+    user = await create_account(sessions, username=f"task-{role}", role=UserRole(role))
+    response = await client.post("/api/auth/token", data={"username": user.username, "password": PASSWORD})
+    assert response.status_code == 200, response.text
+    client.headers[CSRF_HEADER_NAME] = client.cookies[CSRF_COOKIE_NAME]
 
 
 @pytest.mark.parametrize("method,path", REQUESTS)
 @pytest.mark.parametrize("session", ["anonymous", "invalid"])
-def test_task_routes_reject_unauthenticated_requests_without_changes(
-    task_api: tuple[TestClient, BackgroundTaskManager],
-    method: str,
-    path: str,
-    session: str,
-):
-    client, manager = task_api
+async def test_task_routes_reject_unauthenticated_requests_without_changes(task_api, method, path, session):
+    client, manager, cleaned = task_api
     if session == "invalid":
         client.cookies.set(AUTH_COOKIE_NAME, "invalid-session", path="/api")
     before = task_state(manager)
-
-    response = client.request(method, path)
-
+    response = await client.request(method, path)
     assert response.status_code == 401
     assert task_state(manager) == before
+    assert not cleaned.is_set()
 
 
 @pytest.mark.parametrize("role", ["admin", "owner", "master"])
-def test_authenticated_users_can_read_cancel_delete_and_clear_tasks(
-    task_api: tuple[TestClient, BackgroundTaskManager], role: str
-):
-    client, manager = task_api
-    authenticate(client, role)
-
-    listing = client.get("/api/tasks")
+async def test_authenticated_users_can_read_cancel_delete_and_clear_tasks(task_api, db_session_factory, role):
+    client, manager, cleaned = task_api
+    await authenticate(client, db_session_factory, role)
+    listing = await client.get("/api/tasks")
     assert listing.status_code == 200
     assert listing.json()["total"] == 3
     assert all("result" not in row for row in listing.json()["tasks"])
-    active = client.get("/api/tasks?active_only=true")
-    assert active.status_code == 200
+    detail = await client.get("/api/tasks/auth-finished")
+    assert detail.json()["result"] == {"large": ["payload"]}
+    active = await client.get("/api/tasks?active_only=true")
     assert [row["task_id"] for row in active.json()["tasks"]] == ["auth-running"]
-    detail = client.get("/api/tasks/auth-running")
-    assert detail.status_code == 200
-    assert detail.json()["result"] == {"test": "retained"}
-
-    cancelled = client.post("/api/tasks/auth-running/cancel")
-    assert cancelled.status_code == 200
-    assert cancelled.json() == {"success": True}
-    running = manager.get_task("auth-running")
-    assert running is not None and running.cancel_requested
-    assert client.delete("/api/tasks/auth-finished").status_code == 200
-    assert manager.get_task("auth-finished") is None
-    cleared = client.delete("/api/tasks")
-    assert cleared.status_code == 200
-    assert cleared.json() == {"cleared": 1}
-    assert [task.task_id for task in manager.get_all_tasks()] == ["auth-running"]
+    future = manager.get_future("auth-running")
+    assert future is not None
+    cancelled = await client.post("/api/tasks/auth-running/cancel")
+    assert cancelled.status_code == 200 and cancelled.json() == {"success": True}
+    await asyncio.wait_for(future, 5)
+    assert cleaned.is_set()
+    terminal = await client.get("/api/tasks/auth-running")
+    assert terminal.json()["status"] == "cancelled"
+    assert (await client.delete("/api/tasks/auth-finished")).status_code == 200
+    assert (await client.get("/api/tasks/auth-finished")).status_code == 404
+    cleared = await client.delete("/api/tasks")
+    assert cleared.status_code == 200 and cleared.json() == {"cleared": 2}
+    assert (await client.get("/api/tasks")).json()["total"] == 0
 
 
 @pytest.mark.parametrize("method,path", MUTATIONS)
 @pytest.mark.parametrize("role", ["admin", "owner"])
-def test_authenticated_task_mutations_require_csrf_without_changes(
-    task_api: tuple[TestClient, BackgroundTaskManager],
-    method: str,
-    path: str,
-    role: str,
-):
-    client, manager = task_api
-    authenticate(client, role)
+async def test_authenticated_task_mutations_require_csrf_without_changes(task_api, db_session_factory, method, path, role):
+    client, manager, cleaned = task_api
+    await authenticate(client, db_session_factory, role)
     del client.headers[CSRF_HEADER_NAME]
     before = task_state(manager)
-
-    response = client.request(method, path)
-
+    response = await client.request(method, path)
     assert response.status_code == 403
     assert task_state(manager) == before
+    assert not cleaned.is_set()

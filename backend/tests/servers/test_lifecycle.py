@@ -7,19 +7,21 @@ so they run safely without Docker.
 """
 import asyncio
 import tempfile
+from contextlib import ExitStack
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import select
 
 from app.background_tasks import BackgroundTaskManager, TaskProgress, TaskType
 from app.configuration.application import rebuild_server_task
 from app.configuration.preparation import ServerConfiguration
 from app.cron.jobs.backup import BackupJobParams
 from app.cron.jobs.restart import ServerRestartParams
-from app.db.metadata import Base
 from app.minecraft import DockerMCManager, MCServerStatus
+from app.players.models import Player, PlayerSession
 from app.runtime_resources import current_runtime
 from app.servers.crud import create_server_record, get_active_server_by_id
 from app.servers.lifecycle import (
@@ -33,6 +35,7 @@ from app.servers.lifecycle import (
     remove_server_full,
     validate_adoption,
 )
+from app.servers.models import Server, ServerStatus
 from app.servers.port_utils import get_server_used_ports
 from tests.support.runtime import patch_runtime_resource
 
@@ -69,46 +72,19 @@ def temp_server_path():
 
 
 @pytest.fixture
-async def db_factory():
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-    engine = create_async_engine(
-        f"sqlite+aiosqlite:///{database_path}", echo=False
-    )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    Session = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
-    yield Session
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def db_factory(db_session_factory):
+    return db_session_factory
 
 
 @pytest.fixture
 def patch_singletons(temp_server_path):
-    """Patch lifecycle singletons (docker_mc_manager, log_monitor, DNS) so
-    tests run without Docker or background services.
-
-    Critically, ComposeManager.created()/running() are short-circuited to
-    return False so tests can exercise the remove path without docker, and
-    close_open_sessions is no-op'd so the lifecycle primitives don't touch
-    the production database via get_async_session().
-    """
     mgr = DockerMCManager(temp_server_path)
     patches = [
-        patch_runtime_resource('docker_mc_manager', mgr),
-        patch_runtime_resource('docker_mc_manager', mgr),
         patch_runtime_resource('docker_mc_manager', mgr),
         patch("app.servers.port_utils.get_system_used_ports", return_value=set()),
         patch.object(current_runtime().log_monitor, 'start_server', new_callable=AsyncMock),
         patch.object(current_runtime().log_monitor, 'stop_watching', new_callable=AsyncMock),
         patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
-        patch(
-            "app.servers.lifecycle.orchestrators.close_open_sessions",
-            new_callable=AsyncMock,
-            return_value=0,
-        ),
         patch(
             "app.minecraft.docker.manager.ComposeManager.created",
             new_callable=AsyncMock,
@@ -120,11 +96,10 @@ def patch_singletons(temp_server_path):
             return_value=False,
         ),
     ]
-    for p in patches:
-        p.start()
-    yield mgr
-    for p in patches:
-        p.stop()
+    with ExitStack() as stack:
+        for resource_patch in patches:
+            stack.enter_context(resource_patch)
+        yield mgr
 
 
 # ---------------------------------------------------------------------------
@@ -351,8 +326,6 @@ async def test_legacy_server_remains_readable_and_rebuildable(patch_singletons, 
     with patch.object(mgr, "get_all_instances", AsyncMock(return_value=[instance])):
         assert await get_server_used_ports() == {25780, 25790}
     with (
-        patch_runtime_resource('docker_mc_manager', mgr),
-        patch("app.configuration.application.get_async_session", db_factory),
         patch("app.configuration.application.check_port_conflicts", AsyncMock(return_value=[])),
         patch.object(instance, "get_status", AsyncMock(return_value=status)),
         patch.object(instance, "down", AsyncMock()) as down,
@@ -571,13 +544,36 @@ class TestRemoveServerFull:
                 CreateServerSpec(yaml_content=_yaml("to-remove", 26100, 26110)),
             )
 
+        joined = datetime.now(UTC) - timedelta(minutes=5)
+        async with db_factory() as session:
+            target = await get_active_server_by_id(session, "to-remove")
+            assert target is not None
+            other = Server(server_id="unrelated")
+            player = Player(uuid="123e4567e89b42d3a456426614174000", current_name="OnlinePlayer", created_at=joined)
+            session.add_all([other, player])
+            await session.flush()
+            session.add_all([
+                PlayerSession(player_db_id=player.player_db_id, server_db_id=server.id, joined_at=joined)
+                for server in (target, other)
+            ])
+            target_id, other_id = target.id, other.id
+            await session.commit()
+
         async with db_factory() as session:
             result = await remove_server_full(session, "to-remove")
 
         assert result.server_id == "to-remove"
         assert result.cancelled_restart_cronjob_ids == []
         assert result.cancelled_background_task_ids == []
-        assert result.closed_sessions == 0
+        assert result.closed_sessions == 1
+        async with db_factory() as session:
+            sessions = {row.server_db_id: row for row in await session.scalars(select(PlayerSession))}
+            assert sessions[target_id].left_at is not None
+            assert sessions[target_id].duration_seconds >= 300
+            assert sessions[other_id].left_at is None
+            assert sessions[other_id].duration_seconds is None
+            removed = await session.get(Server, target_id)
+            assert removed is not None and removed.status is ServerStatus.REMOVED
 
         # Directory gone
         instance = patch_singletons.get_instance("to-remove")

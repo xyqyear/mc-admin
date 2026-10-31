@@ -6,14 +6,19 @@ import openapiTS, { astToString } from 'openapi-typescript'
 import { selectSchemaClosure } from './schema-closure.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
-const exported = spawnSync('uv', ['run', 'python', '-c', `
+const exportCode = `
 import json
 from tests.support.environment import configure_test_environment
 with configure_test_environment():
     from app.main import create_api_app
     from app.runtime import Runtime
     print(json.dumps(create_api_app(Runtime()).openapi()))
-`], { cwd: path.resolve(root, '../backend'), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+`
+const command = process.platform === 'win32'
+  ? ['wsl.exe', '--distribution', process.env.MC_ADMIN_WSL_DISTRO ?? 'Debian', '--cd', path.resolve(root, '..'), '--exec', 'env', ...(process.env.MC_ADMIN_LINUX_VENV ? [`MC_ADMIN_LINUX_VENV=${process.env.MC_ADMIN_LINUX_VENV}`] : []), 'bash', 'scripts/dev/backend.sh', 'run', 'python', '-c', exportCode]
+  : ['uv', 'run', '--locked', 'python', '-c', exportCode]
+const exported = spawnSync(command[0], command.slice(1), { cwd: path.resolve(root, '../backend'), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+if (exported.error) throw exported.error
 if (exported.status !== 0) throw new Error(`Isolated OpenAPI export failed:\n${exported.stderr}`)
 const schema = JSON.parse(exported.stdout)
 const components = selectSchemaClosure(schema.components?.schemas, ['UserPublic', 'UserCreate', 'LoginResponse'])

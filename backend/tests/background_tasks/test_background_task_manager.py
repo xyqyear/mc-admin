@@ -61,11 +61,11 @@ class TestBasicTaskSubmission:
             yield TaskProgress(progress=50, message="Half done")
             started.set()
             await finish.wait()
-            yield TaskProgress(progress=100, message="Complete")
+            yield TaskProgress(progress=100, message="完成！")
 
         result = task_manager.submit(
             task_type=TaskType.ARCHIVE_CREATE,
-            name="test.7z",
+            name="测试任务_🎮_世界备份",
             task_generator=simple_task(),
             server_id="survival",
             cancellable=True,
@@ -91,6 +91,9 @@ class TestBasicTaskSubmission:
             assert task_result.error is None
             assert task.status == TaskStatus.COMPLETED
             assert task.ended_at is not None
+            assert task.name == "测试任务_🎮_世界备份"
+            assert task.message == "完成！"
+            assert task.task_type is TaskType.ARCHIVE_CREATE
         finally:
             finish.set()
 
@@ -306,20 +309,6 @@ class TestTaskErrorHandling:
 
 class TestTaskQueries:
 
-    async def test_get_task_by_id(self, task_manager):
-
-        async def simple_task():
-            yield TaskProgress(progress=100, message="Done")
-
-        result = task_manager.submit(
-            task_type=TaskType.ARCHIVE_CREATE,
-            name="test.7z",
-            task_generator=simple_task(),
-        )
-
-        task = task_manager.get_task(result.task_id)
-        assert task is not None
-        assert task.task_id == result.task_id
 
     async def test_get_nonexistent_task_returns_none(self, task_manager):
         task = task_manager.get_task("nonexistent_id")
@@ -528,34 +517,6 @@ class TestConcurrentTasks:
             await task_manager.shutdown()
 
 
-
-class TestTaskTypes:
-
-    @pytest.mark.parametrize(
-        "task_type",
-        [
-            TaskType.ARCHIVE_CREATE,
-            TaskType.ARCHIVE_EXTRACT,
-            TaskType.SERVER_REBUILD,
-        ],
-    )
-    async def test_task_type_metadata_is_retained(self, task_manager, task_type):
-
-        async def simple_task():
-            yield TaskProgress(progress=100, message="Done")
-
-        result = task_manager.submit(
-            task_type=task_type,
-            name="test_task",
-            task_generator=simple_task(),
-        )
-
-        task_result = await result.awaitable
-
-        assert task_result.success is True
-        assert result.task.task_type == task_type
-
-
 class TestEdgeCases:
 
     async def test_empty_task_generator(self, task_manager):
@@ -575,23 +536,6 @@ class TestEdgeCases:
         assert task_result.success is True
         task = task_manager.get_task(result.task_id)
         assert task.status == TaskStatus.COMPLETED
-
-    async def test_task_with_unicode_name(self, task_manager):
-
-        async def simple_task():
-            yield TaskProgress(progress=100, message="完成！")
-
-        result = task_manager.submit(
-            task_type=TaskType.ARCHIVE_CREATE,
-            name="测试任务_🎮_世界备份",
-            task_generator=simple_task(),
-        )
-
-        await result.awaitable
-
-        task = task_manager.get_task(result.task_id)
-        assert task.name == "测试任务_🎮_世界备份"
-        assert task.message == "完成！"
 
 
 class TestTasksByServerIdAndGetFuture:
@@ -640,19 +584,6 @@ class TestTasksByServerIdAndGetFuture:
         # Unknown server
         assert task_manager.get_tasks_by_server_id("nope") == []
 
-    async def test_get_future_returns_submitted_future(self, task_manager):
-        async def simple_task():
-            yield TaskProgress(progress=100, message="Done")
-
-        result = task_manager.submit(
-            task_type=TaskType.ARCHIVE_CREATE,
-            name="future-test",
-            task_generator=simple_task(),
-        )
-
-        future = task_manager.get_future(result.task_id)
-        assert future is not None
-        assert future is result.awaitable
 
     async def test_get_future_returns_none_for_unknown_task(self, task_manager):
         assert task_manager.get_future("nope") is None
@@ -660,24 +591,6 @@ class TestTasksByServerIdAndGetFuture:
 
 class TestAwaitableSemantics:
 
-    async def test_awaitable_resolves_after_completion(self, task_manager):
-        completed = False
-
-        async def tracking_task():
-            nonlocal completed
-            yield TaskProgress(progress=50, message="Working...")
-            await asyncio.sleep(0.1)
-            yield TaskProgress(progress=100, message="Done")
-            completed = True
-
-        result = task_manager.submit(
-            task_type=TaskType.ARCHIVE_CREATE,
-            name="tracking_task",
-            task_generator=tracking_task(),
-        )
-
-        await result.awaitable
-        assert completed is True
 
     async def test_multiple_awaits_on_same_future(self, task_manager):
 

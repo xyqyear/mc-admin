@@ -3,13 +3,11 @@ from datetime import UTC, datetime
 from unittest.mock import Mock
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.cron import crud
 from app.cron.jobs import backup
 from app.cron.manager import CronManager
 from app.cron.models import ExecutionStatus
-from app.db.metadata import Base
 from app.world import (
     GLOBAL_LOCK_KEY,
     LockHolder,
@@ -19,33 +17,17 @@ from app.world import (
 
 
 @pytest.fixture
-async def execution_manager(tmp_path, monkeypatch):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'cron.db'}")
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
+async def execution_manager(db_session_factory):
+    async with db_session_factory() as session:
+        await crud.create_cronjob(
+            session, cronjob_id="outcome-test", identifier="backup", name="备份结果测试",
+            cron="0 0 * * *", params_json='{"enable_forget": false}',
+        )
+    manager = CronManager()
     try:
-        async with engine.begin() as connection:
-            await connection.run_sync(
-                lambda conn: Base.metadata.create_all(
-                    conn,
-                    tables=[
-                        Base.metadata.tables[name]
-                        for name in ("cronjob", "cronjob_execution")
-                    ],
-                )
-            )
-        monkeypatch.setattr("app.cron.manager.get_async_session", sessions)
-        async with sessions() as session:
-            await crud.create_cronjob(
-                session,
-                cronjob_id="outcome-test",
-                identifier="backup",
-                name="备份结果测试",
-                cron="0 0 * * *",
-                params_json='{"enable_forget": false}',
-            )
-        yield CronManager()
+        yield manager
     finally:
-        await engine.dispose()
+        await manager.shutdown()
 
 
 @pytest.mark.parametrize("server_id", [None, "busy-server"])

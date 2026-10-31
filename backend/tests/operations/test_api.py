@@ -8,7 +8,6 @@ from app.auth.models import User, UserRole
 from app.auth.schemas import UserPublic
 from app.auth.service import get_identity_service
 from app.auth.session import AUTH_COOKIE_NAME, CSRF_COOKIE_NAME, CSRF_HEADER_NAME
-from app.db.metadata import Base
 from app.main import create_app
 from app.operations.journal_types import (
     OperationSpec,
@@ -22,9 +21,7 @@ from tests.support.runtime import replace_runtime_resource
 
 
 @pytest.fixture
-async def operation_client(journal, isolated_runtime):
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+async def operation_client(journal, isolated_runtime, database):
     isolated_runtime.journal = journal
     recovery = RecoveryService(journal, probe=AsyncMock(return_value=False), validate_resource=AsyncMock(return_value=True))
     replace_runtime_resource(isolated_runtime, "operation_recovery", recovery)

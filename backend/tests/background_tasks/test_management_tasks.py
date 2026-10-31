@@ -9,7 +9,6 @@ from httpx2 import ASGITransport, AsyncClient
 
 from app.background_tasks import TaskProgress, TaskType, get_task_manager
 from app.background_tasks.manager import BackgroundTaskManager
-from app.db.metadata import Base
 from app.main import api_app
 from app.minecraft import DockerMCManager, MCInstance
 from app.minecraft.docker.manager import ComposeManager
@@ -68,10 +67,8 @@ async def test_observing_durable_acceptance_does_not_report_a_false_failure(mana
 
 
 @pytest.fixture
-async def management(isolated_runtime, monkeypatch):
+async def management(isolated_runtime, monkeypatch, database):
     runtime = isolated_runtime
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal
     tasks = get_task_manager()

@@ -6,10 +6,10 @@ from pathlib import Path
 
 from alembic.script import ScriptDirectory
 from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.db import migrations
+from app.db.database import Database
 from app.main import api_app
 from tests.support.runtime import set_runtime_resource
 
@@ -45,9 +45,9 @@ async def test_supported_release_upgrade_preserves_synthetic_history(tmp_path, m
             "INSERT INTO player_chat_message (player_db_id,server_db_id,message_text,sent_at) VALUES (301,101,'Synthetic new chat','2026-09-01 00:01:00') RETURNING message_id"
         ).fetchone()[0]
         assert identity > 501
-    engine = create_async_engine(get_settings().database_url)
-    set_runtime_resource(monkeypatch, 'session_factory', async_sessionmaker(engine, expire_on_commit=False))
+    database = Database(get_settings().database_url)
     try:
+        set_runtime_resource(monkeypatch, "database", database)
         async with AsyncClient(transport=ASGITransport(app=api_app), base_url="http://test",
                                headers={"Authorization": f"Bearer {get_settings().master_token}"}) as client:
             users = await client.get("/admin/users")
@@ -58,4 +58,4 @@ async def test_supported_release_upgrade_preserves_synthetic_history(tmp_path, m
             assert templates.status_code == 200
             assert templates.json()[0]["id"] == 201
     finally:
-        await engine.dispose()
+        await database.close()

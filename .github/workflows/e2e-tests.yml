@@ -160,6 +160,10 @@ jobs:
         path: api-planning
     - name: Prepare runtime inputs
       run: |
+        config="$(sudo cat /etc/docker/daemon.json 2>/dev/null || echo '{}')"
+        printf '%s\n' "$config" | jq '.features["containerd-snapshotter"] = false' | sudo tee /etc/docker/daemon.json >/dev/null
+        sudo systemctl restart docker
+        test "$(docker info --format '{{.Driver}}')" = overlay2
         chmod +x e2e-artifacts/mc-admin-e2e
         uv run --no-project python scripts/release/candidate.py verify --directory e2e-artifacts --revision "$SOURCE_SHA"
         uv run --no-project python scripts/release/candidate.py load --directory e2e-artifacts --tag mc-admin:e2e --output "$RUNNER_TEMP/loaded-candidate.json"

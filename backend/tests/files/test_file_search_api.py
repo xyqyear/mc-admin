@@ -2,17 +2,15 @@
 Test file search API endpoint using FastAPI TestClient.
 Tests the REST API endpoint for file search functionality with authentication.
 """
-import tempfile
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_runtime_resource
 
 pytestmark = [pytest.mark.binary('fd')]
 
@@ -23,15 +21,16 @@ class TestFileSearchAPI:
     @pytest.fixture
     def test_client(self):
         """Create test client."""
-        return TestClient(app, raise_server_exceptions=False)
+        with closing(TestClient(app, raise_server_exceptions=False)) as client:
+            yield client
 
     @pytest.fixture
-    def temp_dir(self):
-        """Create temporary directory for tests."""
-        with tempfile.TemporaryDirectory(
-            prefix="mc_admin_search_test_", dir="/tmp"
-        ) as temp_dir:
-            yield Path(temp_dir)
+    def temp_dir(self, isolated_runtime, server_id):
+        instance = isolated_runtime.docker_mc_manager.get_instance(server_id)
+        data = instance.get_data_path()
+        data.mkdir(parents=True)
+        (instance.get_project_path() / "docker-compose.yml").write_text("services: {}\n")
+        return data
 
     @pytest.fixture
     def auth_headers(self):
@@ -50,13 +49,7 @@ class TestFileSearchAPI:
         """Test basic regex file search."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test files
             (temp_dir / "config.py").write_text("# Configuration\nDEBUG = True")
@@ -107,13 +100,7 @@ class TestFileSearchAPI:
         """Test case sensitivity in file search."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test file with mixed case
             (temp_dir / "Config.PY").write_text("# Configuration")
@@ -151,13 +138,7 @@ class TestFileSearchAPI:
         """Test file size filtering."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create files with different sizes
             (temp_dir / "small.txt").write_text("small")  # ~5 bytes
@@ -199,13 +180,7 @@ class TestFileSearchAPI:
         """Test date filtering."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test file
             (temp_dir / "test.txt").write_text("test content")
@@ -251,13 +226,7 @@ class TestFileSearchAPI:
         """Test combining multiple filters."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test files
             (temp_dir / "small_config.py").write_text("# Small config")  # ~14 bytes
@@ -293,13 +262,7 @@ class TestFileSearchAPI:
         """Test searching in a custom path."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create subdirectory structure
             config_dir = temp_dir / "config"
@@ -327,13 +290,7 @@ class TestFileSearchAPI:
         """Test search that returns no results."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test file that won't match
             (temp_dir / "test.txt").write_text("content")
@@ -356,12 +313,7 @@ class TestFileSearchAPI:
         """Test searching for files on non-existent server."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance that doesn't exist
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=False)
-            mock_manager.get_instance.return_value = mock_instance
 
             search_request = {"regex": r".*\.py$"}
 
@@ -376,12 +328,7 @@ class TestFileSearchAPI:
 
     def test_search_files_unauthorized(self, test_client, server_id, temp_dir):
         """Test search without authentication."""
-        with patch_runtime_resource('docker_mc_manager') as mock_manager:
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
+        with patch.object(current_runtime().settings, 'master_token', 'test_master_token'):
 
             search_request = {"regex": r".*\.py$"}
 
@@ -394,34 +341,17 @@ class TestFileSearchAPI:
             assert response.status_code == 401
             assert "detail" in response.json()
 
-    def test_search_files_invalid_regex(
-        self, test_client, auth_headers, server_id, temp_dir
-    ):
-        """Test search with invalid regex pattern."""
-        with (
-            patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
-        ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
-
-            # Mock fd command to return error for invalid regex
-            with patch("app.files.search._run_fd_command") as mock_fd:
-                mock_fd.side_effect = Exception("Invalid regular expression")
-
-                search_request = {"regex": r"[invalid regex("}
-
-                response = test_client.post(
-                    f"/api/servers/{server_id}/files/search",
-                    json=search_request,
-                    headers=auth_headers,
-                )
-
-                assert response.status_code == 500
-                assert response.json()["detail"] == "服务器内部错误，请稍后重试"
+    def test_search_files_invalid_regex(self, test_client, auth_headers, server_id, temp_dir):
+        sentinel = temp_dir / "retained.txt"
+        sentinel.write_text("unmodified")
+        with patch.object(current_runtime().settings, "master_token", "test_master_token"):
+            response = test_client.post(
+                f"/api/servers/{server_id}/files/search",
+                json={"regex": r"[invalid regex("}, headers=auth_headers,
+            )
+        assert response.status_code == 500
+        assert "Search command failed" in response.json()["detail"]
+        assert sentinel.read_text() == "unmodified"
 
     def test_search_files_invalid_request_body(
         self, test_client, auth_headers, server_id
@@ -479,13 +409,7 @@ class TestFileSearchAPI:
         """Test complex regex patterns."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test files
             (temp_dir / "test_file.py").write_text("# test")
@@ -514,13 +438,7 @@ class TestFileSearchAPI:
         """Test API search with subfolders enabled."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test structure
             (temp_dir / "root.txt").write_text("root file")
@@ -559,13 +477,7 @@ class TestFileSearchAPI:
         """Test API search with subfolders disabled."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test structure
             (temp_dir / "root.txt").write_text("root file")
@@ -604,13 +516,7 @@ class TestFileSearchAPI:
         """Test that search_subfolders defaults to True in API."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create test structure
             (temp_dir / "root.txt").write_text("root file")
@@ -645,13 +551,7 @@ class TestFileSearchAPI:
         """Test subfolder search control combined with custom search path."""
         with (
             patch.object(current_runtime().settings, 'master_token', 'test_master_token'),
-            patch_runtime_resource('docker_mc_manager') as mock_manager,
         ):
-            # Setup mock instance
-            mock_instance = MagicMock()
-            mock_instance.exists = AsyncMock(return_value=True)
-            mock_instance.get_data_path.return_value = temp_dir
-            mock_manager.get_instance.return_value = mock_instance
 
             # Create nested structure
             config_dir = temp_dir / "config"

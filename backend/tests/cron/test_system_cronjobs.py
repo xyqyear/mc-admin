@@ -1,15 +1,11 @@
-import tempfile
-from pathlib import Path
-
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.cron import crud
 from app.cron.manager import CronManager
 from app.cron.models import CronJobStatus
 from app.cron.registry import CronRegistry, get_cron_registry
-from app.db.metadata import Base
 from app.dynamic_config.schemas import BaseConfigSchema
+from tests.cron.test_cronjobs import assert_next_calendar_day
 from tests.support.runtime import set_runtime_resource
 
 
@@ -31,29 +27,8 @@ def test_self_check_system_cron_defaults_to_hourly() -> None:
 
 
 @pytest.fixture
-async def cron_test_db(monkeypatch: pytest.MonkeyPatch):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-
-    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    session_factory = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-
-    import app.cron.manager as manager_module
-
-    monkeypatch.setattr(manager_module, "get_async_session", session_factory)
-    yield session_factory
-
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def cron_test_db(db_session_factory):
+    return db_session_factory
 
 
 async def test_system_cronjob_created_and_protected(
@@ -98,7 +73,7 @@ async def test_system_cronjob_created_and_protected(
         assert config.params.value == "default"
         scheduled_job = manager.scheduler.get_job(cronjob_id)
         assert scheduled_job is not None
-        assert str(scheduled_job.trigger.fields[4]) == "0"
+        assert_next_calendar_day(scheduled_job, 0)
 
         with pytest.raises(ValueError, match="不能手动创建"):
             await manager.create_cronjob(
@@ -126,7 +101,7 @@ async def test_system_cronjob_created_and_protected(
         assert updated.is_system is True
         scheduled_job = manager.scheduler.get_job(cronjob_id)
         assert scheduled_job is not None
-        assert str(scheduled_job.trigger.fields[4]) == "1"
+        assert_next_calendar_day(scheduled_job, 1)
 
         with pytest.raises(ValueError, match="不能修改任务类型"):
             await manager.update_cronjob(
@@ -192,6 +167,6 @@ async def test_system_cronjob_repairs_invalid_params_on_startup(
         assert config.params.value == "default"
         scheduled_job = manager.scheduler.get_job("system:system_test")
         assert scheduled_job is not None
-        assert str(scheduled_job.trigger.fields[4]) == "0"
+        assert_next_calendar_day(scheduled_job, 0)
     finally:
         await manager.shutdown()

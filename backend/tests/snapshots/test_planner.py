@@ -1,4 +1,4 @@
-"""Unit tests for restore planning against a fake snapshot tree."""
+"""Restore selection safety, external listing budget and real restore outcomes."""
 
 from pathlib import Path
 
@@ -6,10 +6,7 @@ import pytest
 
 from app.snapshots.models import NodeKind
 from app.snapshots.planner import (
-    DirStep,
-    EmptyStep,
     FileStep,
-    RestorePlan,
     TargetIgnoredError,
     build_restore_plan,
 )
@@ -51,74 +48,7 @@ def client():
     )
 
 
-async def test_single_dir_target(client):
-    plan = await build_restore_plan(client, SNAP, [Path("/srv/x")], [])
-    assert plan.steps == (DirStep(source_dir=Path("/srv/x"), excludes=()),)
-
-
-async def test_dir_target_with_ignores_under_it(client):
-    ignored = [Path("/srv/x/data/.mcmap"), Path("/srv/x/data/logs")]
-    plan = await build_restore_plan(client, SNAP, [Path("/srv/x")], ignored)
-    assert plan.steps == (
-        DirStep(
-            source_dir=Path("/srv/x"),
-            excludes=("/data/.mcmap", "/data/logs"),
-        ),
-    )
-
-
-async def test_ignore_outside_target_not_translated(client):
-    ignored = [Path("/srv/y/data/.mcmap")]
-    plan = await build_restore_plan(client, SNAP, [Path("/srv/x")], ignored)
-    assert plan.steps == (DirStep(source_dir=Path("/srv/x"), excludes=()),)
-
-
-async def test_file_targets_grouped_by_parent(client):
-    targets = [
-        Path("/srv/x/data/world/region/r.0.1.mca"),
-        Path("/srv/x/data/world/region/r.0.0.mca"),
-    ]
-    plan = await build_restore_plan(client, SNAP, targets, [])
-    assert plan.steps == (
-        FileStep(
-            source_dir=Path("/srv/x/data/world/region"),
-            includes=("/r.0.0.mca", "/r.0.1.mca"),
-        ),
-    )
-
-
-async def test_missing_file_with_present_parent_is_included(client):
-    targets = [Path("/srv/x/data/world/region/r.9.9.mca")]
-    plan = await build_restore_plan(client, SNAP, targets, [])
-    assert plan.steps == (
-        EmptyStep(FileStep(
-            source_dir=Path("/srv/x/data/world/region"), includes=("/r.9.9.mca",),
-        ), ignored=()),
-    )
-
-
-async def test_missing_parent_skips_group(client):
-    targets = [Path("/srv/x/data/world/entities/r.0.0.mca")]
-    plan = await build_restore_plan(client, SNAP, targets, [])
-    assert plan.steps == ()
-
-
-async def test_mixed_dir_and_file_targets(client):
-    targets = [
-        Path("/srv/x/data/world/region/r.0.0.mca"),
-        Path("/srv/x/data/server.properties"),
-        Path("/srv/x/data/world/entities/r.0.0.mca"),  # parent missing → skipped
-    ]
-    plan = await build_restore_plan(client, SNAP, targets, [])
-    assert plan.steps == (
-        FileStep(source_dir=Path("/srv/x/data"), includes=("/server.properties",)),
-        FileStep(
-            source_dir=Path("/srv/x/data/world/region"), includes=("/r.0.0.mca",)
-        ),
-    )
-
-
-async def test_dir_steps_ordered_before_file_steps(client):
+async def test_overlapping_targets_are_rejected(client):
     targets = [
         Path("/srv/x/data/world/region/r.0.0.mca"),
         Path("/srv/x/data/world"),
@@ -126,18 +56,6 @@ async def test_dir_steps_ordered_before_file_steps(client):
     with pytest.raises(ValueError, match="disjoint"):
         # world contains region/r.0.0.mca → overlap is rejected, not reordered
         await build_restore_plan(client, SNAP, targets, [])
-
-
-async def test_disjoint_dir_and_file_steps_order(client):
-    targets = [
-        Path("/srv/x/data/server.properties"),
-        Path("/srv/x/data/world"),
-    ]
-    plan = await build_restore_plan(client, SNAP, targets, [])
-    assert plan.steps == (
-        DirStep(source_dir=Path("/srv/x/data/world"), excludes=()),
-        FileStep(source_dir=Path("/srv/x/data"), includes=("/server.properties",)),
-    )
 
 
 async def test_ignored_target_raises(client):
@@ -162,12 +80,6 @@ async def test_relative_target_rejected(client):
         await build_restore_plan(client, SNAP, [Path("relative/path")], [])
 
 
-async def test_duplicate_targets_deduplicated(client):
-    targets = [Path("/srv/x"), Path("/srv/x")]
-    plan = await build_restore_plan(client, SNAP, targets, [])
-    assert plan.steps == (DirStep(source_dir=Path("/srv/x"), excludes=()),)
-
-
 async def test_one_ls_probe_per_unique_parent(client):
     region = Path("/srv/x/data/world/region")
     targets = [region / f"r.{i}.{j}.mca" for i in range(20) for j in range(20)]
@@ -180,8 +92,28 @@ async def test_one_ls_probe_per_unique_parent(client):
     assert len(step.includes) == 800
 
 
-async def test_stage_target_mirrors_absolute_path():
-    step = DirStep(source_dir=Path("/srv/x/data/world"), excludes=())
-    assert RestorePlan.stage_target(Path("/tmp/stage"), step) == Path(
-        "/tmp/stage/srv/x/data/world"
-    )
+@pytest.mark.binary("restic")
+async def test_mixed_and_duplicate_selections_restore_only_allowed_bytes(case):
+    world = case.data / "world"
+    world.mkdir()
+    terrain = world / "region.dat"
+    protected = world / "keep.txt"
+    config = case.data / "config.txt"
+    unselected = case.data / "unselected.txt"
+    for path in (terrain, protected, config, unselected):
+        path.write_text("snapshot " + path.name)
+    case.config.snapshots.ignored_paths = ["world/keep.txt", "other-server/cache"]
+    snapshot = await case.snapshots.create_snapshot([case.data])
+    for path in (terrain, protected, config, unselected):
+        path.write_text("live " + path.name)
+    targets = [config, world, config]
+    preview = [event async for event in case.snapshots.restore(snapshot.id, targets, dry_run=True)]
+    assert preview
+    assert all(path.read_text() == "live " + path.name for path in (terrain, protected, config, unselected))
+
+    results = [event async for event in case.snapshots.restore(snapshot.id, targets)]
+    assert results
+    assert terrain.read_text() == "snapshot region.dat"
+    assert config.read_text() == "snapshot config.txt"
+    assert protected.read_text() == "live keep.txt"
+    assert unselected.read_text() == "live unselected.txt"

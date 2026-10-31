@@ -2,7 +2,6 @@ import zlib
 
 import pytest
 
-from app.dynamic_config.configs.mcmap import MCMapConfig
 from app.runtime_resources import current_runtime
 from app.snapshots.restoration_models import RestorationType
 from app.snapshots.scopes import WorldScope
@@ -16,7 +15,6 @@ pytestmark = [pytest.mark.binary("restic"), pytest.mark.binary("fd"), pytest.mar
 @pytest.mark.parametrize("kind", ["regions", "chunks"])
 async def test_map_preview_preserves_source_protected_and_unselected_external_chunks(world_case, kind):
     case = world_case
-    case.config.mcmap = MCMapConfig()
     case.config.snapshots.ignored_paths = [".mcmap", "world/region/c.0.0.mcc"]
     header = bytearray(8192)
     for chunk in range(3):

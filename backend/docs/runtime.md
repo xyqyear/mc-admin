@@ -16,6 +16,12 @@
 
 ## Tracked execution
 
+`runtime_context(runtime)` creates a fresh context containing only the owning
+runtime. Scheduler wakeups and manager-owned log watchers use it so long-lived
+callbacks cannot retain the operation that registered them. Cron dispatch also
+binds its owner and clears the operation in the existing task; normal nested
+commands and subprocess finalization retain their active operation ownership.
+
 `spawn_background(coroutine, name=...)` registers side work with its runtime and clears the parent operation context for detached work. Subsystem workers remain registered with their owning manager. Requests and streams remain registered until their ASGI call completes. This lets shutdown drain the whole execution before closing database sessions and clients. Creating background work during shutdown is rejected.
 
 ## Startup

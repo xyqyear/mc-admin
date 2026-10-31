@@ -28,7 +28,15 @@ The [official metadata-action v6 SemVer rules](https://github.com/docker/metadat
 
 ## Digest terminology
 
-The OCI manifest digest identifies the registry artifact. The config digest identifies the image configuration and is Docker's local image ID. They are different hashes. The archive checksum additionally identifies the transported tar file; the same OCI image could otherwise be repackaged into a different tar.
+The OCI manifest digest identifies the registry artifact. The config digest identifies the image configuration and is Docker's local image ID with the classic image store. They are different hashes. The archive checksum additionally identifies the transported tar file; the same OCI image could otherwise be repackaged into a different tar.
+
+API and browser qualification runners explicitly select the classic `overlay2`
+image store before loading any candidate or creating owned environments. The
+containerd image store uses a manifest/index digest for the local image ID;
+its default on newer hosted runners does not satisfy this config-ID verification
+contract. The runner setup checks the selected driver and retains the strict
+loaded-config and runtime identity checks. This setting applies only to the
+disposable CI runner, not application deployments.
 
 Loading into Docker uses `skopeo copy` to a temporary Docker archive followed by the installed Docker CLI's `docker load`. Docker may require a different transport manifest format; the config digest must remain unchanged. Publication uses the original OCI archive, preserving the original OCI manifest. This avoids older Skopeo versions' `docker-daemon:` API incompatibility with newer Docker engines. Temporary transport archives are removed after loading.
 

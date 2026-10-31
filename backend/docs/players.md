@@ -87,6 +87,12 @@ Persistent models live in `app.players.models`; the aggregate Alembic metadata
 registers them explicitly. Map-profile request and response payloads live in
 `app.players.api_models`, while query projections stay with their player queries.
 
+Map-profile SSE events retain the response model's nullable fields as explicit
+JSON `null`, including unresolved identities and cached profiles without an
+avatar or refresh timestamp. An unresolved identity is an ordinary profile
+result; it does not prevent later cached names and avatars from reaching clients.
+The SSE transport preserves event payload fields during JSON encoding.
+
 - **`Player`** — `uuid` (unique), `current_name`, `skin_data` (bytes), `avatar_data` (bytes), `last_skin_update`, `created_at`.
 - **`PlayerSession`** — `(player_db_id, server_db_id)`, `joined_at`, `left_at` (nullable), `duration_seconds` (nullable). Ending a session clamps `left_at` to at least `joined_at`, so a crash heartbeat preceding a recent join contributes zero seconds. Both individual-player departures and server-wide closure use this rule. Indexes on `(player, time)`, `(server, time)`, and the open-session shape.
 

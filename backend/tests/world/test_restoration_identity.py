@@ -6,10 +6,8 @@ from unittest.mock import Mock
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.background_tasks.manager import BackgroundTaskManager
-from app.db.metadata import Base
 from app.minecraft import DockerMCManager
 from app.servers.models import Server, ServerStatus
 from app.servers.references import resolve_server_ref
@@ -26,7 +24,7 @@ from tests.support.restorations import legacy_world_restoration
 
 
 @pytest.fixture
-async def identity_case(tmp_path):
+async def identity_case(tmp_path, db_session_factory):
     root = tmp_path / "servers"
     project = root / "survival"
     region = project / "data" / "world" / "region"
@@ -36,10 +34,7 @@ async def identity_case(tmp_path):
     )
     (region.parent / "level.dat").write_bytes(b"world metadata")
     (region / "r.0.0.mca").write_bytes(b"replacement world data")
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'identity.sqlite3'}")
-    sessions = async_sessionmaker(engine, expire_on_commit=False)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+    sessions = db_session_factory
     async with sessions() as session:
         session.add(Server(server_id="survival"))
         await session.commit()
@@ -49,18 +44,19 @@ async def identity_case(tmp_path):
 
     snapshots.repository_use = RepositoryUse()
     docker = Mock(spec=DockerMCManager)
+    tasks = BackgroundTaskManager()
     orchestrator = SnapshotCommands(
         cast(SnapshotService, snapshots),
         cast(DockerMCManager, docker),
         ServerOperationLock(),
-        BackgroundTaskManager(),
+        tasks,
         sessions,
         root,
     )
     try:
         yield orchestrator, sessions, reference, region, snapshots, docker
     finally:
-        await engine.dispose()
+        await tasks.shutdown()
 
 
 async def retire_and_replace(sessions):

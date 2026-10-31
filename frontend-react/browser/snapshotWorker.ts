@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawnHost } from './host'
 import type { OwnedEnvironment } from './fixtures'
 
 const holdBackup = String.raw`
@@ -41,7 +41,7 @@ raise RuntimeError('The owned snapshot backup worker did not appear')
 `
 
 function holdSnapshotProcess(owned: OwnedEnvironment, command: 'backup' | 'restore') {
-  const child = spawn('docker', ['exec', '-i', owned.backend_container, 'python', '-u', '-c', holdBackup, command], { stdio: 'pipe' })
+  const child = spawnHost('docker', ['exec', '-i', owned.backend_container, 'python', '-u', '-c', holdBackup, command])
   let stderr = ''
   child.stderr.on('data', chunk => { stderr += String(chunk) })
   let held = false

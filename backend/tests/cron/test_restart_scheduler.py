@@ -6,27 +6,21 @@ import pytest
 from app.cron.restart_scheduler import RestartScheduler
 
 from .test_cron_manager import TestCronManager
-from .test_cronjobs import SampleCronJobParams, test_cron_registry
+from .test_cronjobs import SampleCronJobParams
 
 pytestmark = pytest.mark.usefixtures("setup_test_db")
 
 
 @pytest.fixture
 async def fresh_cron_manager(setup_test_db):
-    test_manager = TestCronManager()
-    await test_manager.initialize()
-
-    from sqlalchemy import delete
-
-    from app.cron.models import CronJob
-    from app.db.database import get_async_session
-
-    async with get_async_session() as session:
-        await session.execute(delete(CronJob))
-        await session.commit()
-
-    yield test_manager
-    await test_manager.shutdown()
+    manager = TestCronManager()
+    manager.registry.register_func(backup_cronjob, SampleCronJobParams, identifier="backup", description="测试备份任务")
+    manager.registry.register_func(restart_server_cronjob, SampleCronJobParams, identifier="restart_server", description="测试服务器重启任务")
+    try:
+        await manager.initialize()
+        yield manager
+    finally:
+        await manager.shutdown()
 
 
 @pytest.fixture
@@ -37,13 +31,11 @@ def restart_scheduler(fresh_cron_manager):
 async def backup_cronjob(context):
     context.log("Running backup task")
 
-test_cron_registry.register_func(func=backup_cronjob, schema_cls=SampleCronJobParams, identifier="backup", description="测试备份任务")
 
 
 async def restart_server_cronjob(context):
     context.log("Running server restart task")
 
-test_cron_registry.register_func(func=restart_server_cronjob, schema_cls=SampleCronJobParams, identifier="restart_server", description="测试服务器重启任务")
 
 
 class TestRestartScheduler:

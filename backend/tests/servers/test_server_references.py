@@ -4,21 +4,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.minecraft.instance import MCInstance
 from app.servers.crud import create_server_record, mark_server_removed
 from app.servers.references import resolve_server_ref, revalidate_server_ref
 
 
 @pytest.fixture
-async def sessions(tmp_path):
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'identity.db'}")
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-    yield async_sessionmaker(engine, expire_on_commit=False)
-    await engine.dispose()
+async def sessions(db_session_factory):
+    return db_session_factory
 
 
 def server_directory(root: Path, name: str) -> Path:

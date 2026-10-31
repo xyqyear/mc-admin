@@ -6,14 +6,12 @@ Mirrors the password-protected coverage in test_restic_client_integrated.py
 for the --insecure-no-password code path.
 """
 
-import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from app.config import get_settings
 from app.snapshots import ResticClient
 from app.utils.exec import exec_command
 
@@ -24,25 +22,6 @@ async def _drain(gen):
         if ev.kind == "summary":
             summary = ev
     return summary
-
-
-def check_restic_available():
-    try:
-        result = subprocess.run(
-            [str(get_settings().restic_binary_path), "version"],
-            capture_output=True,
-            text=True,
-            timeout=5, check=False,
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not check_restic_available(),
-    reason="restic command not available - install restic to run these tests",
-)
 
 
 class TestResticClientNoPasswordIntegrated:
@@ -166,4 +145,4 @@ class TestResticClientNoPasswordIntegrated:
         assert backup_dir / "nested_dir" in nodes
         assert backup_dir / "test_file1.txt" in nodes
 
-pytestmark = [pytestmark, pytest.mark.binary('restic')]
+pytestmark = [pytest.mark.binary("restic")]

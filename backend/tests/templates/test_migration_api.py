@@ -1,18 +1,14 @@
 """Integration tests for template migration API endpoints."""
-import hashlib
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import get_db
-from app.db.metadata import Base
-from app.main import api_app
+from app.main import create_api_app
+from app.operations.journal import OperationJournal
+from app.operations.journal_types import OperationState
 from app.runtime_resources import current_runtime
 from app.servers.models import Server, ServerStatus
 from app.templates import (
@@ -21,7 +17,6 @@ from app.templates import (
 )
 from app.templates.models import serialize_variable_definitions
 from app.templates.tables import ServerTemplate
-from tests.support.runtime import patch_runtime_resource
 
 YAML_TEMPLATE = """\
 version: '3.8'
@@ -72,63 +67,77 @@ services:
 
 
 @pytest.fixture
-async def test_db():
-    """Create a test database."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    TestSessionLocal = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
-    yield TestSessionLocal
-
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db(db_session_factory):
+    return db_session_factory
 
 
 @pytest.fixture
-def mock_docker_instance(isolated_runtime):
-    """Create a mock Docker MC instance."""
-    instance = AsyncMock()
-    instance.exists = AsyncMock(return_value=True)
-    compose = isolated_runtime.settings.server_path / "test-server" / "docker-compose.yml"
+def mock_docker_instance(isolated_runtime, monkeypatch):
+    from app.minecraft import MCServerStatus
+
+    manager = isolated_runtime.docker_mc_manager
+    instance = manager.get_instance("test-server")
+    compose = instance.get_project_path() / "docker-compose.yml"
     compose.parent.mkdir()
     compose.write_text(RENDERED_YAML)
-    instance.set_compose = compose.write_text
-    instance.get_compose_file = AsyncMock(side_effect=compose.read_text)
+    monkeypatch.setattr(instance, "set_compose", compose.write_text, raising=False)
+    monkeypatch.setattr(instance, "exists", AsyncMock(wraps=instance.exists))
+    monkeypatch.setattr(instance, "get_status", AsyncMock(return_value=MCServerStatus.EXISTS))
+    monkeypatch.setattr(instance, "created", AsyncMock(return_value=False))
+    monkeypatch.setattr(instance, "down", AsyncMock())
+    monkeypatch.setattr(instance, "up", AsyncMock())
+    monkeypatch.setattr(manager, "get_instance", lambda _: instance)
+    monkeypatch.setattr("app.servers.port_utils.get_system_used_ports", lambda: set())
     return instance
 
 
 @pytest.fixture
 def test_client(test_db, mock_docker_instance, isolated_runtime):
-    """Create TestClient with test database and mocked Docker."""
-
-    async def override_get_db():
-        async with test_db() as session:
-            yield session
-
-    api_app.dependency_overrides[get_db] = override_get_db
-
+    isolated_runtime.journal = OperationJournal(test_db)
     with (
-        patch.object(current_runtime().settings, 'master_token', "test-master-token"),
-        patch("app.configuration.application.get_async_session", test_db),
-        patch_runtime_resource('docker_mc_manager') as mock_manager,
+        patch.object(isolated_runtime.settings, "master_token", "test-master-token"),
+        TestClient(create_api_app(current_runtime()), raise_server_exceptions=False) as client,
     ):
-        mock_manager.get_instance.return_value = mock_docker_instance
-        mock_manager.servers_path = isolated_runtime.settings.server_path
-        client = TestClient(api_app, raise_server_exceptions=False)
         yield client
 
-    api_app.dependency_overrides.pop(get_db, None)
 
 
 def auth_headers():
     return {"Authorization": "Bearer test-master-token"}
+
+
+def assert_completed_conversion(client, response, database, template_id, values):
+    import asyncio
+
+    assert response.status_code == 200, response.text
+    assert response.json()["skipped_rebuild"] is False
+    task_id = response.json()["task_id"]
+    assert task_id
+
+    async def observe():
+        future = current_runtime().task_manager.get_future(task_id)
+        assert future is not None
+        result = await asyncio.wait_for(future, timeout=5)
+        assert result.success, result.error
+        record = await OperationJournal(database).get(task_id)
+        assert record is not None and record.state is OperationState.SUCCEEDED
+        assert record.writers_stopped and record.actor_id == 0
+        async with database() as session:
+            server = (await session.scalars(select(Server).where(Server.server_id == "test-server"))).one()
+            assert server.template_id == template_id
+            assert json.loads(server.variable_values_json) == values
+            snapshot = json.loads(server.template_snapshot_json)
+            assert snapshot["template_id"] == template_id
+        return result
+
+    assert client.portal is not None
+    result = client.portal.call(observe)
+    detail = client.get(f"/api/tasks/{task_id}", headers=auth_headers())
+    assert detail.status_code == 200 and detail.json()["status"] == "completed"
+    compose = current_runtime().settings.server_path / "test-server" / "docker-compose.yml"
+    assert compose.read_text() == YAML_TEMPLATE.format(**values)
+    assert result.data["game_port"] == values["game_port"]
+    assert not list(compose.parent.glob(".mc-admin-configuration-*.tmp"))
 
 
 async def create_test_server(
@@ -571,41 +580,17 @@ class TestConvertToTemplateMode:
         assert data["skipped_rebuild"] is True
 
     def test_convert_with_rebuild(self, test_client, mock_docker_instance):
-        """Convert when YAML differs triggers rebuild."""
         import asyncio
 
-        template = asyncio.get_event_loop().run_until_complete(
-            create_test_template(self.db)
-        )
+        template = asyncio.get_event_loop().run_until_complete(create_test_template(self.db))
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.set_compose("different: yaml")
-
-        mock_task_result = MagicMock()
-        mock_task_result.task_id = "task-123"
-
-        with patch_runtime_resource('task_manager') as mock_tm:
-            mock_tm.submit_durable = AsyncMock(return_value=mock_task_result)
-            response = test_client.post(
-                "/api/servers/test-server/convert-to-template",
-                json={
-                    "template_id": template.id,
-                    "variable_values": VARIABLE_VALUES,
-                },
-                headers=auth_headers(),
-            )
-
-        mock_tm.submit_durable.assert_awaited_once()
-        submitted = mock_tm.submit_durable.await_args_list[0].kwargs
-        asyncio.get_event_loop().run_until_complete(submitted["task_generator"].aclose())
-        assert submitted["task_type"].value == "server_rebuild"
-        assert submitted["server_id"] == "test-server"
-        assert submitted["actor_id"] == 0
-        assert submitted["configuration_version"] == hashlib.sha256(YAML_TEMPLATE.format(**VARIABLE_VALUES).encode()).hexdigest()
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["task_id"] == "task-123"
-        assert data["skipped_rebuild"] is False
+        values = {**VARIABLE_VALUES, "name": "test-server"}
+        mock_docker_instance.set_compose(RENDERED_YAML.replace("1.20.4", "1.20.1"))
+        response = test_client.post(
+            "/api/servers/test-server/convert-to-template",
+            json={"template_id": template.id, "variable_values": values}, headers=auth_headers(),
+        )
+        assert_completed_conversion(test_client, response, self.db, template.id, values)
 
     def test_convert_validation_error(self, test_client):
         """Invalid variable values return 400."""
@@ -822,60 +807,20 @@ class TestMigrationWorkflows:
         assert resp3.status_code == 200
         assert resp3.json()["skipped_rebuild"] is True
 
-    def test_convert_with_modified_values_triggers_rebuild(
-        self, test_client, mock_docker_instance
-    ):
-        """Convert with modified values triggers rebuild."""
+    def test_convert_with_modified_values_triggers_rebuild(self, test_client, mock_docker_instance):
         import asyncio
 
-        template = asyncio.get_event_loop().run_until_complete(
-            create_test_template(self.db)
-        )
+        template = asyncio.get_event_loop().run_until_complete(create_test_template(self.db))
         asyncio.get_event_loop().run_until_complete(create_test_server(self.db))
-        mock_docker_instance.set_compose(RENDERED_YAML)
-
-        # Use different values than what's in the compose file
-        modified_values = {
-            "name": "creative",  # Different name
-            "game_port": 30002,
-            "rcon_port": 30003,
-            "game_version": "1.21.0",
-        }
-
-        mock_task_result = MagicMock()
-        mock_task_result.task_id = "task-456"
-
-        with patch_runtime_resource('task_manager') as mock_tm:
-            mock_tm.submit_durable = AsyncMock(return_value=mock_task_result)
-
-            # Check shows rebuild needed
-            resp1 = test_client.post(
-                "/api/servers/test-server/check-conversion",
-                json={
-                    "template_id": template.id,
-                    "variable_values": modified_values,
-                },
-                headers=auth_headers(),
-            )
-            assert resp1.status_code == 200
-            assert resp1.json()["requires_rebuild"] is True
-            mock_tm.submit_durable.assert_not_awaited()
-
-            # Convert triggers rebuild
-            resp2 = test_client.post(
-                "/api/servers/test-server/convert-to-template",
-                json={
-                    "template_id": template.id,
-                    "variable_values": modified_values,
-                },
-                headers=auth_headers(),
-            )
-            mock_tm.submit_durable.assert_awaited_once()
-            submitted = mock_tm.submit_durable.await_args_list[0].kwargs
-            asyncio.get_event_loop().run_until_complete(submitted["task_generator"].aclose())
-            assert submitted["task_type"].value == "server_rebuild"
-            assert submitted["server_id"] == "test-server"
-            assert submitted["configuration_version"] == hashlib.sha256(YAML_TEMPLATE.format(**modified_values).encode()).hexdigest()
-            assert resp2.status_code == 200
-            assert resp2.json()["task_id"] == "task-456"
-            assert resp2.json()["skipped_rebuild"] is False
+        values = {"name": "test-server", "game_port": 30002, "rcon_port": 30003, "game_version": "1.21.0"}
+        before = test_client.post(
+            "/api/servers/test-server/check-conversion",
+            json={"template_id": template.id, "variable_values": values}, headers=auth_headers(),
+        )
+        assert before.status_code == 200 and before.json()["requires_rebuild"] is True
+        assert not current_runtime().task_manager.get_all_tasks()
+        response = test_client.post(
+            "/api/servers/test-server/convert-to-template",
+            json={"template_id": template.id, "variable_values": values}, headers=auth_headers(),
+        )
+        assert_completed_conversion(test_client, response, self.db, template.id, values)

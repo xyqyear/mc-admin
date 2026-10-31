@@ -22,170 +22,160 @@ from app.players.crud.query.player_query import (
 )
 from app.players.models import Player, PlayerSession
 from app.servers.models import Server
-from tests.players.helpers import cleanup_test_db, create_test_db
 
 
 @pytest.mark.asyncio
-async def test_player_without_sessions_has_null_last_seen():
+async def test_player_without_sessions_has_null_last_seen(db_session):
     """Test that a player without any sessions has last_seen=NULL.
 
     This is a regression test for the bug where players without sessions
     would incorrectly show last_seen as current_timestamp.
     """
-    db, engine, temp_db_path = await create_test_db()
+    db = db_session
+    test_player_uuid = "test-uuid-no-sessions-001"
 
-    try:
-        test_player_uuid = "test-uuid-no-sessions-001"
+    # Create test server
+    test_server = Server(
+        server_id="test_server_no_sessions",
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_server)
+    await db.flush()
 
-        # Create test server
-        test_server = Server(
-            server_id="test_server_no_sessions",
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_server)
-        await db.flush()
+    # Create test player WITHOUT any sessions
+    test_player = Player(
+        uuid=test_player_uuid,
+        current_name="PlayerNoSessions",
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_player)
+    await db.commit()
 
-        # Create test player WITHOUT any sessions
-        test_player = Player(
-            uuid=test_player_uuid,
-            current_name="PlayerNoSessions",
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_player)
-        await db.commit()
+    # Get player summary
+    players_summary = await get_all_players_summary(db)
+    test_player_summary = next(
+        (p for p in players_summary if p.uuid == test_player_uuid), None
+    )
 
-        # Get player summary
-        players_summary = await get_all_players_summary(db)
-        test_player_summary = next(
-            (p for p in players_summary if p.uuid == test_player_uuid), None
-        )
+    assert test_player_summary is not None, "Test player not found in summary"
 
-        assert test_player_summary is not None, "Test player not found in summary"
+    # CRITICAL: Player without sessions should have last_seen=NULL
+    assert test_player_summary.last_seen is None, (
+        f"Player without sessions should have last_seen=NULL, "
+        f"but got {test_player_summary.last_seen}"
+    )
 
-        # CRITICAL: Player without sessions should have last_seen=NULL
-        assert test_player_summary.last_seen is None, (
-            f"Player without sessions should have last_seen=NULL, "
-            f"but got {test_player_summary.last_seen}"
-        )
+    # Player should be offline
+    assert test_player_summary.is_online is False, "Player should be offline"
 
-        # Player should be offline
-        assert test_player_summary.is_online is False, "Player should be offline"
+    # Player should have 0 playtime
+    assert test_player_summary.total_playtime_seconds == 0, (
+        f"Player without sessions should have 0 playtime, "
+        f"but got {test_player_summary.total_playtime_seconds}"
+    )
 
-        # Player should have 0 playtime
-        assert test_player_summary.total_playtime_seconds == 0, (
-            f"Player without sessions should have 0 playtime, "
-            f"but got {test_player_summary.total_playtime_seconds}"
-        )
+    print("✓ Player without sessions correctly has last_seen=NULL")
 
-        print("✓ Player without sessions correctly has last_seen=NULL")
+    # Also test get_player_last_seen directly
+    last_seen = await get_player_last_seen(db, test_player.player_db_id)
+    assert last_seen is None, (
+        f"get_player_last_seen should return None for player without sessions, "
+        f"but got {last_seen}"
+    )
 
-        # Also test get_player_last_seen directly
-        last_seen = await get_player_last_seen(db, test_player.player_db_id)
-        assert last_seen is None, (
-            f"get_player_last_seen should return None for player without sessions, "
-            f"but got {last_seen}"
-        )
+    print("✓ get_player_last_seen correctly returns None")
 
-        print("✓ get_player_last_seen correctly returns None")
-
-    finally:
-        await cleanup_test_db(db, engine, temp_db_path)
 
 
 @pytest.mark.asyncio
-async def test_multiple_players_mixed_session_states():
+async def test_multiple_players_mixed_session_states(db_session):
     """Test multiple players with different session states in one query.
 
     This ensures the fix works correctly when querying multiple players
     with different session states simultaneously.
     """
-    db, engine, temp_db_path = await create_test_db()
+    db = db_session
+    # Create test server
+    test_server = Server(
+        server_id="test_server_mixed",
+        created_at=datetime.now(UTC),
+    )
+    db.add(test_server)
+    await db.flush()
 
-    try:
-        # Create test server
-        test_server = Server(
-            server_id="test_server_mixed",
-            created_at=datetime.now(UTC),
-        )
-        db.add(test_server)
-        await db.flush()
+    # Player 1: No sessions
+    player1 = Player(
+        uuid="uuid-no-sessions",
+        current_name="Player1NoSessions",
+        created_at=datetime.now(UTC),
+    )
+    db.add(player1)
 
-        # Player 1: No sessions
-        player1 = Player(
-            uuid="uuid-no-sessions",
-            current_name="Player1NoSessions",
-            created_at=datetime.now(UTC),
-        )
-        db.add(player1)
+    # Player 2: Offline session
+    player2 = Player(
+        uuid="uuid-offline",
+        current_name="Player2Offline",
+        created_at=datetime.now(UTC),
+    )
+    db.add(player2)
+    await db.flush()
 
-        # Player 2: Offline session
-        player2 = Player(
-            uuid="uuid-offline",
-            current_name="Player2Offline",
-            created_at=datetime.now(UTC),
-        )
-        db.add(player2)
-        await db.flush()
+    left_time = datetime.now(UTC) - timedelta(hours=1)
+    session2 = PlayerSession(
+        player_db_id=player2.player_db_id,
+        server_db_id=test_server.id,
+        joined_at=left_time - timedelta(hours=2),
+        left_at=left_time,
+        duration_seconds=7200,
+    )
+    db.add(session2)
 
-        left_time = datetime.now(UTC) - timedelta(hours=1)
-        session2 = PlayerSession(
-            player_db_id=player2.player_db_id,
-            server_db_id=test_server.id,
-            joined_at=left_time - timedelta(hours=2),
-            left_at=left_time,
-            duration_seconds=7200,
-        )
-        db.add(session2)
+    # Player 3: Online session
+    player3 = Player(
+        uuid="uuid-online",
+        current_name="Player3Online",
+        created_at=datetime.now(UTC),
+    )
+    db.add(player3)
+    await db.flush()
 
-        # Player 3: Online session
-        player3 = Player(
-            uuid="uuid-online",
-            current_name="Player3Online",
-            created_at=datetime.now(UTC),
-        )
-        db.add(player3)
-        await db.flush()
+    session3 = PlayerSession(
+        player_db_id=player3.player_db_id,
+        server_db_id=test_server.id,
+        joined_at=datetime.now(UTC) - timedelta(minutes=10),
+        left_at=None,
+        duration_seconds=None,
+    )
+    db.add(session3)
 
-        session3 = PlayerSession(
-            player_db_id=player3.player_db_id,
-            server_db_id=test_server.id,
-            joined_at=datetime.now(UTC) - timedelta(minutes=10),
-            left_at=None,
-            duration_seconds=None,
-        )
-        db.add(session3)
+    await db.commit()
 
-        await db.commit()
+    # Get all player summaries
+    players_summary = await get_all_players_summary(db)
 
-        # Get all player summaries
-        players_summary = await get_all_players_summary(db)
+    # Verify Player 1 (no sessions)
+    summary1 = next(
+        (p for p in players_summary if p.uuid == "uuid-no-sessions"), None
+    )
+    assert summary1 is not None
+    assert summary1.last_seen is None, "Player1 should have last_seen=NULL"
+    assert summary1.is_online is False
+    assert summary1.total_playtime_seconds == 0
 
-        # Verify Player 1 (no sessions)
-        summary1 = next(
-            (p for p in players_summary if p.uuid == "uuid-no-sessions"), None
-        )
-        assert summary1 is not None
-        assert summary1.last_seen is None, "Player1 should have last_seen=NULL"
-        assert summary1.is_online is False
-        assert summary1.total_playtime_seconds == 0
+    # Verify Player 2 (offline)
+    summary2 = next((p for p in players_summary if p.uuid == "uuid-offline"), None)
+    assert summary2 is not None
+    assert summary2.last_seen is not None
+    assert abs((summary2.last_seen - left_time).total_seconds()) < 1
+    assert summary2.is_online is False
+    assert summary2.total_playtime_seconds == 7200
 
-        # Verify Player 2 (offline)
-        summary2 = next((p for p in players_summary if p.uuid == "uuid-offline"), None)
-        assert summary2 is not None
-        assert summary2.last_seen is not None
-        assert abs((summary2.last_seen - left_time).total_seconds()) < 1
-        assert summary2.is_online is False
-        assert summary2.total_playtime_seconds == 7200
+    # Verify Player 3 (online)
+    summary3 = next((p for p in players_summary if p.uuid == "uuid-online"), None)
+    assert summary3 is not None
+    assert summary3.last_seen is not None
+    now = datetime.now(UTC)
+    assert abs((summary3.last_seen - now).total_seconds()) < 2
+    assert summary3.is_online is True
 
-        # Verify Player 3 (online)
-        summary3 = next((p for p in players_summary if p.uuid == "uuid-online"), None)
-        assert summary3 is not None
-        assert summary3.last_seen is not None
-        now = datetime.now(UTC)
-        assert abs((summary3.last_seen - now).total_seconds()) < 2
-        assert summary3.is_online is True
-
-        print("✓ All three player states handled correctly in single query")
-
-    finally:
-        await cleanup_test_db(db, engine, temp_db_path)
+    print("✓ All three player states handled correctly in single query")

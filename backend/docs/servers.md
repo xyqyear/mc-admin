@@ -44,12 +44,11 @@ servers/
 
 `app.servers.restart_schedule` owns the restart-plan request/result models and create/update/resume orchestration shared by lifecycle creation and the HTTP endpoint. Lifecycle services do not import router modules. `CronManager` continues to own stored jobs and scheduler operations.
 
-Managed plans bind to `Server.id` and purpose rather than display names. Same-name
-recreation cannot inherit or execute a retained old plan. Historical ambiguity is
-reported without reassigning records; independent cron jobs stay independent.
-Deletion cancels the current generation's active plan and matching active
-independent restart tasks, preserving ambiguous and explicitly old bindings. See
-[cron](cron.md) for migration and review procedures.
+Restart plans target the logical server name. Execution resolves the current
+active instance and captures its generation before acquiring resources;
+same-name recreation does not authorize already accepted work against the new
+instance. Deletion cancels active restart plans whose target name matches the
+deleted server. See [cron](cron.md) for scheduling and migration details.
 
 ## Configuration boundary
 
@@ -94,8 +93,9 @@ after resource acquisition and before mutation. The query reads current column
 values, including when the caller's ORM identity map contains an old row.
 Deleting and explicitly recreating/adopting the same name yields a new ID;
 old references cannot act on it. History keeps its original IDs and remains
-readable. Managed restart plans persist this generation explicitly. Historical
-restoration references are not automatically reassigned by server resolution.
+readable. Restart plans resolve the current generation when execution is
+accepted. Historical restoration references are not automatically reassigned
+by server resolution.
 
 `GET /api/servers/{server_id}` exposes `server_generation` for the current active
 record alongside the existing Compose-derived detail. An unregistered directory

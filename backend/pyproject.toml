@@ -39,6 +39,7 @@ dev = [
     "pytest-cov>=7.0.0,<8",
     "pyright>=1.1.409",
     "ruff==0.16.6",
+    "debugpy>=1.8.20,<2",
 ]
 
 [tool.uv]
@@ -63,6 +64,7 @@ markers = [
 addopts = "-vv --cov=app --cov-report=xml:cov.xml --cov-report=html:cov_html --cov-report=term-missing"
 
 [tool.pyright]
+pythonPlatform = "Linux"
 include = ["app", "tests", "alembic"]
 exclude = [
     "**/__pycache__",

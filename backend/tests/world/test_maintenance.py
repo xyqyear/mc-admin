@@ -6,7 +6,6 @@ import pytest
 from fastapi import HTTPException
 
 from app.background_tasks import get_task_manager
-from app.db.metadata import Base
 from app.minecraft import MCServerStatus
 from app.routers.servers import operations
 from app.servers.models import Server
@@ -85,11 +84,8 @@ async def test_snapshot_targets_distinguish_online_files_and_worlds(manager, tmp
 
 @pytest.mark.parametrize("action", ["start", "up", "restart"])
 async def test_server_cannot_start_during_world_maintenance(
-    manager, monkeypatch, action, isolated_runtime
-):
+    manager, monkeypatch, action, isolated_runtime, database):
     monkeypatch.setattr(isolated_runtime.settings, "server_path", manager.get_instance("one").project.parent)
-    async with isolated_runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     async with isolated_runtime.database.session_factory() as session:
         session.add(Server(server_id="one"))
         await session.commit()

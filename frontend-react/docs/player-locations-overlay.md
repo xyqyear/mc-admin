@@ -38,6 +38,9 @@ empty or invalid UUID stays unresolved rather than falling back to a different
 ID. Online filtering and profile-cache lookup use this same normalized identity.
 
 Profile events validate the concrete wire fields before entering the cache.
+Nullable profile fields are always present, with JSON `null` for unavailable
+values. An unresolved player keeps its own UUID fallback while other players'
+names and avatars load normally, including on a first visit without cached data.
 The finite stream ends with `complete` or `error`; EOF without either displays
 a recoverable Chinese error in the player tab. Cached names, saved locations
 and map controls remain usable. “重试玩家资料” starts a new profile stream for

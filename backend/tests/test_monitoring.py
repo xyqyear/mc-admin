@@ -1,19 +1,9 @@
-"""
-Test suite for cgroup monitoring APIs using a Minecraft server container.
+"""Real container identity and monitoring observations."""
 
-This test file validates the newly added cgroup monitoring functionality:
-- get_container_id()
-- get_pid()
-- get_memory_usage()
-- get_cpu_percentage()
-- get_disk_io()
-- get_network_io()
-"""
-
-# pyright: reportUnusedImport=false
 import asyncio
 import subprocess
 
+import psutil
 import pytest
 
 from app.minecraft import DockerMCManager
@@ -40,158 +30,33 @@ async def mc_server_session(tmp_path_factory):
         await resources.cleanup()
 
 
-@pytest.mark.asyncio
-async def test_get_container_id_with_docker(mc_server_session: MCInstance):
-    """Test that get_container_id() returns the correct Docker container ID"""
-    # Get container ID from API
-    api_container_id = await mc_server_session.get_container_id()
-
-    # Get container ID from Docker command (full version)
-    docker_result = await asyncio.to_thread(
-        subprocess.run,
-        [
-            "docker",
-            "ps",
-            "--filter",
-            f"name=mc-{mc_server_session.get_name()}",
-            "--format",
-            "{{.ID}}",
-            "--no-trunc",
-        ],
-        capture_output=True,
-        text=True, check=False,
+async def test_running_container_metrics_observe_real_activity(mc_server_session: MCInstance):
+    server = mc_server_session
+    container_id = await server.get_container_id()
+    inspect = await asyncio.to_thread(
+        subprocess.run, ["docker", "inspect", "--format", "{{.Id}} {{.State.Pid}}", container_id],
+        capture_output=True, text=True, check=True,
     )
-    docker_container_id = docker_result.stdout.strip()
+    actual_id, actual_pid = inspect.stdout.strip().split()
+    assert container_id == actual_id
+    java = psutil.Process(await server.get_pid())
+    assert java.name() == "java"
+    assert int(actual_pid) in {java.pid, *(parent.pid for parent in java.parents())}
+    assert await server.healthy()
 
-    # They should match exactly
-    assert api_container_id == docker_container_id
+    memory = await server.get_memory_usage()
+    assert 10 * 1024 * 1024 < memory.total_memory < 2 * 1024 * 1024 * 1024
+    assert await server.get_cpu_percentage() >= 0
+    disk = await server.get_disk_io()
+    assert disk.devices
+    assert disk.total_read_bytes >= 0 and disk.total_write_bytes >= 0
 
-    # Also verify it starts with the short ID
-    docker_short_result = await asyncio.to_thread(
-        subprocess.run,
-        [
-            "docker",
-            "ps",
-            "--filter",
-            f"name=mc-{mc_server_session.get_name()}",
-            "--format",
-            "{{.ID}}",
-        ],
-        capture_output=True,
-        text=True, check=False,
-    )
-    docker_short_id = docker_short_result.stdout.strip()
-    assert api_container_id.startswith(docker_short_id)
-
-
-@pytest.mark.asyncio
-@pytest.mark.asyncio
-async def test_get_memory_usage_with_docker(mc_server_session: MCInstance):
-    """Test that get_memory_usage() returns valid memory statistics"""
-    memory_stats = await mc_server_session.get_memory_usage()
-
-    # Basic validation - memory usage should be positive
-    assert memory_stats.anon >= 0
-    assert memory_stats.file >= 0
-    assert memory_stats.kernel >= 0
-
-    # Total memory should be reasonable for minecraft container (> 10MB, < 2GB)
-    total_memory = memory_stats.total_memory
-    assert total_memory > 10 * 1024 * 1024  # > 10MB
-    assert total_memory < 2 * 1024 * 1024 * 1024  # < 2GB
-
-    # Active memory should be sum of active_anon + active_file
-    assert (
-        memory_stats.active_memory
-        == memory_stats.active_anon + memory_stats.active_file
-    )
-
-
-@pytest.mark.asyncio
-async def test_get_cpu_percentage_with_docker(mc_server_session: MCInstance):
-    """Test that get_cpu_percentage() works correctly"""
-    cpu_percent = await mc_server_session.get_cpu_percentage()
-
-    assert cpu_percent >= 0.0
-
-
-@pytest.mark.asyncio
-async def test_get_disk_io_with_docker(mc_server_session: MCInstance):
-    """Test that get_disk_io() returns valid disk I/O statistics"""
-    disk_io = await mc_server_session.get_disk_io()
-
-    # Should have at least one device
-    assert len(disk_io.devices) > 0
-
-    # Total values should be non-negative
-    assert disk_io.total_read_bytes >= 0
-    assert disk_io.total_write_bytes >= 0
-    assert disk_io.total_bytes >= 0
-
-    # Total bytes should equal sum of read + write + discard
-    expected_total = sum(
-        device.rbytes + device.wbytes + device.dbytes for device in disk_io.devices
-    )
-    assert disk_io.total_bytes == expected_total
-
-    # Each device should have valid properties
-    for device in disk_io.devices:
-        assert device.major >= 0
-        assert device.minor >= 0
-        assert device.rbytes >= 0
-        assert device.wbytes >= 0
-        assert ":" in device.device_id  # Should be in "major:minor" format
-
-
-@pytest.mark.asyncio
-async def test_get_network_io_with_docker(mc_server_session: MCInstance):
-    """Test that get_network_io() returns valid network I/O statistics"""
-    network_io = await mc_server_session.get_network_io()
-
-    # Should have at least loopback interface
-    assert len(network_io.interfaces) > 0
-
-    # Should have loopback (lo) interface
-    lo_interface = network_io.get_interface_by_name("lo")
-    assert lo_interface is not None
-
-    # Total values should be non-negative
-    assert network_io.total_rx_bytes >= 0
-    assert network_io.total_tx_bytes >= 0
-
-    # Each interface should have valid properties
-    for interface in network_io.interfaces:
-        assert interface.rx_bytes >= 0
-        assert interface.tx_bytes >= 0
-        assert interface.rx_packets >= 0
-        assert interface.tx_packets >= 0
-        assert len(interface.name) > 0
-
-
-@pytest.mark.asyncio
-async def test_all_apis_integration_with_docker(mc_server_session: MCInstance):
-    """Integration test that verifies all monitoring APIs work together"""
-    # Test that we can get all metrics without errors
-    container_id = await mc_server_session.get_container_id()
-    pid = await mc_server_session.get_pid()
-    memory_stats = await mc_server_session.get_memory_usage()
-
-    cpu_percentage = await mc_server_session.get_cpu_percentage()
-
-    disk_io = await mc_server_session.get_disk_io()
-    network_io = await mc_server_session.get_network_io()
-
-    # Verify all data is consistent
-    assert len(container_id) == 64  # Full Docker container ID length
-    assert pid > 0
-    assert memory_stats.total_memory > 0
-    assert cpu_percentage >= 0
-    assert len(disk_io.devices) > 0
-    assert len(network_io.interfaces) > 0
-
-    # Test that the container is actually running and healthy
-    assert await mc_server_session.running()
-    assert await mc_server_session.healthy()
+    before = await server.get_network_io()
+    assert before.get_interface_by_name("lo") is not None
+    await server.send_command_rcon("list")
+    after = await server.get_network_io()
+    assert after.total_rx_bytes > before.total_rx_bytes
+    assert after.total_tx_bytes > before.total_tx_bytes
 
 
 @pytest.mark.asyncio

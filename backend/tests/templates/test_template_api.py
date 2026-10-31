@@ -1,14 +1,9 @@
 """Integration tests for template CRUD API endpoints."""
-import tempfile
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.database import get_db
-from app.db.metadata import Base
-from app.main import api_app
+from app.main import create_api_app
 from app.runtime_resources import current_runtime
 
 YAML_TEMPLATE = """
@@ -36,23 +31,8 @@ services:
 
 
 @pytest.fixture
-async def test_db():
-    """Create a test database."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    TestSessionLocal = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
-    yield TestSessionLocal
-
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db(db_session_factory):
+    return db_session_factory
 
 
 @pytest.fixture
@@ -60,17 +40,12 @@ def test_client(test_db):
     """Create TestClient with test database."""
     from unittest.mock import patch
 
-    async def override_get_db():
-        async with test_db() as session:
-            yield session
-
-    api_app.dependency_overrides[get_db] = override_get_db
-
-    with patch.object(current_runtime().settings, 'master_token', "test-master-token"):
-        client = TestClient(api_app, raise_server_exceptions=False)
+    with (
+        patch.object(current_runtime().settings, "master_token", "test-master-token"),
+        TestClient(create_api_app(current_runtime()), raise_server_exceptions=False) as client,
+    ):
         yield client
 
-    api_app.dependency_overrides.pop(get_db, None)
 
 
 def auth_headers():
@@ -195,7 +170,7 @@ class TestGetTemplate:
         )
         response = test_client.get("/api/templates/", headers=auth_headers())
         assert response.status_code == 200
-        assert len(response.json()) >= 1
+        assert [row["name"] for row in response.json()] == ["list-test"]
 
     def test_get_template_details(self, test_client):
         """Test getting template details."""
@@ -265,6 +240,7 @@ class TestUpdateTemplate:
         )
         assert response.status_code == 200
         assert response.json()["description"] == "Updated description"
+        assert test_client.get(f"/api/templates/{template_id}", headers=auth_headers()).json()["description"] == "Updated description"
 
 
 class TestDeleteTemplate:
@@ -289,6 +265,7 @@ class TestDeleteTemplate:
             f"/api/templates/{template_id}", headers=auth_headers()
         )
         assert response.status_code == 204
+        assert test_client.get(f"/api/templates/{template_id}", headers=auth_headers()).status_code == 404
 
 
 class TestTemplateSchema:

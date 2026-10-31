@@ -2,16 +2,12 @@
 Integration tests for the dynamic configuration system with real database.
 """
 
-import tempfile
-from pathlib import Path
 from typing import cast
 
 import pytest
 from pydantic import Field
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.dynamic_config import BaseConfigSchema
 from app.dynamic_config.manager import ConfigManager
 from app.dynamic_config.models import DynamicConfig
@@ -75,60 +71,31 @@ class SimpleTestConfig(BaseConfigSchema):
 
 
 @pytest.fixture(scope="function")
-async def test_db_engine():
-    """Create a test database engine."""
-    # Create temporary database file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    # Create all tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    # Cleanup
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db_engine(database):
+    return database.engine
 
 
 @pytest.fixture
-async def test_db_session(test_db_engine):
-    """Create a test database session."""
-    TestSessionLocal = async_sessionmaker(
-        bind=test_db_engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-
-    async with TestSessionLocal() as session:
-        yield session
+async def test_db_session(db_session):
+    return db_session
 
 
-@pytest.fixture
-async def test_config_manager(test_db_engine):
-    """Create a test configuration manager with test database."""
-    # Create new manager instance for testing
-    manager = ConfigManager()
-
-    # Monkey patch the database session to use test database
-    TestSessionLocal = async_sessionmaker(
-        bind=test_db_engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-
-    manager.session_factory = TestSessionLocal
+def config_manager(session_factory):
+    manager = ConfigManager(session_factory=session_factory)
     manager.register_config("simple", SimpleTestConfig)
     manager.register_config("complex", ComplexTestConfig)
-    yield manager
+    return manager
+
+
+@pytest.fixture
+async def test_config_manager(db_session_factory):
+    return config_manager(db_session_factory)
+
+
+async def reload_config(manager, name):
+    reloaded = config_manager(manager.session_factory)
+    await reloaded.initialize_all_configs()
+    return reloaded.get_config(name).model_dump()
 
 
 class TestConfigManagerIntegration:
@@ -142,8 +109,6 @@ class TestConfigManagerIntegration:
         # Initialize configurations
         await manager.initialize_all_configs()
 
-        # Verify manager is initialized
-        assert manager._initialized
 
         # Check simple config
         simple_config = manager.get_config("simple")
@@ -350,6 +315,7 @@ class TestConfigManagerIntegration:
         assert cached_config.name == "updated_name"
         assert cached_config.enabled is False
         assert cached_config.count == 99
+        assert await reload_config(manager, "simple") == new_data
 
     @pytest.mark.asyncio
     async def test_reset_config(self, test_config_manager):
@@ -372,6 +338,7 @@ class TestConfigManagerIntegration:
         assert reset_config.name == "simple_test"  # back to default
         assert reset_config.enabled is True  # back to default
         assert reset_config.count == 10  # back to default
+        assert await reload_config(manager, "simple") == SimpleTestConfig().model_dump()
 
     @pytest.mark.asyncio
     async def test_complex_config_update_with_nested(self, test_config_manager):
@@ -419,6 +386,7 @@ class TestConfigManagerIntegration:
 
         assert updated_config.tags == ["tag1", "tag2", "tag3"]
         assert updated_config.deprecated_field == "updated_top_deprecated"
+        assert await reload_config(manager, "complex") == new_data
 
 
 class TestGenericConfigAccess:

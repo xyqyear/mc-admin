@@ -16,7 +16,6 @@ from app.mcmap.cache import ServerMapCache
 from app.mcmap.events import (
     MCMapDownloadClientResultEvent,
     MCMapErrorEvent,
-    MCMapGenPaletteResultEvent,
 )
 from app.mcmap.palette import write_palette_hash
 from app.routers.servers import map as map_router
@@ -66,6 +65,7 @@ class _FakeProc:
 
 
 @pytest.mark.asyncio
+@pytest.mark.binary("mcmap")
 async def test_initialize_stream_force_rebuilds_current_prerequisites(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -76,7 +76,20 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
     cache.palette_json.write_text("old-palette")
     await write_palette_hash(cache, "1.20.1", None)
 
-    calls: list[str] = []
+    import json
+    import struct
+    import zipfile
+    import zlib
+
+    def png_chunk(kind, content):
+        return struct.pack(">I", len(content)) + kind + content + struct.pack(">I", zlib.crc32(kind + content))
+
+    texture = (
+        b"\x89PNG\r\n\x1a\n"
+        + png_chunk(b"IHDR", struct.pack(">2I5B", 1, 1, 8, 6, 0, 0, 0))
+        + png_chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00\xff"))
+        + png_chunk(b"IEND", b"")
+    )
     fake_instance = _FakeInstance(data_path)
     set_runtime_resource(monkeypatch, 'docker_mc_manager', _FakeDockerMC(fake_instance))
 
@@ -87,8 +100,8 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
         assert not cache.client_jar.exists()
         assert not cache.palette_json.exists()
         assert not cache.palette_hash_file.exists()
-        calls.append(f"download:{version}:{target.name}:{owned_by.name}")
-        target.write_text("new-client")
+        with zipfile.ZipFile(target, "w") as archive:
+            archive.writestr("assets/test/textures/block/marker.png", texture)
         yield _FakeProc(
             [
                 MCMapDownloadClientResultEvent(
@@ -102,42 +115,14 @@ async def test_initialize_stream_force_rebuilds_current_prerequisites(
             ]
         )
 
-    @asynccontextmanager
-    async def fake_gen_palette(
-        packs: list[Path],
-        output: Path,
-        *,
-        level_dat: Path | None,
-        owned_by: Path,
-    ) -> AsyncGenerator[_FakeProc]:
-        assert not cache.palette_json.exists()
-        assert not cache.palette_hash_file.exists()
-        calls.append(
-            f"palette:{','.join(p.name for p in packs)}:{output.name}:{level_dat}:{owned_by.name}"
-        )
-        output.write_text("new-palette")
-        yield _FakeProc(
-            [
-                MCMapGenPaletteResultEvent(
-                    type="result",
-                    output=str(output),
-                    entries=1,
-                    counters={},
-                )
-            ]
-        )
-
     monkeypatch.setattr(initialization.mcmap_runner, "download_client", fake_download_client)
-    monkeypatch.setattr(initialization.mcmap_runner, "gen_palette", fake_gen_palette)
 
     events = [event.model_dump(exclude_none=True) async for event in initialization.initialize_events("server-1", force=True)]
 
-    assert calls == [
-        f"download:1.20.1:client.jar:{data_path.name}",
-        f"palette:client.jar:palette.json:None:{data_path.name}",
-    ]
-    assert cache.client_jar.read_text() == "new-client"
-    assert cache.palette_json.read_text() == "new-palette"
+    with zipfile.ZipFile(cache.client_jar) as archive:
+        assert archive.read("assets/test/textures/block/marker.png") == texture
+    palette = json.loads(cache.palette_json.read_text())
+    assert palette["test:marker"] == [255, 0, 0, 255]
     assert cache.palette_hash_file.read_text().strip()
     assert {"stage": "client", "phase": "done", "percent": 100, "cached": False} in events
     assert {

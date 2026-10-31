@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Coroutine, Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import Context, ContextVar
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -21,6 +21,12 @@ def current_runtime() -> "Runtime":
     if runtime is None:
         raise RuntimeError("No application runtime is bound to this execution")
     return runtime
+
+
+def runtime_context(runtime: "Runtime") -> Context:
+    context = Context()
+    context.run(_active_runtime.set, runtime)
+    return context
 
 
 @contextmanager

@@ -36,10 +36,11 @@ from ..utils import async_fs
 from ..world.artifacts import restore_stage
 from ..world.locks import LockHolder, ServerOperationKind, ServerOperationLock
 from ..world.scope_execution import RestoreScopeExecutor
-from ..world.selection import confined_history_path, resolve_paths
+from ..world.selection import confined_history_path
 from .api_models import SnapshotRestoreSource, SnapshotTargetCheck
 from .application import SnapshotMaintenanceConflict
-from .evidence import absence_tags, snapshot_absence
+from .eligibility import eligible_snapshots
+from .evidence import absence_tags
 from .file_restore import FileRestoreAdapter
 from .models import ResticSnapshotWithSummary
 from .path_mapping import execution_parent_mappings, mapping_json
@@ -211,46 +212,9 @@ class SnapshotCommands:
         raise RuntimeError("快照执行结束但没有返回结果")
 
     async def eligible(self, scope: SnapshotScope) -> list[SnapshotRestoreSource]:
-        prepared = await self._planner.prepare(scope)
-        paths = prepared.paths
-        if isinstance(scope, WorldScope):
-            paths = tuple(
-                path
-                for path in await resolve_paths(
-                    prepared.resolved.servers[0].data_path,
-                    scope.selection,
-                    include_mcc=False,
-                )
-                if prepared.protection.permits(path)
-            )
-        prepared.protection.select_targets(paths)
-        eligible = []
-        for source in await self.snapshots.list_snapshots():
-            try:
-                protection = await self.snapshots.with_source_protection(
-                    prepared.protection, source
-                )
-            except HTTPException as error:
-                if error.status_code == 409:
-                    continue
-                raise
-            try:
-                allowed = protection.select_targets(paths)
-            except TargetIgnoredError:
-                continue
-            absent = snapshot_absence(source)
-            if allowed and all(
-                any(path.is_relative_to(parent) for parent in absent)
-                or self.snapshots.source_covers(source, path, protection)
-                for path in allowed
-            ):
-                skipped = protection.skipped_under(prepared.resolved.paths)
-                eligible.append(SnapshotRestoreSource(
-                    **source.model_dump(),
-                    skipped_paths=[str(path) for path in skipped[:100]],
-                    skipped_count=len(skipped),
-                ))
-        return eligible
+        return await eligible_snapshots(
+            scope, snapshots=self.snapshots, root=self._root, sessions=self._sessions
+        )
 
     async def _create(
         self,

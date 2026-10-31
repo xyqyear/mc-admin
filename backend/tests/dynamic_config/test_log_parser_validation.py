@@ -1,5 +1,3 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
 
 from app.dynamic_config.configs.log_parser import LogParserConfig
@@ -7,7 +5,6 @@ from app.dynamic_config.manager import ConfigManager
 from app.dynamic_config.migration import ConfigMigrator
 from app.log_monitor.events import PlayerChatMessageEvent
 from app.log_monitor.parser import LogParser
-from tests.support.runtime import patch_runtime_resource
 
 
 @pytest.mark.parametrize(
@@ -20,25 +17,26 @@ from tests.support.runtime import patch_runtime_resource
         {"achievement_patterns": ["["]},
     ],
 )
-async def test_invalid_rule_update_preserves_current_config(data):
-    manager = ConfigManager()
+async def test_invalid_rule_update_preserves_current_config(data, db_session_factory):
+    manager = ConfigManager(session_factory=db_session_factory)
     manager.register_config("log_parser", LogParserConfig)
-    current = LogParserConfig.model_validate({})
-    manager._configs["log_parser"] = current
-    manager._initialized = True
-    with patch("app.dynamic_config.manager.crud.upsert_config", new_callable=AsyncMock) as save:
-        with pytest.raises(ValueError, match="日志规则"):
-            await manager.update_config("log_parser", data)
-        save.assert_not_called()
-    assert manager.get_config("log_parser") is current
+    await manager.initialize_all_configs()
+    await manager.update_config("log_parser", {"chat_pattern": r"^(CHAT )?(\S+): (.*)$"})
+    current = manager.get_config("log_parser").model_dump()
+    with pytest.raises(ValueError, match="日志规则"):
+        await manager.update_config("log_parser", data)
+    assert manager.get_config("log_parser").model_dump() == current
+    reloaded = ConfigManager(session_factory=db_session_factory)
+    reloaded.register_config("log_parser", LogParserConfig)
+    await reloaded.initialize_all_configs()
+    assert reloaded.get_config("log_parser").model_dump() == current
 
 
-def test_valid_rule_extracts_chat_and_preserves_legacy_loading():
-    rule = LogParserConfig.model_validate({"chat_pattern": r"^(E2E: )?<(\S+)> (.*)$"})
-    rule.validate_update()
-    with patch_runtime_resource('dynamic_configuration') as config:
-        config.log_parser = rule
-        event = LogParser().parse_line("server", "E2E: <Alex> hello")
+async def test_valid_rule_extracts_chat_and_preserves_legacy_loading(runtime_config, isolated_runtime):
+    await isolated_runtime.config_manager.update_config(
+        "log_parser", {"chat_pattern": r"^(E2E: )?<(\S+)> (.*)$"},
+    )
+    event = LogParser().parse_line("server", "E2E: <Alex> hello")
     assert isinstance(event, PlayerChatMessageEvent)
     assert event.player_name == "Alex"
     assert event.message == "hello"

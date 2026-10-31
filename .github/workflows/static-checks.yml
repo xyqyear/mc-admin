@@ -54,6 +54,9 @@ jobs:
       - name: Test frontend operation flows
         run: pnpm test --reporter=default --reporter=json --outputFile=test-results/unit/vitest.json
 
+      - name: Test browser host filesystem and command boundaries
+        run: node --test browser/host.test.mjs
+
       - name: Upload individual frontend test timings
         if: always()
         uses: actions/upload-artifact@v7
@@ -94,6 +97,9 @@ jobs:
 
       - name: Test deployment checkpoint ownership
         run: uv run python -W error::ResourceWarning -m unittest discover -s ../e2e/scripts -p test_deployment_rehearsal.py -v
+
+      - name: Test local development environment ownership
+        run: uv run python -W error::ResourceWarning -m unittest discover -s ../scripts/dev -p test_development.py -v
 
       - name: Run pyright
         run: uv run pyright

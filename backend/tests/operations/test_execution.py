@@ -7,7 +7,13 @@ import pytest
 
 from app.background_tasks.manager import BackgroundTaskManager
 from app.background_tasks.types import TaskProgress, TaskStatus, TaskType
-from app.operations.context import OperationExecution, bind_execution
+from app.operations.context import (
+    OperationExecution,
+    bind_execution,
+    current_execution,
+    record_phase,
+)
+from app.operations.execution import operation_scope
 from app.operations.finalization import finalize
 from app.operations.journal_types import (
     OperationSpec,
@@ -15,6 +21,49 @@ from app.operations.journal_types import (
     ResourceReference,
 )
 from app.utils.exec import exec_command_stream
+
+
+@pytest.mark.parametrize("memory_settled", [False, True])
+async def test_terminal_parent_cannot_admit_nested_writes(journal, isolated_runtime, tmp_path, memory_settled):
+    isolated_runtime.journal = journal
+    record = await journal.accept(OperationSpec("parent", (ResourceReference("global"),)))
+    await journal.start(record.operation_id)
+    before = await journal.finish(record.operation_id, OperationState.SUCCEEDED, writers_stopped=True)
+    parent = OperationExecution(journal, record.operation_id, settled=memory_settled)
+    target = tmp_path / "must-not-be-written"
+
+    with bind_execution(parent):
+        with pytest.raises(RuntimeError, match="已结束的操作"):
+            async with operation_scope("nested", []):
+                target.write_text("unexpected side effect")
+        assert current_execution() is parent
+
+    assert not target.exists()
+    assert await journal.get(record.operation_id) == before
+    assert len(await journal.list()) == 1
+
+
+async def test_active_nested_operation_retains_owner_and_records_its_effect(journal, isolated_runtime, tmp_path):
+    isolated_runtime.journal = journal
+    target = tmp_path / "nested-result"
+    async with operation_scope("parent", []) as parent:
+        assert parent is not None
+        with pytest.raises(RuntimeError, match="不能扩大"):
+            async with operation_scope("outside", ["undeclared-server"]):
+                pytest.fail("An undeclared server entered the parent scope")
+        async with operation_scope("nested", []) as nested:
+            assert nested is parent and current_execution() is parent
+            await record_phase("nested_write", changed=True)
+            await asyncio.to_thread(target.write_text, "owned result")
+        active = await journal.get(parent.operation_id)
+        assert active is not None and active.state is OperationState.RUNNING
+        assert not parent.settled
+
+    records = await journal.list()
+    assert len(records) == 1 and records[0].operation_id == parent.operation_id
+    assert records[0].state is OperationState.SUCCEEDED
+    assert records[0].phase == "nested_write" and records[0].data_changed
+    assert target.read_text() == "owned result"
 
 
 async def test_process_cleanup_does_not_inspect_unrelated_process_roots(monkeypatch):

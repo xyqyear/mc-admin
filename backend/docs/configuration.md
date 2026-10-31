@@ -155,4 +155,4 @@ Editor drafts are retained separately from that refreshed remote state.
 faults at durable phase boundaries, cancellation during real filesystem work,
 source reconciliation and staging recovery. Server/template route tests cover
 version-aware and legacy request shapes; migration and cron tests cover the
-independent generation-bound restart plans described in [cron.md](cron.md).
+independent name-based restart plans described in [cron.md](cron.md).

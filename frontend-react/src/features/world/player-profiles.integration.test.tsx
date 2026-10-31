@@ -23,14 +23,10 @@ const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
-beforeEach(() => { client = createTestClient(); server.use(createTaskEvents().handler); window.history.replaceState(null, '', '/') })
-afterEach(() => { client.clear(); server.resetHandlers(); window.history.replaceState(null, '', '/') })
-
-it.each(['restore', 'prune'])('keeps %s map controls and cached positions usable while profile errors are retried through a new stream', async (page) => {
-  client.setQueryData(queryKeys.players.mapProfileByUUID(uuid), cachedProfile)
-  let streams = 0
-  let positions = 0
+beforeEach(() => {
+  client = createTestClient()
   server.use(
+    createTaskEvents().handler,
     http.get('*/api/servers/alpha', () => HttpResponse.json({ id: 'alpha', name: 'alpha', serverType: 'vanilla' })),
     http.get('*/api/servers/alpha/status', () => HttpResponse.json({ status: 'EXISTS' })),
     http.get('*/api/servers/alpha/online-players', () => HttpResponse.json([])),
@@ -39,12 +35,22 @@ it.each(['restore', 'prune'])('keeps %s map controls and cached positions usable
     http.get('*/api/servers/alpha/map/status', () => HttpResponse.json({ client_jar_present: true, palette_present: true, palette_current: true })),
     http.get('*/api/servers/alpha/map/regions', () => HttpResponse.json([[0, 0, 1]])),
     http.get('*/api/servers/alpha/claims', () => HttpResponse.json({ available: false, teams: [] })),
+    http.get('*/api/servers/alpha/chunk-prune/settings', () => HttpResponse.json({ default_threshold_seconds: 30 })),
+    http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 })),
+  )
+  window.history.replaceState(null, '', '/')
+})
+afterEach(() => { client.clear(); server.resetHandlers(); window.history.replaceState(null, '', '/') })
+
+it.each(['restore', 'prune'])('keeps %s map controls and cached positions usable while profile errors are retried through a new stream', async (page) => {
+  client.setQueryData(queryKeys.players.mapProfileByUUID(uuid), cachedProfile)
+  let streams = 0
+  let positions = 0
+  server.use(
     http.get('*/api/servers/alpha/player-locations', () => {
       positions++
       return HttpResponse.json({ dimensions: [], skipped: [], players: [{ id: uuid, id_kind: 'uuid', uuid, source: `world/playerdata/${uuid}.dat`, storage: 'playerdata', data_version: 1, dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: 10, y: 64, z: 20 } }] })
     }),
-    http.get('*/api/servers/alpha/chunk-prune/settings', () => HttpResponse.json({ default_threshold_seconds: 30 })),
-    http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 })),
     http.post('*/api/players/profiles/stream', () => {
       streams++
       return new HttpResponse(streams === 1 ? '' : `data: ${JSON.stringify({ event_type: 'profile', profile: { ...cachedProfile, current_name: '资料已恢复' } })}\n\ndata: {"event_type":"complete","total":1,"resolved":1}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } })
@@ -71,22 +77,13 @@ it.each(['restore', 'prune'])('normalizes HTTP player identities through the %s 
   client.setQueryData(queryKeys.players.mapProfileByUUID('0123456789abcdef0123456789abcdef'), profile)
   const profileRequests: unknown[] = []
   server.use(
-    http.get('*/api/servers/alpha', () => HttpResponse.json({ id: 'alpha', name: 'alpha', serverType: 'vanilla' })),
-    http.get('*/api/servers/alpha/status', () => HttpResponse.json({ status: 'EXISTS' })),
     http.get('*/api/servers/alpha/online-players', () => HttpResponse.json([{ uuid: hyphenUpper, name: '在线玩家' }, { uuid: 'LegacyName', name: '旧名称' }])),
-    http.get('*/api/servers/alpha/world-restore/layout', () => HttpResponse.json({ world_roots: [{ name: 'world', path: '/servers/alpha/data/world', dimensions: [{ region_dir: '/servers/alpha/data/world/region' }] }] })),
-    http.get('*/api/servers/alpha/world-restore/dimension-labels', () => HttpResponse.json({ dimension_labels: {} })),
-    http.get('*/api/servers/alpha/map/status', () => HttpResponse.json({ client_jar_present: true, palette_present: true, palette_current: true })),
-    http.get('*/api/servers/alpha/map/regions', () => HttpResponse.json([[0, 0, 1]])),
-    http.get('*/api/servers/alpha/claims', () => HttpResponse.json({ available: false, teams: [] })),
     http.get('*/api/servers/alpha/player-locations', () => HttpResponse.json({ dimensions: [], skipped: [], players: [
       { id: compactUpper, id_kind: 'uuid', uuid: compactUpper, source: 'world/playerdata/compact.dat', storage: 'playerdata', data_version: 1, dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: 1, y: 64, z: 1 } },
       { id: hyphenUpper, id_kind: 'uuid', uuid: hyphenUpper, source: 'world/playerdata/hyphen.dat', storage: 'playerdata', data_version: 1, dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: 2, y: 64, z: 2 } },
       { id: hyphenUpper, id_kind: 'uuid', uuid: null, source: 'world/players/fallback.dat', storage: 'legacy_players', data_version: null, dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: 3, y: 64, z: 3 } },
       { id: 'LegacyName', id_kind: 'name', uuid: 'LegacyName', source: 'world/players/LegacyName.dat', storage: 'legacy_players', data_version: null, dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: 4, y: 64, z: 4 } },
     ] })),
-    http.get('*/api/servers/alpha/chunk-prune/settings', () => HttpResponse.json({ default_threshold_seconds: 30 })),
-    http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 })),
     http.post('*/api/players/profiles/stream', async ({ request }) => {
       profileRequests.push(await request.json())
       return new HttpResponse('data: {"event_type":"complete","total":1,"resolved":1}\n\n', { headers: { 'Content-Type': 'text/event-stream' } })
@@ -109,4 +106,35 @@ it.each(['restore', 'prune'])('normalizes HTTP player identities through the %s 
   expect(client.getQueryData(queryKeys.players.mapProfileByUUID(compactUpper))).toBeUndefined()
   expect(client.getQueryData(queryKeys.players.mapProfileByUUID(hyphenUpper))).toBeUndefined()
   expect(client.getQueryData(queryKeys.players.mapProfileByUUID('LegacyName'))).toBeUndefined()
+})
+
+
+it.each(['restore', 'prune'])('loads %s names and avatars without a cache when unresolved players precede them', async page => {
+  const offlineUuid = '123456781234323481231234567890ab'
+  const partialUuid = '123e4567e89b42d3a456426614174000'
+  const avatar = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8xoAAAAASUVORK5CYII='
+  const profile = { ...cachedProfile, current_name: '有头像的玩家', avatar_base64: avatar }
+  const partial = { ...cachedProfile, uuid: partialUuid, player_db_id: 2, current_name: '暂无头像的玩家' }
+  const unresolved = { uuid: offlineUuid, player_db_id: null, current_name: null, avatar_base64: null, last_skin_update: null, resolved: false }
+  server.use(
+    http.get('*/api/servers/alpha/player-locations', () => HttpResponse.json({ dimensions: [], skipped: [], players: [uuid, offlineUuid, partialUuid].map(id => ({
+      id, id_kind: 'uuid', uuid: id, source: `world/playerdata/${id}.dat`, storage: 'playerdata', data_version: 1,
+      dimension_id: 'minecraft:overworld', region_dir_relpath: 'world/region', pos: { x: 10, y: 64, z: 20 },
+    })) })),
+    http.post('*/api/players/profiles/stream', () => new HttpResponse([
+      { event_type: 'profile', profile: unresolved },
+      { event_type: 'profile', profile },
+      { event_type: 'profile', profile: partial },
+      { event_type: 'complete', total: 3, resolved: 2 },
+    ].map(event => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'Content-Type': 'text/event-stream' } })),
+  )
+  expect(client.getQueryData(queryKeys.players.mapProfileByUUID(uuid))).toBeUndefined()
+  render(<TestProviders client={client} route={`/server/alpha/${page}`}><Routes><Route path="/server/:id/:page" element={page === 'restore' ? <WorldRestoreScreen /> : <ChunkPruneScreen />} /></Routes></TestProviders>)
+  fireEvent.click(await screen.findByRole('tab', { name: '玩家位置' }))
+  await screen.findByText('有头像的玩家')
+  expect(screen.getByText('暂无头像的玩家')).toBeTruthy()
+  expect(screen.getByText('12345678')).toBeTruthy()
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(client.getQueryData<PlayerMapProfileResponse>(queryKeys.players.mapProfileByUUID(uuid))?.avatar_base64).toBe(avatar)
+  expect(client.getQueryData<PlayerMapProfileResponse>(queryKeys.players.mapProfileByUUID(offlineUuid))?.resolved).toBe(false)
 })

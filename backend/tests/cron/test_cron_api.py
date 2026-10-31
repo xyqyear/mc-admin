@@ -1,86 +1,30 @@
-from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_settings, replace_runtime_resource
+from tests.support.runtime import patch_settings
 
 """Cron job management REST API tests via TestClient."""
 
 import asyncio
 import json
-import tempfile
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.cron.models import CronJobExecution, ExecutionStatus
-from app.db.metadata import Base
-from app.main import app
-
-from .test_cron_manager import test_cron_manager, test_cron_registry
+from app.main import create_api_app
+from app.runtime_resources import current_runtime
 
 
 @pytest.fixture(scope="function")
-async def test_db():
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    TestSessionLocal = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-
-    import app.cron.manager as manager_module
-    import app.db.database as db_module
-
-    original_db_session = db_module.get_session_factory()
-
-    replace_runtime_resource(current_runtime(), "session_factory", TestSessionLocal)
-
-    def get_test_session():
-        return TestSessionLocal()
-
-    original_get_session = manager_module.get_async_session
-    manager_module.get_async_session = get_test_session
-
-    import app.routers.cron as cron_router_module
-
-    original_cron_manager = cron_router_module.get_cron_manager()
-    original_cron_registry = cron_router_module.get_cron_registry()
-
-    replace_runtime_resource(current_runtime(), "cron_manager", test_cron_manager)
-    replace_runtime_resource(current_runtime(), "cron_registry", test_cron_registry)
-
-    await test_cron_manager.initialize()
-
-    yield TestSessionLocal
-
-    await test_cron_manager.shutdown()
-
-    replace_runtime_resource(current_runtime(), "session_factory", original_db_session)
-    manager_module.get_async_session = original_get_session
-    replace_runtime_resource(current_runtime(), "cron_manager", original_cron_manager)
-    replace_runtime_resource(current_runtime(), "cron_registry", original_cron_registry)
-
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
+async def test_db(db_session_factory, fresh_cron_manager):
+    return db_session_factory
 
 
 @pytest.fixture
-def client():
+def client(test_db):
     with patch_settings() as mock_settings:
         mock_settings.master_token = "test_master_token"
-        client = TestClient(app, raise_server_exceptions=False)
-        yield client
+        with TestClient(create_api_app(current_runtime()), raise_server_exceptions=False) as client:
+            yield client
 
 
 @pytest.fixture
@@ -848,6 +792,6 @@ class TestCronJobAPIAuthentication:
             else:
                 continue
 
-            assert response.status_code in [401, 403, 422], (
+            assert response.status_code == 401, (
                 f"{method} {endpoint} should require authentication"
             )

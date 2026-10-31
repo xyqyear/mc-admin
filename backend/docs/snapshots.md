@@ -18,7 +18,9 @@ app/snapshots/
 ├── path_mapping.py # logical selection identities and frozen execution projections
 ├── evidence.py  # bounded logical selection and absence tags on snapshots
 ├── rules.py     # generation-bound logical rules for shared frontend decisions
-├── coverage.py  # exclude-aware "does this snapshot cover this path" predicate
+├── coverage.py  # component-based path index and exclude-aware coverage predicate
+├── source.py    # compiled snapshot coverage, logical identities and protection
+├── eligibility.py # request-local compact candidate selection and sidecar accounting
 ├── planner.py   # build_restore_plan(): targets + ignores → one restic invocation per step
 ├── application.py # confined listing/cron path resolution and maintenance conflict type
 ├── policy.py    # manual backup time-window policy
@@ -196,6 +198,20 @@ snapshot creation to repair metadata.
 Eligible sources must distinguish recorded exclusions from missing coverage.
 The [source eligibility contract](snapshot-restoration.md#source-eligibility)
 defines mixed-root skips, admission stop checks and retained rollback protection.
+
+Candidate discovery resolves MCA targets without preparing a mutation or
+enumerating every possible external MCC file. Region/chunk selections retain
+directory/coordinate membership and materialize relevant current or historical
+sidecar exceptions; broad recorded exclusions still produce exact skip counts
+and the first 100 sorted paths. World sidecars are ordinary files. Generic file
+selections retain logical alias identity checks.
+
+`SnapshotSource` compiles roots and exclusions once, sharing path indexes with
+execution and historical listing. An eligible request reuses identical source
+policies and resolved bindings only within that request; IDs, times and notes
+remain specific to each returned snapshot. Computation yields between sources
+and during large projections. Disconnecting `/snapshots/eligible` cancels its
+owned lookup and waits for subprocess cleanup; it does not cancel durable tasks.
 
 ## Observation and target feedback
 

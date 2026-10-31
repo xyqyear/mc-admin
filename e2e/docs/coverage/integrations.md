@@ -9,6 +9,7 @@
 | 定时任务校验错误安全输出 | `cron.safe-validation-errors` | 对创建和更新提交真实 Schema 布尔解析错误及 CronTrigger 未知值错误；保持 HTTP 400 和字符串 detail，公开已知字段/类型提示或未知适配器的固定中文错误，不回显提交标记。拒绝创建不产生任务，拒绝更新保留原持久定义与调度注册；应用文件日志和容器日志保留安全 ValidationError 类型诊断并排除提交标记。 |
 | 调度注册与无效历史 | `cron.registration-and-invalid-history` | 停止独占部署后将 API 创建的任务改为未知类型和缺失参数；重启后列表与详情仍展示 active 期望状态及 failed 注册状态，系统任务仍正常 registered；通过公开更新修复后保留原 ID，暂停/恢复显示 inactive/registered，已注册任务重复恢复仍 409。 |
 | 调度器真实执行 | `cron.execution-and-recovery` | 定时 Restic 备份生成真实快照和执行历史；暂停后不再继续执行；重启保留任务与历史；定时自检产生可查询的持久化结果。 |
+| 调度操作上下文隔离 | `cron.creation-context-isolation` | 先登记失败备份、正常备份与系统自检，再通过真实建服任务创建自动重启计划；不再修改调度器，按公开 next-run-time 的错开时刻观察原有任务。每次执行拥有独立 cron 操作记录与准确终态，缺失路径备份保持 failed，不能被已成功建服的父记录覆写；成功备份只生成一个真实 Restic 快照，经公开恢复 API 验证原文件字节；自检具有关联的持久运行与实际健康发现，建服操作保持不变。 |
 | 自检执行、事件流与历史 | `selfcheck.execution-history-and-stream` | 完整执行与流式执行的结果包含所有注册检查项；开始与结束事件、终态结果及持久化发现一致；验证单项执行、筛选、分页、状态与重启后的持久化。 |
 | 游戏端口自检 | `selfcheck.game-port-current-state` | 对比 properties 中最终生效的端口赋值与 Compose 目标端口；制造不匹配并修复；检查当前状态替换、禁用检查项和历史保留。 |
 | 模组元数据与所有权自检 | `selfcheck.jar-metadata-and-ownership` | 向真实部署上传构造的各类 JAR 元数据，不依赖文件名识别备份模组；Quilt 使用合法结构及小写 ID，并验证依赖 ID、截断或尾逗号文件不被误识别；检测所有权不匹配，并通过 API 修复。该用例验证元数据自检，不验证 JAR 被 Minecraft 加载。 |

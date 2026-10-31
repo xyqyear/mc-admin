@@ -1,9 +1,7 @@
 """Test cases for LogParser using real Minecraft server logs."""
-from unittest.mock import MagicMock
 
 import pytest
 
-from app.dynamic_config.configs.log_parser import LogParserConfig
 from app.log_monitor.events import (
     PlayerAchievementEvent,
     PlayerChatMessageEvent,
@@ -13,23 +11,10 @@ from app.log_monitor.events import (
     ServerStoppingEvent,
 )
 from app.log_monitor.parser import LogParser
-from tests.support.runtime import patch_runtime_resource
 
 
 @pytest.fixture
-def mock_config():
-    """Mock dynamic config for LogParser."""
-    mock_log_parser_config = LogParserConfig.model_validate({})
-    mock_config_obj = MagicMock()
-    mock_config_obj.log_parser = mock_log_parser_config
-
-    with patch_runtime_resource('dynamic_configuration', mock_config_obj):
-        yield mock_config_obj
-
-
-@pytest.fixture
-def parser(mock_config):
-    """Create LogParser instance."""
+def parser(runtime_config):
     return LogParser()
 
 

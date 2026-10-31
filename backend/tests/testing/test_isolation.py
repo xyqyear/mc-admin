@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -46,6 +47,33 @@ def test_non_docker_tests_cannot_connect_through_sdk():
 def test_non_docker_tests_cannot_spawn_docker():
     with pytest.raises(RuntimeError, match="requires @pytest.mark.docker"):
         subprocess.run(["docker", "rm", "-f", "not-owned"], check=False)
+
+
+@pytest.mark.parametrize("operation", ["connect", "connect_ex", "sendto", "resolve"])
+def test_external_network_requires_explicit_capability(operation):
+    with pytest.raises(RuntimeError, match="External network requires"):
+        if operation == "resolve":
+            socket.getaddrinfo("api.example.invalid", 443)
+        else:
+            kind = socket.SOCK_DGRAM if operation == "sendto" else socket.SOCK_STREAM
+            with socket.socket(socket.AF_INET, kind) as connection:
+                address = ("192.0.2.1", 443)
+                if operation == "sendto":
+                    connection.sendto(b"must not leave the runner", address)
+                else:
+                    getattr(connection, operation)(address)
+
+
+def test_local_network_uses_real_connections():
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        with socket.create_connection(listener.getsockname(), timeout=2) as sender:
+            receiver, _ = listener.accept()
+            with receiver:
+                receiver.settimeout(2)
+                sender.sendall(b"owned local service")
+                assert receiver.recv(64) == b"owned local service"
 
 
 def test_owned_process_gate_cannot_bypass_docker_capability_guard():

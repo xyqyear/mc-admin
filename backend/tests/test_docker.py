@@ -1,6 +1,5 @@
 # pyright: reportUnusedImport=false
 import asyncio
-import random
 import re
 from dataclasses import dataclass
 
@@ -49,18 +48,14 @@ async def get_player_messages_from_docker_logs(
     """
     container_id = await instance.get_container_id()
 
-    # Use docker-py to fetch logs
-    client = docker.APIClient(base_url="unix://var/run/docker.sock")
-    try:
-        logs_bytes = client.logs(
-            container_id,
-            stdout=True,
-            stderr=True,
-            tail=tail,
-        )
-        logs_content = logs_bytes.decode("utf-8", errors="replace")
-    finally:
-        client.close()
+    def read_logs():
+        client = docker.APIClient(base_url="unix://var/run/docker.sock", timeout=5)
+        try:
+            return client.logs(container_id, stdout=True, stderr=True, tail=tail).decode("utf-8", errors="replace")
+        finally:
+            client.close()
+
+    logs_content = await asyncio.to_thread(read_logs)
 
     # Parse player messages from logs
     messages = []
@@ -128,11 +123,9 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
     assert not await server1.running()
     assert not await server2.running()
 
-    print("servers created")
 
     await server1.up()
     await server2.up()
-    print("servers up")
 
     wait_server1_coroutine = server1.wait_until_healthy()
     wait_server2_coroutine = server2.wait_until_healthy()
@@ -145,66 +138,49 @@ async def test_integration_with_docker(owned_docker_resources: OwnedDockerResour
     assert await server1.running()
     assert await server2.running()
 
-    print("servers healthy")
 
     await server2.down()
 
     assert await server1.list_players() == []
 
-    await client1.connect("127.0.0.1", server1_game_port)
-    await asyncio.sleep(1)
+    async def expect_players(expected):
+        async with asyncio.timeout(15):
+            while set(await server1.list_players()) != expected:
+                await asyncio.sleep(0.05)
 
-    print("client1 connected")
+    async def expect_messages(expected):
+        async with asyncio.timeout(15):
+            while True:
+                messages = await get_player_messages_from_docker_logs(server1)
+                if len(messages) >= len(expected):
+                    assert messages == expected
+                    return
+                await asyncio.sleep(0.05)
 
-    assert await server1.list_players() == ["client1"]
+    try:
+        async with asyncio.timeout(15):
+            await client1.connect("127.0.0.1", server1_game_port)
+            await client1.wait_until_connected()
+        await expect_players({"client1"})
+        async with asyncio.timeout(15):
+            await client2.connect("127.0.0.1", server1_game_port)
+            await client2.wait_until_connected()
+        await expect_players({"client1", "client2"})
 
-    await client2.connect("127.0.0.1", server1_game_port)
-    await asyncio.sleep(1)
+        expected = []
+        for client, name, message in (
+            (client1, "client1", "first player message"),
+            (client1, "client1", "second ordered message"),
+            (client2, "client2", "another player message"),
+        ):
+            await client.send_chat(message)
+            expected.append(PlayerMessage(name, message))
+            await expect_messages(expected)
+    finally:
+        results = await asyncio.gather(client1.disconnect(), client2.disconnect(), return_exceptions=True)
+        errors = [result for result in results if isinstance(result, BaseException)]
+        if errors:
+            raise BaseExceptionGroup("Minecraft client cleanup failed", errors)
 
-    print("client2 connected")
-
-    assert set(await server1.list_players()) == {"client1", "client2"}
-
-    random_text1 = str(random.random())
-    random_text2 = str(random.random())
-    random_text3 = str(random.random())
-
-    await client1.send_chat(random_text1)
-    await asyncio.sleep(1)
-
-    print("client1 chat")
-
-    messages = await get_player_messages_from_docker_logs(server1)
-    assert messages == [PlayerMessage("client1", random_text1)]
-
-    print("server1 verify chat")
-
-    await client1.send_chat(random_text2)
-    await asyncio.sleep(1)
-
-    assert (await get_player_messages_from_docker_logs(server1)) == [
-        PlayerMessage("client1", random_text1),
-        PlayerMessage("client1", random_text2),
-    ]
-
-    print("server1 verify chat 2")
-
-    await client2.send_chat(random_text3)
-    await asyncio.sleep(1)
-
-    assert (await get_player_messages_from_docker_logs(server1)) == [
-        PlayerMessage("client1", random_text1),
-        PlayerMessage("client1", random_text2),
-        PlayerMessage("client2", random_text3),
-    ]
-
-    print("server1 verify chat 3")
-
-    await client1.disconnect()
-    await client2.disconnect()
-
-    assert await server1.list_players() == []
-
-    # Final cleanup
+    await expect_players(set())
     await server1.down()
-    print("server1 down")

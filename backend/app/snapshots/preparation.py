@@ -29,6 +29,7 @@ from .scopes import (
     resolve_scope,
 )
 from .service import SnapshotService
+from .source import SnapshotSource
 
 
 @dataclass(frozen=True)
@@ -141,7 +142,7 @@ class SnapshotPlanner:
             return prepared
         # Source exclusions can remove the world roots that require a stopped server.
         source = await self.snapshots.get_snapshot(source_id)
-        protection = await self.snapshots.with_source_protection(prepared.protection, source)
+        protection = await SnapshotSource(source).protect(prepared.protection)
         paths = protection.select_targets(prepared.resolved.paths)
         maintenance = await self._files.maintenance_servers(
             [protection.execution_path(path) for path in paths]
@@ -172,9 +173,8 @@ class SnapshotPlanner:
     ) -> tuple[PreparedSnapshot, tuple[Path, ...]]:
         scope = prepared.resolved.scope
         selection = scope.selection if isinstance(scope, WorldScope) else None
-        protection = await self.snapshots.with_source_protection(
-            prepared.protection, source
-        )
+        source_index = SnapshotSource(source)
+        protection = await source_index.protect(prepared.protection)
         documented_absence = snapshot_absence(source)
         absent = tuple(
             set(absent)
@@ -195,7 +195,7 @@ class SnapshotPlanner:
                         protection.execution_path(path).is_relative_to(parent)
                         for parent in absent_parents
                     )
-                    or self.snapshots.source_covers(source, path, protection)
+                    or source_index.covers(path, protection)
                 )
             }
             if not covered:
@@ -238,7 +238,7 @@ class SnapshotPlanner:
                     protection.execution_path(path).is_relative_to(parent)
                     for parent in absent_parents
                 )
-                and not self.snapshots.source_covers(source, path, protection)
+                and not source_index.covers(path, protection)
             ):
                 raise HTTPException(status_code=400, detail="源快照未覆盖所选范围")
         return prepared, absent

@@ -1,6 +1,5 @@
 import pytest
 
-from app.db.metadata import Base
 from app.operations.context import OperationExecution, bind_execution
 from app.operations.journal import OperationJournal
 from app.operations.journal_types import (
@@ -62,10 +61,8 @@ async def test_restore_stage_reaper_rechecks_journal_before_each_deletion(monkey
     await original(retained)
 
 
-async def test_restore_stage_survives_unconfirmed_writer_and_restart_cleanup(isolated_runtime):
+async def test_restore_stage_survives_unconfirmed_writer_and_restart_cleanup(isolated_runtime, database):
     runtime = isolated_runtime
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     journal = OperationJournal(runtime.database.session_factory)
     runtime.journal = journal
     record = await journal.accept(OperationSpec(kind="world_restore", resources=(ResourceReference("world", "srv1", 1),)))

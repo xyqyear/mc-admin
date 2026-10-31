@@ -33,6 +33,12 @@ only world scopes to `POST /snapshots/targets/check` for layout/MCA/MCC checks;
 it does not send file/project/global scopes or note fields. World selection
 feedback and source eligibility are separate from file-rule caching.
 
+Eligible-source queries pass TanStack Query's abort signal through the HTTP
+client. Changing the selection or closing its last observer aborts the pending
+request; another observer keeps a shared query alive. Reopening can issue a new
+query. This lifetime applies to candidate reads; accepted recovery tasks retain
+their independent observation and cancellation contract below.
+
 Mixed selections skip protected roots; all-protected selections remain disabled.
 Sources come from authoritative eligibility results: recorded exclusion is
 different from missing coverage. `SnapshotSkipNotice` displays source/preview

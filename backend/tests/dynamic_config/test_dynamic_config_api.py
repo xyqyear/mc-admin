@@ -2,16 +2,12 @@
 API endpoint tests for the dynamic configuration system.
 """
 
-import tempfile
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import Field
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
-from app.db.metadata import Base
 from app.dynamic_config import BaseConfigSchema
 from app.dynamic_config.configs.dns import DNSManagerConfig
 from app.dynamic_config.manager import ConfigManager
@@ -51,27 +47,9 @@ class ApiComplexConfig(BaseConfigSchema):
 
 
 @pytest.fixture(scope="function")
-async def test_api_db(monkeypatch):
+async def test_api_db(monkeypatch, db_session_factory):
     """Create a test database for API tests."""
-    # Create temporary database file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as temp_db:
-        database_path = temp_db.name
-
-    database_url = f"sqlite+aiosqlite:///{database_path}"
-    engine = create_async_engine(database_url, echo=False)
-
-    # Create all tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Replace the get_async_session function in manager module
-    TestSessionLocal = async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        autocommit=False,
-        autoflush=False,
-        expire_on_commit=False,
-    )
+    TestSessionLocal = db_session_factory
 
     test_manager = ConfigManager(session_factory=TestSessionLocal)
     test_manager.register_config("api_test", ApiTestConfig)
@@ -80,14 +58,16 @@ async def test_api_db(monkeypatch):
     monkeypatch.setattr(current_runtime(), "_config_manager", test_manager)
     await test_manager.initialize_all_configs()
     yield test_manager
-    await engine.dispose()
-    Path(database_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
 def api_client(monkeypatch):
     monkeypatch.setattr(get_settings(), "master_token", "test_master_token")
-    yield TestClient(app)
+    client = TestClient(app)
+    try:
+        yield client
+    finally:
+        client.close()
 
 
 @pytest.fixture
@@ -95,6 +75,13 @@ async def authenticated_headers():
     """Get authentication headers for API requests."""
     # Use master token for authentication in tests
     return {"Authorization": "Bearer test_master_token"}
+
+
+async def reload_api_config(manager):
+    reloaded = ConfigManager(session_factory=manager.session_factory)
+    reloaded.register_config("api_test", ApiTestConfig)
+    await reloaded.initialize_all_configs()
+    return reloaded.get_config("api_test").model_dump()
 
 
 class TestConfigAPI:
@@ -228,12 +215,15 @@ class TestConfigAPI:
         assert get_data["api_name"] == "updated_api_test"
         assert get_data["api_enabled"] is False
         assert get_data["api_count"] == 99
+        assert await reload_api_config(test_api_db) == update_data["config_data"]
 
     @pytest.mark.asyncio
     async def test_update_invalid_config(
         self, test_api_db, api_client, authenticated_headers
     ):
         """Test PUT /api/config/modules/{module_name} - Invalid configuration data."""
+        await test_api_db.update_config("api_test", {"api_name": "retained", "api_count": 17})
+        before = test_api_db.get_config("api_test").model_dump()
         invalid_data = {
             "config_data": {
                 "api_name": "test",
@@ -251,6 +241,8 @@ class TestConfigAPI:
         assert response.status_code == 400
         data = response.json()
         assert "Invalid configuration data" in data["detail"]
+        assert test_api_db.get_config("api_test").model_dump() == before
+        assert await reload_api_config(test_api_db) == before
 
     @pytest.mark.asyncio
     async def test_get_module_schema(
@@ -318,6 +310,7 @@ class TestConfigAPI:
         assert reset_config["api_enabled"] is True  # back to default
         assert reset_config["api_count"] == 5  # back to default
         assert reset_config["api_deprecated"] == "old_api_value"  # back to default
+        assert await reload_api_config(test_api_db) == ApiTestConfig().model_dump()
 
     @pytest.mark.asyncio
     async def test_complex_config_operations(

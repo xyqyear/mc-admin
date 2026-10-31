@@ -1,7 +1,7 @@
 import asyncio
 
 from app.config import ResticSettings
-from app.dynamic_config.configs.snapshots import WorldRestoreConfig
+from app.dynamic_config import get_config
 from app.runtime import UNINITIALIZED
 from app.runtime_resources import current_runtime
 from tests.support.runtime import (
@@ -21,7 +21,6 @@ directories and repositories to avoid affecting real data, with MC server direct
 IMPORTANT: These tests require restic to be installed on the system.
 """
 
-import subprocess
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -62,40 +61,15 @@ def _preview_result(client, response):
 
 
 @pytest.fixture(autouse=True)
-async def registered_server(mock_instance):
-    from app.db.metadata import Base
+async def registered_server(mock_instance, database, runtime_config):
     from app.operations.journal import OperationJournal
     from app.servers.models import Server
 
     runtime = current_runtime()
-    async with runtime.database.engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
     async with runtime.database.session_factory() as session:
         session.add(Server(server_id=mock_instance[0]))
         await session.commit()
     runtime.journal = OperationJournal(runtime.database.session_factory)
-
-
-# Helper function to check if restic is available
-def check_restic_available():
-    """Check if restic command is available"""
-    try:
-        result = subprocess.run(
-            [str(get_settings().restic_binary_path), "version"],
-            capture_output=True,
-            text=True,
-            timeout=5, check=False,
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return False
-
-
-# Skip all tests if restic is not available
-pytestmark = pytest.mark.skipif(
-    not check_restic_available(),
-    reason="restic command not available - install restic to run these tests",
-)
 
 
 class MockMCInstance:
@@ -244,20 +218,6 @@ def mock_snapshot_dependencies_setup(
         restic_password: Password for restic repository (None for no password)
         ignored_paths: ignored_paths dynamic config seen by the service
     """
-    # Create mock dynamic config
-    mock_time_restriction = MagicMock()
-    mock_time_restriction.enabled = True
-    mock_time_restriction.before_seconds = 30
-    mock_time_restriction.after_seconds = 60
-
-    mock_snapshots_config = MagicMock()
-    mock_snapshots_config.time_restriction = mock_time_restriction
-    mock_snapshots_config.ignored_paths = ignored_paths or []
-    mock_snapshots_config.world_restore = WorldRestoreConfig()
-
-    mock_config = MagicMock()
-    mock_config.snapshots = mock_snapshots_config
-
     # A real SnapshotService against the test repository; the instance
     # provider drives ignored-path resolution.
     instance_provider = MagicMock()
@@ -274,7 +234,7 @@ def mock_snapshot_dependencies_setup(
         patch_runtime_resource('docker_mc_manager') as mock_manager,
         patch_settings() as mock_settings,
         patch_settings() as mock_dep_settings,
-        patch_runtime_resource('dynamic_configuration', mock_config),
+        patch.object(get_config().snapshots, "ignored_paths", ignored_paths or []),
         patch.object(current_runtime().restart_scheduler, 'get_backup_minutes', return_value=set()),  # No backup jobs by default
         patch_runtime_resource('snapshot_service', test_snapshot_service),
     ):
@@ -738,7 +698,7 @@ class TestSnapshotEndpoints:
         with mock_snapshot_dependencies_setup(instance, initialized_restic_repo):
             # Test without authorization header
             response = client.post("/snapshots", json={"scope": _scope(server_id=server_id)})
-            assert response.status_code in [401, 422]
+            assert response.status_code == 401
 
             # Test with invalid token
             response = client.post(
@@ -746,7 +706,7 @@ class TestSnapshotEndpoints:
                 headers={"Authorization": "Bearer invalid_token"},
                 json={"scope": _scope(server_id=server_id)},
             )
-            assert response.status_code in [401, 422]
+            assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_comprehensive_mc_server_restore_integrity(
@@ -1343,7 +1303,7 @@ modified=true
 
             # Try to delete without authorization
             delete_response = client.delete(f"/snapshots/{snapshot_id}")
-            assert delete_response.status_code in [401, 422]
+            assert delete_response.status_code == 401
 
 
 class TestIgnoredPathsEndpoints:
@@ -1775,4 +1735,4 @@ class TestPathContainmentEndpoints:
 
             task_result(client, response)
 
-pytestmark = [pytestmark, pytest.mark.binary('restic')]
+pytestmark = [pytest.mark.binary("restic")]

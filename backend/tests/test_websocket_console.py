@@ -3,16 +3,18 @@ Tests for the WebSocket console endpoint with docker-py integration.
 Tests real-time console functionality with mocked dependencies.
 """
 import asyncio
+import socket
 from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.auth.service import get_identity_service, get_system_user
 from app.auth.session import AUTH_COOKIE_NAME
 from app.main import api_app
+from tests.support.auth import create_account, login
 from tests.support.runtime import patch_runtime_resource
 
 
@@ -48,7 +50,7 @@ class MockDockerAPIClient:
             "[10:30:22] [RCON Listener #1/INFO]: RCON running on 0.0.0.0:25575\n"
             '[10:30:22] [Server thread/INFO]: Done (1.234s)! For help, type "help"\n'
         )
-        self._socket = MockSocket()
+        self._socket: MockSocket | SimpleNamespace = MockSocket()
         self.resize_calls: list[tuple[str, int, int]] = []
         self.close_calls = 0
 
@@ -120,16 +122,17 @@ def mock_instance():
 
 
 @pytest.fixture
-def client(monkeypatch):
-    """Create test client."""
+async def client(db_session_factory):
+    user = await create_account(db_session_factory)
     client = TestClient(api_app)
-    monkeypatch.setattr(
-        get_identity_service(), "get_current_session_user",
-        AsyncMock(return_value=get_system_user()),
-    )
-    token, _ = get_identity_service().create_session_token(get_system_user())
-    client.cookies.set(AUTH_COOKIE_NAME, token, path="/")
-    return client
+    try:
+        login(client, user.username, prefix="")
+        token = client.cookies[AUTH_COOKIE_NAME]
+        client.cookies.clear()
+        client.cookies.set(AUTH_COOKIE_NAME, token, path="/")
+        yield client
+    finally:
+        client.close()
 
 
 def console_url(server_id: str, cols: int = 80, rows: int = 24) -> str:
@@ -498,3 +501,31 @@ class TestWebSocketConsole:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_console_transports_real_socket_bytes_and_closes_attachment(client, mock_instance):
+    server_id, instance = mock_instance
+    attached, peer = socket.socketpair()
+    peer.settimeout(5)
+    adapter = MockDockerAPIClient()
+    adapter._socket = SimpleNamespace(_sock=attached, close=attached.close)
+    try:
+        with (
+            patch_runtime_resource("docker_mc_manager") as manager,
+            patch("app.websocket.console.docker.APIClient", return_value=adapter),
+        ):
+            manager.get_instance.return_value = instance
+            with client.websocket_connect(console_url(server_id)) as websocket:
+                assert websocket.receive_json()["type"] == "log"
+                peer.sendall("玩家已加入\n".encode())
+                live = websocket.receive_json()
+                assert live == {"type": "log", "content": "玩家已加入\n"}
+                websocket.send_json({"type": "input", "data": "say 你好\n"})
+                wait_for_processed_messages(websocket)
+                assert peer.recv(4096) == "say 你好\n".encode()
+            assert attached.fileno() == -1
+            assert adapter.close_calls == 1
+            assert peer.recv(4096) == b""
+    finally:
+        attached.close()
+        peer.close()

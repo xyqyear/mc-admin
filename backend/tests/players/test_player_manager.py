@@ -1,14 +1,11 @@
 """Tests for player tracking functions."""
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.metadata import Base
 from app.dynamic_config.configs.players import PlayersConfig
 from app.players import get_player_service
 from app.players.crud import upsert_player
@@ -20,27 +17,13 @@ from tests.support.runtime import set_runtime_resource
 
 
 @pytest.fixture
-async def test_db_engine():
-    """Create a temporary in-memory SQLite database for testing."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    await engine.dispose()
+async def test_db_engine(database):
+    return database.engine
 
 
 @pytest.fixture
-async def test_db_session(test_db_engine):
-    """Create a test database session."""
-    async_session = async_sessionmaker(
-        test_db_engine, class_=AsyncSession, expire_on_commit=False
-    )
-
-    async with async_session() as session:
-        yield session
+async def test_db_session(db_session):
+    return db_session
 
 
 @pytest.fixture
@@ -68,16 +51,6 @@ async def test_player(test_db_session):
     test_db_session.add(player)
     await test_db_session.commit()
     return player
-
-
-def _mock_get_async_session(test_db_session):
-    """Create a mock for get_async_session that yields the test session."""
-
-    @asynccontextmanager
-    async def _session_ctx():
-        yield test_db_session
-
-    return _session_ctx
 
 
 def _set_ignored_player_prefixes(monkeypatch, prefixes: list[str]) -> None:
@@ -149,11 +122,9 @@ class TestProcessPlayerJoin:
         self, test_db_session, test_server, test_player
     ):
         """Test that joining with an existing player creates a session."""
-        mock_session = _mock_get_async_session(test_db_session)
 
         with (
-            patch.object(get_player_service(), "session_factory", mock_session),
-            patch.object(get_player_service(), "update_player_skin", new_callable=AsyncMock),
+            patch.object(current_runtime().skin_fetcher, "fetch_player_skin", new_callable=AsyncMock, return_value=None),
         ):
             join_time = datetime.now(UTC)
             await get_player_service().process_player_join("test_server", "TestPlayer", timestamp=join_time)
@@ -175,16 +146,14 @@ class TestProcessPlayerJoin:
         self, test_db_session, test_server
     ):
         """Test that joining with a new player auto-creates the player and session."""
-        mock_session = _mock_get_async_session(test_db_session)
         uuid = make_online_uuid("BrandNewPlayer")
 
         with (
-            patch.object(get_player_service(), "session_factory", mock_session),
             patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
                 return_value=uuid,
             ),
-            patch.object(get_player_service(), "update_player_skin", new_callable=AsyncMock),
+            patch.object(current_runtime().skin_fetcher, "fetch_player_skin", new_callable=AsyncMock, return_value=None),
         ):
             join_time = datetime.now(UTC)
             await get_player_service().process_player_join(
@@ -215,15 +184,13 @@ class TestProcessPlayerJoin:
     ):
         """Test that ignored players do not create player or session rows."""
         _set_ignored_player_prefixes(monkeypatch, ["bot_"])
-        mock_session = _mock_get_async_session(test_db_session)
 
         with (
-            patch.object(get_player_service(), "session_factory", mock_session),
             patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
                 new_callable=AsyncMock,
             ) as mock_fetch_uuid,
-            patch.object(get_player_service(), "update_player_skin", new_callable=AsyncMock)
+            patch.object(current_runtime().skin_fetcher, "fetch_player_skin", new_callable=AsyncMock, return_value=None)
             as mock_skin_update,
         ):
             await get_player_service().process_player_join("test_server", "BOT_Carpet")
@@ -260,16 +227,14 @@ class TestProcessPlayerLeft:
         test_db_session.add(player_session)
         await test_db_session.commit()
 
-        mock_session = _mock_get_async_session(test_db_session)
 
-        with patch.object(get_player_service(), "session_factory", mock_session):
-            leave_time = datetime.now(UTC)
-            await get_player_service().process_player_left(
-                "test_server",
-                "TestPlayer",
-                reason="Disconnected",
-                timestamp=leave_time,
-            )
+        leave_time = datetime.now(UTC)
+        await get_player_service().process_player_left(
+            "test_server",
+            "TestPlayer",
+            reason="Disconnected",
+            timestamp=leave_time,
+        )
 
         await test_db_session.refresh(player_session)
         assert player_session.left_at == leave_time
@@ -278,11 +243,9 @@ class TestProcessPlayerLeft:
     @pytest.mark.asyncio
     async def test_new_player_auto_created_on_leave(self, test_db_session, test_server):
         """Test that leaving with a new player auto-creates the player record."""
-        mock_session = _mock_get_async_session(test_db_session)
         uuid = make_online_uuid("LeavingPlayer")
 
         with (
-            patch.object(get_player_service(), "session_factory", mock_session),
             patch(
                 "app.players.mojang_api.fetch_player_uuid_from_mojang",
                 return_value=uuid,
@@ -341,11 +304,9 @@ class TestCloseServerSessions:
         test_db_session.add(session2)
         await test_db_session.commit()
 
-        mock_session = _mock_get_async_session(test_db_session)
 
-        with patch.object(get_player_service(), "session_factory", mock_session):
-            stop_time = datetime.now(UTC)
-            await get_player_service().close_server_sessions("test_server", timestamp=stop_time)
+        stop_time = datetime.now(UTC)
+        await get_player_service().close_server_sessions("test_server", timestamp=stop_time)
 
         await test_db_session.refresh(session1)
         await test_db_session.refresh(session2)
@@ -364,20 +325,10 @@ class TestServerNotFound:
         self, test_db_session, test_player
     ):
         """Test that joining on an unknown server creates no session."""
-        mock_session = _mock_get_async_session(test_db_session)
 
-        with (
-            patch.object(get_player_service(), "session_factory", mock_session),
-            patch(
-                "app.players.service.get_server_db_id",
-                return_value=None,
-            ),
-        ):
-            await get_player_service().process_player_join(
-                "unknown_server",
-                "TestPlayer",
-                timestamp=datetime.now(UTC),
-            )
+        await get_player_service().process_player_join(
+            "unknown_server", "TestPlayer", timestamp=datetime.now(UTC),
+        )
 
         result = await test_db_session.execute(select(PlayerSession))
         sessions = result.scalars().all()
@@ -391,12 +342,10 @@ class TestUpdatePlayerSkin:
     @pytest.mark.asyncio
     async def test_skin_fetched_and_saved(self, test_db_session, test_player):
         """Test that skin data is fetched and persisted."""
-        mock_session = _mock_get_async_session(test_db_session)
         fake_skin = b"skin_png_data"
         fake_avatar = b"avatar_png_data"
 
         with (
-            patch.object(get_player_service(), "session_factory", mock_session),
             patch.object(current_runtime().skin_fetcher, 'fetch_player_skin', return_value=(fake_skin, fake_avatar)),
         ):
             await get_player_service().update_player_skin(
@@ -413,10 +362,8 @@ class TestUpdatePlayerSkin:
         self, test_db_session, test_player
     ):
         """Test that a failed skin fetch does not modify the player."""
-        mock_session = _mock_get_async_session(test_db_session)
 
         with (
-            patch.object(get_player_service(), "session_factory", mock_session),
             patch.object(current_runtime().skin_fetcher, 'fetch_player_skin', return_value=None),
         ):
             await get_player_service().update_player_skin(
