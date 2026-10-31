@@ -11,7 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog'
-import { compareVersions, versionUpdates } from '@/app/version/config'
+import { compareVersions } from '@/app/version/config'
+import { useReleaseData } from './releaseData'
 import { parseIssueReferences } from '@/app/version/issueParser'
 
 interface VersionUpdateDialogProps {
@@ -29,7 +30,8 @@ const VersionUpdateDialog: React.FC<VersionUpdateDialogProps> = ({
   fromVersion,
   toVersion,
 }) => {
-  const relevantUpdates = versionUpdates
+  const release = useReleaseData()
+  const relevantUpdates = (release.data?.versionUpdates ?? [])
     .filter(
       (update) =>
         compareVersions(update.version, fromVersion) > 0 &&
@@ -80,15 +82,20 @@ const VersionUpdateDialog: React.FC<VersionUpdateDialogProps> = ({
 
         <div className="space-y-4 max-h-[70vh] overflow-y-auto py-2">
           <div className="text-center">
-            <h4 className="text-lg font-semibold">欢迎使用 MC Admin v{toVersion}！</h4>
+            <h4 className="text-lg font-semibold">{toVersion ? `欢迎使用 MC Admin v${toVersion}！` : '版本信息'}</h4>
             <p className="text-sm text-muted-foreground mt-1">
-              从 v{fromVersion} 到 v{toVersion} 的更新内容
+              {toVersion ? `从 v${fromVersion} 到 v${toVersion} 的更新内容` : '正在读取版本信息'}
             </p>
           </div>
 
           <Separator />
 
-          {relevantUpdates.length > 0 ? (
+          {release.isPending ? <p role="status">正在加载版本信息…</p> : release.isError ? (
+            <div role="alert">
+              <p>{release.error.message}</p>
+              <Button variant="outline" onClick={() => void release.refetch()}>重试</Button>
+            </div>
+          ) : relevantUpdates.length > 0 ? (
             <div className="space-y-6">
               {relevantUpdates.map((update, idx) => (
                 <div key={update.version} className="relative pl-8">
@@ -129,7 +136,7 @@ const VersionUpdateDialog: React.FC<VersionUpdateDialogProps> = ({
           <Button variant="outline" onClick={onRemindLater}>
             稍后提醒我
           </Button>
-          <Button onClick={onClose}>明白了</Button>
+          <Button onClick={onClose} disabled={!release.data}>明白了</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

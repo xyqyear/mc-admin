@@ -1,17 +1,17 @@
 ---
 name: gen-version-message
-description: Generate MC Admin version update entries for `frontend-react/src/config/versionConfig.ts` from recent git tags, commits, and issue numbers, then prepare the conventional `chore(version)` commit message. Use when Codex needs to summarize release changes for end users, collect missing issue numbers, update version metadata, or draft the version update commit.
+description: Generate MC Admin version update entries for `frontend-react/public/static/release.json` from recent git tags, commits, and issue numbers, then prepare the conventional `chore(version)` commit message. Use when Codex needs to summarize release changes for end users, collect missing issue numbers, update version metadata, or draft the version update commit.
 ---
 
 # Generate Version Message Skill
 
-Generate a version update message for `versionConfig.ts` and create a commit for the changes.
+Generate a version update message for `release.json` and create a commit for the changes.
 
 ## Workflow
 
 ### Step 1: Gather Information
 
-1. Read `frontend-react/src/config/versionConfig.ts` to understand the current version and structure
+1. Read `frontend-react/public/static/release.json` to understand the current version and structure
 2. Get the latest tag and commits since then:
 
    ```bash
@@ -44,15 +44,15 @@ Follow this style guide for the version update message:
 
 **Structure:**
 
-```typescript
+```json
 {
-  version: 'X.X.X',           // Semantic version
-  date: 'YYYY-MM-DD',         // Today's date
-  title: '简短标题',           // Concise Chinese title (5-15 chars)
-  description: '一句话描述',   // One-sentence Chinese description
-  features?: string[],        // New features (optional)
-  fixes?: string[],           // Bug fixes (optional)
-  improvements?: string[]     // Improvements (optional)
+  "version": "X.X.X",
+  "date": "YYYY-MM-DD",
+  "title": "简短标题",
+  "description": "一句话描述",
+  "features": ["新功能 #123"],
+  "fixes": ["问题修复 #456"],
+  "improvements": ["体验改进 #789"]
 }
 ```
 
@@ -77,21 +77,14 @@ Follow this style guide for the version update message:
 
 **Examples from existing entries:**
 
-```typescript
+```json
 {
-  version: '1.4.0',
-  date: '2026-01-25',
-  title: '控制台系统重构',
-  description: '控制台后端架构重构，使用 Docker 原生 API 实现更可靠的日志流式传输，并新增终端命令历史导航功能。',
-  features: [
-    '终端支持上下箭头键选择历史指令 #101'
-  ],
-  improvements: [
-    '使用 docker-py attach socket 替代基于文件的日志读取和基于mc-send-to-console的指令发送',
-  ],
-  fixes: [
-    '修复控制台日志重复显示的问题 #80'
-  ]
+  "version": "1.4.0",
+  "date": "2026-01-25",
+  "title": "控制台系统重构",
+  "description": "改善控制台实时交互与命令输入体验。",
+  "features": ["终端支持上下箭头键选择历史指令 #101"],
+  "fixes": ["修复控制台日志重复显示的问题 #80"]
 }
 ```
 
@@ -101,8 +94,8 @@ Follow this style guide for the version update message:
 2. Ask for approval using AskUserQuestion with options:
    - "Approve and write"
    - "Edit first" (user provides modifications)
-3. If approved, use the Edit tool to add the new entry to `versionConfig.ts`
-   - Add the new entry at the END of the `versionUpdates` array (before the closing `]`)
+3. If approved, use the Edit tool to add the new entry to `release.json`
+   - Append the entry to the JSON array; preserve valid JSON without comments or trailing commas. Keep runtime logic in `src/app/version/`.
 
 ### Step 5: Suggest A Commit Message
 
@@ -124,3 +117,5 @@ chore(version): update description for version vX.X.X
 - One issue may span multiple commits - only mention the issue once in the update
 - Always include issue numbers where available for traceability
 - If a commit is purely internal (refactoring with no user impact), it may be omitted or grouped under "improvements"
+
+Release data is validated independently from application code. Follow [version data](../../../frontend-react/docs/version-updates.md) for fields and [qualification](../../../docs/ci.md#validation) for delivery. Do not change TypeScript or CI merely to publish notes. The release tag must equal the greatest version in the JSON.

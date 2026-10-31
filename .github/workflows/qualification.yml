@@ -1,0 +1,160 @@
+name: Resolve Application Qualification
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      force_full:
+        type: boolean
+        default: false
+    outputs:
+      candidate:
+        value: ${{ jobs.qualification.outputs.candidate }}
+      receipt:
+        value: ${{ jobs.qualification.outputs.receipt }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.resolve.outputs.mode }}
+      receipt: ${{ steps.resolve.outputs.receipt }}
+      artifact: application-reused-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - name: Recheck trusted evidence under the content lock
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_FULL: ${{ inputs.force_full }}
+        run: |
+          args=()
+          if [ "$FORCE_FULL" = true ]; then args+=(--force-full); fi
+          uv run --no-project python -m scripts.release.reuse resolve \
+            --directory "$RUNNER_TEMP/restored-candidate" \
+            --output "$RUNNER_TEMP/resolution.json" --github-output "$GITHUB_OUTPUT" "${args[@]}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qualification-resolution
+          path: ${{ runner.temp }}/resolution.json
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: steps.resolve.outputs.mode != 'full'
+        with:
+          name: application-reused-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/restored-candidate/
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
+
+  candidate:
+    needs: resolve
+    if: needs.resolve.outputs.mode == 'full'
+    uses: ./.github/workflows/candidate.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+
+  static:
+    needs: resolve
+    if: needs.resolve.outputs.mode == 'full'
+    uses: ./.github/workflows/static-checks.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+
+  backend:
+    needs: resolve
+    if: needs.resolve.outputs.mode == 'full'
+    uses: ./.github/workflows/backend-tests.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+
+  api:
+    needs: [resolve, candidate]
+    if: needs.resolve.outputs.mode == 'full'
+    uses: ./.github/workflows/e2e-tests.yml
+    secrets: inherit
+    with:
+      source_sha: ${{ inputs.source_sha }}
+      candidate_artifact: ${{ needs.candidate.outputs.artifact }}
+      qualification: true
+
+  browser:
+    needs: [resolve, candidate]
+    if: needs.resolve.outputs.mode == 'full'
+    uses: ./.github/workflows/browser-tests.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+      candidate_artifact: ${{ needs.candidate.outputs.artifact }}
+
+  metadata:
+    needs: resolve
+    if: needs.resolve.outputs.mode == 'metadata'
+    uses: ./.github/workflows/release-metadata.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+      candidate_artifact: ${{ needs.resolve.outputs.artifact }}
+
+  qualification:
+    name: Finalize qualification
+    if: always()
+    needs: [resolve, candidate, static, backend, api, browser, metadata]
+    runs-on: ubuntu-latest
+    outputs:
+      candidate: ${{ needs.candidate.outputs.artifact || needs.resolve.outputs.artifact }}
+      receipt: ${{ needs.resolve.outputs.receipt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: actions/download-artifact@v8
+        with:
+          name: qualification-resolution
+          path: ${{ runner.temp }}/resolution
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.candidate.outputs.artifact || needs.resolve.outputs.artifact }}
+          path: candidate-artifacts
+      - uses: actions/download-artifact@v8
+        if: needs.resolve.outputs.mode == 'metadata'
+        with:
+          name: release-metadata-evidence
+          path: ${{ runner.temp }}/smoke
+      - name: Require complete execution or verified inherited evidence
+        env:
+          REQUIRED_RESULTS: ${{ toJSON(needs) }}
+          CANDIDATE_ARTIFACT: ${{ needs.candidate.outputs.artifact || needs.resolve.outputs.artifact }}
+          MODE: ${{ needs.resolve.outputs.mode }}
+        run: |
+          printf '%s' "$REQUIRED_RESULTS" > "$RUNNER_TEMP/required-results.json"
+          args=()
+          if [ "$MODE" = metadata ]; then args+=(--smoke "$RUNNER_TEMP/smoke/candidate-evidence.json"); fi
+          uv run --no-project python -m scripts.release.reuse finalize \
+            --directory candidate-artifacts --resolution "$RUNNER_TEMP/resolution/resolution.json" \
+            --needs "$RUNNER_TEMP/required-results.json" --artifact "$CANDIDATE_ARTIFACT" \
+            --output qualification.json "${args[@]}"
+          cat qualification.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ needs.resolve.outputs.receipt }}
+          path: qualification.json
+          retention-days: 30
+          if-no-files-found: error

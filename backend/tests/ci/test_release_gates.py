@@ -163,16 +163,18 @@ def test_missing_gate_or_different_source_artifact_cannot_be_qualified(tmp_path)
 def test_release_workflow_cannot_bypass_jobs_or_rebuild_the_published_image():
     workflow = yaml.safe_load((ROOT / ".github/workflows/docker-image.yml").read_text())
     jobs = workflow["jobs"]
+    execution = yaml.safe_load((ROOT / ".github/workflows/qualification.yml").read_text())["jobs"]
     assert candidate.REQUIRED_GATES == EXPECTED_GATES
-    assert set(jobs["qualification"]["needs"]) == EXPECTED_GATES
-    assert set(jobs["promote"]["needs"]) == {"candidate", "qualification"}
+    assert set(execution["qualification"]["needs"]) == EXPECTED_GATES | {"resolve", "metadata"}
+    assert jobs["qualification"]["uses"] == "./.github/workflows/qualification.yml"
+    assert jobs["promote"]["needs"] == "qualification"
     assert "success()" in jobs["promote"]["if"]
     for job in EXPECTED_GATES:
-        assert jobs[job]["with"]["source_sha"] == "${{ github.sha }}"
+        assert execution[job]["with"]["source_sha"] == "${{ inputs.source_sha }}"
     for job in ("api", "browser"):
-        assert jobs[job]["with"]["candidate_artifact"] == "${{ needs.candidate.outputs.artifact }}"
-    assert jobs["api"]["with"]["qualification"] is True
-    assert jobs["api"]["secrets"] == "inherit"
+        assert execution[job]["with"]["candidate_artifact"] == "${{ needs.candidate.outputs.artifact }}"
+    assert execution["api"]["with"]["qualification"] is True
+    assert execution["api"]["secrets"] == "inherit"
     steps = jobs["promote"]["steps"]
     assert not any("build-push-action" in step.get("uses", "") for step in steps)
     promotion = next(step["run"] for step in steps if "candidate.py promote" in step.get("run", ""))

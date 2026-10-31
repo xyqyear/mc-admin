@@ -45,7 +45,7 @@ External-provider scenarios SHALL declare their required credentials and disposa
 - **THEN** it attempts to remove managed records and its test TXT fixture using the domain and scope recorded for its common environment ID, preserves unrelated records and reports any cleanup failure
 
 ### Requirement: Complete automated API selection
-Ordinary pull request regression, regular automatic CI and complete qualification SHALL execute every case in the current API catalog except DNSPod. The CI profile menu SHALL contain only `regression`, `qualification` and `dnspod`; DNSPod SHALL require explicit selection. Local case and tag filters SHALL remain available for related validation.
+Every freshly executed pull request regression, automatic CI and complete qualification SHALL execute every case in the current API catalog except DNSPod. The shared coordinator SHALL accept historical complete execution only under the content-qualification contract. The CI profile menu SHALL contain only `regression`, `qualification` and `dnspod`; DNSPod SHALL require explicit selection. Local case and tag filters SHALL remain available for related validation.
 
 #### Scenario: A current case joins automated regression
 - **WHEN** a non-DNSPod case is registered in the current catalog

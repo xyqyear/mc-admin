@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog'
-import { currentVersion } from '@/app/version/config'
+import { useReleaseData } from '@/app/version/releaseData'
 
 interface DebugDialogProps {
   open: boolean
@@ -26,6 +26,7 @@ const VERSION_STORAGE_KEY = 'mc-admin-last-seen-version'
 const REMIND_TIME_STORAGE_KEY = 'mc-admin-remind-time'
 
 const DebugDialog: React.FC<DebugDialogProps> = ({ open, onClose }) => {
+  const currentVersion = useReleaseData().data?.currentVersion ?? '暂不可用'
   const [version, setVersion] = useState('')
   const [remindTime, setRemindTime] = useState('')
   const [storedVersion, setStoredVersion] = useState('')

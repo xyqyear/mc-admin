@@ -2,13 +2,19 @@ name: Qualify and Publish Application
 
 on:
   push:
+    branches: ["**"]
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
+  pull_request:
   workflow_dispatch:
     inputs:
       publish:
         description: Promote the verified artifact (requires a semantic version tag ref)
+        type: boolean
+        default: false
+      force_full:
+        description: Execute complete qualification even when matching evidence exists
         type: boolean
         default: false
 
@@ -16,78 +22,37 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: application-release-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  candidate:
-    uses: ./.github/workflows/candidate.yml
-    with:
-      source_sha: ${{ github.sha }}
-
-  static:
-    uses: ./.github/workflows/static-checks.yml
-    with:
-      source_sha: ${{ github.sha }}
-
-  backend:
-    uses: ./.github/workflows/backend-tests.yml
-    with:
-      source_sha: ${{ github.sha }}
-
-  api:
-    needs: candidate
-    uses: ./.github/workflows/e2e-tests.yml
-    secrets: inherit
-    with:
-      source_sha: ${{ github.sha }}
-      candidate_artifact: ${{ needs.candidate.outputs.artifact }}
-      qualification: true
-
-  browser:
-    needs: candidate
-    uses: ./.github/workflows/browser-tests.yml
-    with:
-      source_sha: ${{ github.sha }}
-      candidate_artifact: ${{ needs.candidate.outputs.artifact }}
-
-  qualification:
-    if: always()
-    needs: [candidate, static, backend, api, browser]
-    outputs:
-      artifact: application-qualification-${{ github.run_id }}-${{ github.run_attempt }}
+  identity:
     runs-on: ubuntu-latest
+    outputs:
+      verification: ${{ steps.identity.outputs.verification }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - uses: astral-sh/setup-uv@v8.1.0
-      - uses: actions/download-artifact@v8
-        with:
-          name: ${{ needs.candidate.outputs.artifact }}
-          path: candidate-artifacts
-      - name: Reject missing, failed, cancelled or skipped required gates
-        env:
-          REQUIRED_RESULTS: ${{ toJSON(needs) }}
-          SOURCE_SHA: ${{ github.sha }}
-        run: |
-          printf '%s' "$REQUIRED_RESULTS" > "$RUNNER_TEMP/required-results.json"
-          uv run --no-project python scripts/release/candidate.py qualify \
-            --directory candidate-artifacts --revision "$SOURCE_SHA" \
-            --needs "$RUNNER_TEMP/required-results.json" --output qualification.json
-      - uses: actions/upload-artifact@v7
-        with:
-          name: application-qualification-${{ github.run_id }}-${{ github.run_attempt }}
-          path: qualification.json
-          if-no-files-found: error
-          retention-days: 30
+      - id: identity
+        run: uv run --no-project python -m scripts.release.reuse identity --github-output "$GITHUB_OUTPUT"
+
+  qualification:
+    needs: identity
+    concurrency:
+      group: content-qualification-${{ needs.identity.outputs.verification }}
+      cancel-in-progress: false
+      queue: max
+    uses: ./.github/workflows/qualification.yml
+    secrets: inherit
+    with:
+      source_sha: ${{ github.sha }}
+      force_full: ${{ inputs.force_full || false }}
 
   promote:
-    needs: [candidate, qualification]
+    needs: qualification
     if: ${{ success() && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) }}
     runs-on: ubuntu-latest
     permissions:
@@ -97,17 +62,18 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - uses: astral-sh/setup-uv@v8.1.0
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.candidate.outputs.artifact }}
+          name: ${{ needs.qualification.outputs.candidate }}
           path: candidate-artifacts
       - uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.qualification.outputs.artifact }}
+          name: ${{ needs.qualification.outputs.receipt }}
           path: qualification
       - name: Validate the release tag
         id: release-tag
@@ -116,7 +82,7 @@ jobs:
             --tag "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"
       - name: Validate immutable inputs
         run: |
-          uv run --no-project python scripts/release/candidate.py verify --directory candidate-artifacts --revision "${{ github.sha }}"
+          uv run --no-project python -m scripts.release.reuse verify --directory candidate-artifacts --receipt qualification/qualification.json
           sudo apt-get update
           sudo apt-get install -y skopeo
       - uses: docker/login-action@v4

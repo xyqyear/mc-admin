@@ -18,28 +18,6 @@ name: API E2E Tests
         required: false
       HUAWEICLOUD_SK:
         required: false
-  push:
-    branches:
-    - '**'
-    paths:
-    - backend/**
-    - frontend-react/**
-    - e2e/**
-    - Dockerfile
-    - .dockerignore
-    - .github/**
-    - scripts/release/**
-    - scripts/ci/**
-  pull_request:
-    paths:
-    - backend/**
-    - frontend-react/**
-    - e2e/**
-    - Dockerfile
-    - .dockerignore
-    - .github/**
-    - scripts/release/**
-    - scripts/ci/**
   workflow_dispatch:
     inputs:
       selection:

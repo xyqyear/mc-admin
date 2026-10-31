@@ -1,0 +1,100 @@
+name: Verify Release Metadata Image
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      candidate_artifact:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BROWSER_DIRECTORY: ${{ github.workspace }}/.browser-runs
+      BROWSER_RUN_ID: release-${{ github.run_id }}-${{ github.run_attempt }}
+      BROWSER_OUTPUT_DIR: ${{ github.workspace }}/.release-results/playwright
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.0.9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend-react/pnpm-lock.yaml
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.candidate_artifact }}
+          path: candidate-artifacts
+      - name: Load the final derived image
+        run: |
+          config="$(sudo cat /etc/docker/daemon.json 2>/dev/null || echo '{}')"
+          printf '%s\n' "$config" | jq '.features["containerd-snapshotter"] = false' | sudo tee /etc/docker/daemon.json >/dev/null
+          sudo systemctl restart docker
+          test "$(docker info --format '{{.Driver}}')" = overlay2
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+          uv run --no-project python scripts/release/candidate.py verify --directory candidate-artifacts --revision "${{ inputs.source_sha }}"
+          uv run --no-project python scripts/release/candidate.py load --directory candidate-artifacts --tag mc-admin:release
+          chmod +x candidate-artifacts/mc-admin-e2e
+          echo "BROWSER_IMAGE=$(python -c 'import json; print(json.load(open("candidate-artifacts/candidate.json"))["config_digest"])')" >> "$GITHUB_ENV"
+      - name: Validate release data and notification behavior
+        working-directory: frontend-react
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vitest run src/app/version/config.test.ts src/app/version/notifications.test.tsx
+          pnpm exec playwright install --with-deps chromium
+          ../candidate-artifacts/mc-admin-e2e browser --backend-image "$BROWSER_IMAGE" \
+            --output "$BROWSER_DIRECTORY" --run-id "$BROWSER_RUN_ID" -- \
+            pnpm exec playwright test browser/release.spec.ts
+      - name: Recover owned browser resources
+        if: always()
+        run: |
+          if [ -f "$BROWSER_DIRECTORY/$BROWSER_RUN_ID/manifest.json" ]; then
+            ./candidate-artifacts/mc-admin-e2e cleanup --run-dir "$BROWSER_DIRECTORY/$BROWSER_RUN_ID"
+          fi
+      - name: Verify final-image outcomes and cleanup
+        run: |
+          mkdir -p .release-results
+          uv run --no-project python scripts/release/candidate.py evidence \
+            --directory candidate-artifacts --revision "${{ inputs.source_sha }}" \
+            --runtime-kind browser --run-directory "$BROWSER_DIRECTORY/$BROWSER_RUN_ID" \
+            --browser-report .release-results/playwright/results.json \
+            --output .release-results/candidate-evidence.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-metadata-evidence
+          path: .release-results/candidate-evidence.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Collect redacted diagnostics
+        if: always()
+        run: |
+          mkdir -p .release-results
+          for name in manifest.json fixture-result.json; do
+            if [ -f "$BROWSER_DIRECTORY/$BROWSER_RUN_ID/$name" ]; then
+              cp "$BROWSER_DIRECTORY/$BROWSER_RUN_ID/$name" .release-results/
+            fi
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release-metadata-results
+          path: .release-results/
+          retention-days: 14
+          if-no-files-found: error

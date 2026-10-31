@@ -14,7 +14,9 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_api_cases_share_one_matrix_with_dependency_scoped_credentials():
     workflow = yaml.safe_load((ROOT / ".github/workflows/e2e-tests.yml").read_text())
     events = workflow["on"]
-    assert "pull_request" in events and "pull_request_target" not in events
+    coordinator = yaml.safe_load((ROOT / ".github/workflows/docker-image.yml").read_text())[True]
+    assert "pull_request" in coordinator and "pull_request_target" not in coordinator
+    assert "push" not in events and "pull_request" not in events
     assert events["workflow_call"]["inputs"]["qualification"]["default"] is False
     assert not (ROOT / ".github/workflows/dns-tests.yml").exists()
     jobs = workflow["jobs"]

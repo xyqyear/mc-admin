@@ -6,9 +6,6 @@ on:
       source_sha:
         required: true
         type: string
-  push:
-    branches: ["**"]
-  pull_request:
 
 permissions:
   contents: read

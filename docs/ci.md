@@ -1,6 +1,6 @@
 # CI scheduling and verification
 
-The release qualification graph builds one immutable candidate while static checks and backend tests run independently. API and browser shards consume the same candidate. See [release qualification](release.md) for source and image identity checks.
+Fresh qualification builds one immutable candidate while static checks and backend tests run independently. API and browser shards consume the same candidate. See [release qualification](release.md) for source and image identity checks.
 
 ## Scheduling budget
 
@@ -22,7 +22,7 @@ Standalone ordinary push/PR runs use component-specific concurrency groups and c
 
 Planning freezes the restored snapshot and its identity before generating the current immutable plan. Every shard executes that plan; independent shards never each choose a different latest history. History affects costs and placement only. The current collected catalog and execution policy independently determine completeness and required scenarios. API and browser audits accept both a single artifact extracted at the download root and multiple artifacts extracted into named subdirectories; every discovered report directory passes the same exact-once, candidate and cleanup checks.
 
-API history retains api-lifecycle-v2 individual costs, reusable-group membership/floors and fixed cleanup/recovery overhead. Global matrix placement preserves that measurement and compatibility fingerprint, so matching prior audited costs remain reusable. Historical assignments and candidate receipts are never reused.
+API history retains api-lifecycle-v2 individual costs, reusable-group membership/floors and fixed cleanup/recovery overhead. Global matrix placement preserves that measurement and compatibility fingerprint, so matching prior audited costs remain reusable. The timing planner never reuses assignments or candidate receipts. Complete qualification reuse belongs to the separate [release evidence gate](release.md).
 
 Each family publishes `timing-history-<family>` only after its complete successful coverage, outcomes, candidate/cleanup audit. History artifacts retain `history.json` for 90 days; raw failed reports remain diagnostic and cannot replace successful costs. New and changed inventories remain fully selected, with unseen identities receiving fallback estimates. Read-only Actions permissions allow cross-run retrieval without repository writes or automatic weight commits.
 
@@ -49,7 +49,11 @@ Committed backend log intervals and embedded API costs are cold-start scheduling
 
 Follow the repository's [delivery and test requirements](../AGENTS.md#交付与测试要求). Local execution is limited to tests for changed behavior and affected call paths, selected by explicit files, node IDs, packages or case filters. Never run the full project or a component's full test suite locally, including through accumulated directory, shard or subagent runs. Required lint, type checks and build checks remain in place. Documentation-only changes need no local tests.
 
-Changes limited to Markdown files require neither local tests nor CI. For other changes, use the existing `Qualify and Publish Application` workflow's manual dispatch on the implementation branch with `publish=false`. It executes candidate, static, backend, integrated API and browser gates without changing registry tags. Confirm the source SHA, complete successful gates, all three exact-once audits and owned cleanup before comparing elapsed times. For E2E engine changes, also run the API workflow with reuse disabled to check isolation.
+Pure documentation changes need no local tests or manually dispatched complete run. Automatic entry points still compute content identity and can attach existing evidence. Eligibility comes from `scripts/release/content.py`; Markdown fixtures are not excluded by extension.
+
+For delivery, manually dispatch `Qualify and Publish Application` on the latest implementation branch with `publish=false`. Set `force_full=true` when changing qualification machinery or explicitly requesting fresh validation. Otherwise the coordinator accepts trusted complete evidence for the same verification identity, checks metadata-only derived images when required, or runs all gates on a miss. Independent static/backend push/PR triggers are not used; API scheduled and explicitly selected diagnostic runs remain available. For E2E engine changes, also run the API workflow with environment reuse disabled.
+
+Equivalent qualification calls share a content-keyed `queue: max` concurrency group and recheck history after acquiring it; publication runs outside this group. GitHub retains up to 100 pending requests; overflow is a visible cancellation, never successful qualification. Workflow syntax uses pinned `actionlint.kjanat.dev/cmd/actionlint@v1.17.0`, the maintained fork supporting queue value/combination validation.
 
 Bind the dispatched run ID to the latest pushed commit, then have the primary agent start a single persistent wait command:
 
@@ -63,7 +67,7 @@ Wait silently for this command to exit. Do not read its log or progress, send pr
 gh run view <run-id> --json headSha,status,conclusion,jobs,url
 ```
 
-Require the exact latest commit and successful candidate, static, all backend shards and their audit, all API shards and their audit, all browser shards and their audit, and final qualification. On failure, inspect failed steps with `gh run view <run-id> --log-failed`, fix the cause, run only related local checks, commit and push, then repeat full qualification for the new commit. Old successful runs or incomplete gates do not qualify it.
+Require the exact latest target commit and successful final qualification. For full execution, check candidate/Go, static and every backend/API/browser shard and audit. For reuse, check the original complete run/time, matching identities and final candidate integrity. Metadata changes additionally require final-image notification smoke and owned cleanup. The receipt distinguishes executed gates from inherited evidence; skipped jobs are not newly passed tests. On failure, inspect failed steps with `gh run view <run-id> --log-failed`, fix the cause, run only related local checks, commit and push, then repeat full qualification for the new commit. An old green status alone or incomplete evidence cannot qualify it; the current run must validate and bind any reused evidence.
 
 ## Cloud configuration and recovery
 

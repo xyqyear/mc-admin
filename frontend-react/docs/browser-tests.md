@@ -67,6 +67,8 @@ The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owne
 
 ## Journey coverage
 
+`release.spec.ts` compares deployed release JSON with selected source, then verifies upgrade notification and acknowledgment. It runs in complete browser qualification and metadata-only final-image checks with the same owned fixture and cleanup.
+
 `task-progress.spec.ts` observes the built application's authenticated task SSE
 headers and one shared connection. A verified owned Restic process remains paused
 while the snapshot dialog keeps its close guard and receives no periodic task

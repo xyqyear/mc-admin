@@ -81,5 +81,5 @@ jobs:
           name: application-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate/
           compression-level: 0
-          retention-days: 7
+          retention-days: 30
           if-no-files-found: error

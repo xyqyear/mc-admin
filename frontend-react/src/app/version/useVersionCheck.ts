@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { currentVersion } from '@/app/version/config'
 import { compareVersions } from '@/app/version/config'
+import { useReleaseData } from './releaseData'
 
 const VERSION_STORAGE_KEY = 'mc-admin-last-seen-version'
 const REMIND_TIME_STORAGE_KEY = 'mc-admin-remind-time'
@@ -15,10 +15,12 @@ interface VersionCheckResult {
 }
 
 export function useVersionCheck(): VersionCheckResult {
+  const currentVersion = useReleaseData().data?.currentVersion ?? ''
   const [shouldShowDialog, setShouldShowDialog] = useState(false)
   const [fromVersion, setFromVersion] = useState('')
 
   useEffect(() => {
+    if (!currentVersion) return
     const checkVersion = () => {
       const lastSeenVersion = localStorage.getItem(VERSION_STORAGE_KEY)
       const remindTimeStr = localStorage.getItem(REMIND_TIME_STORAGE_KEY)
@@ -50,19 +52,24 @@ export function useVersionCheck(): VersionCheckResult {
     const timer = setTimeout(checkVersion, 1000)
 
     return () => clearTimeout(timer)
-  }, [])
+  }, [currentVersion])
 
   const showDialog = () => {
     setShouldShowDialog(true)
   }
 
   const handleClose = () => {
+    if (!currentVersion) return
     localStorage.setItem(VERSION_STORAGE_KEY, currentVersion)
     localStorage.removeItem(REMIND_TIME_STORAGE_KEY)
     setShouldShowDialog(false)
   }
 
   const handleRemindLater = () => {
+    if (!currentVersion) {
+      setShouldShowDialog(false)
+      return
+    }
     localStorage.setItem(REMIND_TIME_STORAGE_KEY, new Date().toISOString())
     setShouldShowDialog(false)
   }

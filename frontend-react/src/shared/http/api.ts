@@ -116,6 +116,7 @@ export const sleep = (ms: number): Promise<void> =>
 // Single source of truth for React Query cache keys. Hooks and invalidations
 // must always reference these factories so prefix-invalidation works.
 export const queryKeys = {
+  release: () => ['application-release'] as const,
   operations: {
     all: ['operations'] as const,
     session: (session: string) => [...queryKeys.operations.all, session] as const,

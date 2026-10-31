@@ -1,30 +1,44 @@
 # Candidate qualification and publication
 
-The application is built once as a single-platform `linux/amd64` OCI archive. Static checks, backend tests, API regression shards and browser journeys must succeed for the same source revision before the archive can be promoted. A registry push is a copy of the tested manifest, never another application build.
+The application ships as a single-platform `linux/amd64` OCI archive. Complete qualification executes static/frontend checks, Go tests, backend tests, API regression and browser journeys with their existing exact-once coverage and cleanup audits. Publication copies a qualified manifest with `skopeo copy --preserve-digests`; it never rebuilds the application.
 
-## Workflow graph
+## Content identities and source provenance
 
-`.github/workflows/docker-image.yml` calls the reusable candidate, static, backend, API and browser workflows. API qualification requires every current catalog case except DNSPod, matching PR regression and ordinary automatic CI. DNSPod runs only through explicit selection. Every checkout receives the caller's exact `github.sha`. The candidate job rejects a dirty checkout and compares its source fingerprint before and after building the application and race-tested Go executable.
+`scripts/release/content.py` hashes sorted committed Git entries, including paths, modes and object identities. Verification identity includes application code, tests, fixtures, locks, Dockerfiles, workflows, release tooling and all unknown inputs. Only regular non-executable Markdown in designated documentation locations and the single release-data file are excluded. Markdown fixtures remain inputs. The policy version and its implementation participate in the identity.
 
-The immutable `application-candidate` artifact contains:
+Release identity combines verification identity with `frontend-react/public/static/release.json`. The file must be regular and non-executable. Python qualification and the UI validate its fields, unique complete SemVer versions and dates. A release tag must equal the greatest displayed version. Commit IDs remain provenance, not cache keys. The original full source fingerprint still rejects dirty or changing build sources.
 
-- `application.oci.tar`: the one supported platform's image and all blobs.
-- `candidate.json`: source revision, dirty flag, source fingerprint, archive checksum, OCI manifest digest, image config digest and Go executable checksum.
-- `mc-admin-e2e`: the executable built and tested from that revision.
+`candidate.json` records target source, archive checksum, OCI manifest/config digests and Go executable checksum. Rebound/derived candidates retain `build_source`, the original application build source. Rebinding documentation-equivalent commits leaves OCI revision labels and image bytes unchanged. Target and build source remain separately visible in receipts and promotion evidence.
 
-API and browser shards validate the archive's blobs and checksums, load that archive into Docker, and address the application by its verified config digest. Each shard compares its actual manifest and result with the candidate identity and requires owned cleanup. Aggregate audits require the complete selected current inventory and exact-once successful execution under the shared immutable plan. Browser reports cannot contain failed, flaky or skipped journeys. API audits require verified cleanup of every recorded owned cloud scope; local Docker cleanup cannot establish cloud cleanup. Observed HTTP route counts are diagnostic, not an assertion-coverage threshold.
+## Qualification routes
 
-Candidate inspection decodes the manifest and config JSON in memory. Layer validation reads one MiB at a time, hashes all payload bytes and compares their actual count with the descriptor size. Missing or nonregular blob members, unsupported digests, truncated archives and mismatched payloads fail validation before loading or publication. The complete archive checksum is verified separately.
+`.github/workflows/docker-image.yml` is the shared push, PR, manual and tag entry point. It computes identity, serializes equivalent calls to `qualification.yml`, and promotes only semantic version tags. Manual `publish=false` is qualification only; `force_full=true` bypasses history. See [CI validation](ci.md#validation) for delivery and waiting.
 
-The qualification job runs even when a dependency fails. It accepts only the exact required set (`candidate`, `static`, `backend`, `api`, `browser`) with every result equal to `success`. The API caller explicitly requests the complete `qualification` profile. Missing, failed, cancelled and skipped required execution cannot produce a receipt. Backend, API and browser aggregate audits require their complete matrices to succeed before publishing scheduling history.
+The resolver repeats lookup under the content lock:
 
-Only the promotion job has `packages: write`. It requires successful qualification and a semantic version tag. Tag pushes qualify and promote; manual dispatch defaults to qualification only, and its `publish` option is effective only for a semantic version tag ref. Promotion revalidates the candidate and receipt, copies with `skopeo copy --preserve-digests`, and reads back every destination's raw manifest to compare its digest. A registry that requires a manifest rewrite causes failure. Images and build cache are not pushed to GHCR during candidate construction.
+- `full`: build one candidate and execute the exact set (`candidate`, `static`, `backend`, `api`, `browser`). Missing, failed, cancelled or skipped execution cannot issue a receipt. API qualification includes every current case except DNSPod, which requires explicit selection.
+- `reuse`: verify a trusted receipt and candidate with the same release identity, retain the image digest and bind target source without claiming new test execution.
+- `metadata`: reuse complete business qualification, derive a bounded data-only image, run version-data/notification tests and real-image browser smoke, and verify owned cleanup.
 
-The promotion CLI enforces the source boundary itself: formal promotion requires `--revision <full-40-character-SHA>` and a matching clean candidate. The workflow passes its exact `github.sha` to `promote`. Missing, malformed or mismatched revisions and dirty sources are rejected before any registry command. `--insecure-loopback` permits an uncommitted local fixture only for explicit loopback destinations; if a revision is supplied there, the same clean matching-source check still applies.
+`application-qualification-<verification identity>` contains versioned `qualification.json`: current identity/producer/target candidate, original complete qualification with source/run/attempt/time and five gates, actual executed gates, and any inherited final-image metadata evidence. Restoration validates the artifact checksum, originating run/attempt/source, successful completion of this repository's coordinator, original run provenance and independently recomputed Git identities. PR/fork, other workflow, failed or incomplete sources cannot authorize reuse. Candidate metadata, archive checksum/blobs and runner bytes must match. Missing/expired evidence causes full validation; corrupt or inconsistent evidence fails closed.
 
-Release tags use `vMAJOR.MINOR.PATCH`, optionally followed by SemVer prerelease identifiers such as `-beta.1` or `-rc.0`. Numeric identifiers cannot have leading zeroes. Build metadata (`+...`) is excluded from release tags because Docker tags cannot preserve it, and the image version must fit Docker's 128-character tag limit. The workflow accepts both stable and prerelease tag pushes and validates the tag before publication.
+Candidates, receipts and resolutions retain 30 days. Reuse never refreshes the original full qualification timestamp, including after metadata derivation. Legacy receipts are ineligible. This is historical evidence about tested content; external providers and hosted runners can change. Scheduled provider tests and forced qualification remain available.
 
-The [official metadata-action v6 SemVer rules](https://github.com/docker/metadata-action/tree/v6#type-semver) preserve a prerelease as its complete version and do not automatically generate `latest`. The workflow explicitly disables major/minor aliases and `latest` for prereleases. `v6.0.0-beta.1` therefore publishes only `6.0.0-beta.1` and `sha-<first-seven-commit-characters>`; it cannot update `6.0.0`, `6.0`, `6` or `latest`. Stable `v6.0.0` retains all five tags: `6.0.0`, `6.0`, `6`, `latest` and the SHA tag. Immediately before promotion, `scripts/release/tags.py` checks that the action's complete destination list equals this policy; unexpected, duplicated or missing destinations fail before any registry copy.
+## Metadata-only image verification
+
+`release.json` uses the application's existing `/static/` mount. Comparison and rendering remain application code and participate in verification identity. The UI requests same-origin JSON without HTTP cache reuse and does not acknowledge unavailable or invalid data. See [version notifications](../frontend-react/docs/version-updates.md).
+
+`scripts/release/metadata.py` appends one deterministic OCI layer containing only `/app/static/static/release.json`. Previous layers and bytes, runtime command/environment/configuration and runner remain unchanged. Config changes only append the rootfs diff ID and history entry; the manifest changes its config descriptor and adds that layer. No dependency installation, application compilation or registry candidate push occurs. Structural verification rejects other changes.
+
+`release-metadata.yml` loads the final image and runs `browser/release.spec.ts` through the owned Go fixture. The browser compares actual served JSON with selected source and checks upgrade notification, version/notes and acknowledgment. Runtime identity and cleanup are verified before accepting smoke evidence. Later reuse preserves this evidence.
+
+## Publication and immutable candidate checks
+
+Only promotion has `packages: write`. It validates the current receipt/content/target revision, copies the final candidate to the exact destination tags and reads back each raw registry manifest to compare its digest. Manifest rewrites fail. Candidate construction never pushes images or build cache to GHCR.
+
+Candidate inspection verifies one supported OCI manifest/config and every blob. Layers are hashed in bounded chunks with descriptor sizes checked; missing, nonregular, unsupported or truncated payloads fail before load/publication. The archive checksum is independent. API/browser audits retain actual candidate identity, successful exact-once outcomes and owned cleanup; cloud cleanup remains independently required.
+
+Tags use `vMAJOR.MINOR.PATCH`, optionally with SemVer prerelease identifiers. Build metadata is excluded from image tags. Prereleases publish only their complete version and SHA tag; stable releases additionally publish major/minor aliases and `latest`. `scripts/release/tags.py` checks the entire destination set before registry writes. Promotion requires the full clean target revision; synthetic local validation is restricted to loopback destinations.
 
 ## Digest terminology
 
@@ -65,7 +79,7 @@ uv run --project backend python scripts/release/candidate.py load \
   --directory /tmp/mc-admin-candidate --output /tmp/mc-admin-candidate-loaded.json
 ```
 
-Run only change-related API, browser, workload or deployment checks against the returned `local_image_id`. Keep the OCI manifest digest and source fingerprint alongside those reports. Complete qualification requires GitHub Actions for the latest SHA. This local dirty-source evidence cannot satisfy the CI `verify --revision <SHA>` requirement, which demands the matching clean checkout.
+Run only change-related API, browser, workload or deployment checks against the returned `local_image_id`. Keep the OCI manifest digest and source fingerprint alongside those reports. Delivery requires a current-target GitHub Actions qualification receipt. This local dirty-source evidence cannot satisfy the CI `verify --revision <SHA>` requirement, which demands the matching clean checkout.
 
 ## Executable gate checks
 

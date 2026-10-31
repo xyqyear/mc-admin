@@ -1,6 +1,6 @@
 # Version Update Notifications
 
-When the bundled frontend version is newer than the version recorded in localStorage, a modal surfaces the changelog the first time the user lands. Manually maintained — no remote check, no API call. The list of versions and their changes lives in `src/app/version/config.ts`.
+When the bundled frontend version is newer than the version recorded in localStorage, a modal surfaces the changelog the first time the user lands. Manually maintained data lives in `public/static/release.json`, served by the same image at `/static/release.json`. There is no external update service or API call.
 
 ## Why a manual list
 
@@ -10,7 +10,7 @@ A self-hosted app doesn't have a meaningful "latest available" remote endpoint t
 
 `app/version/useVersionCheck.ts`:
 
-1. On mount, after a 1 s debounce (avoids interfering with login redirect), reads `localStorage["mc-admin-last-seen-version"]`.
+1. Once valid release data is loaded, after a 1 s debounce (avoids interfering with login redirect), reads `localStorage["mc-admin-last-seen-version"]`.
 2. If the key is missing → first visit. Persists the current version, no modal.
 3. If the stored version is older than `currentVersion` → upgrade. Sets `shouldShowDialog = true` unless a "remind later" timestamp is still active (1 hour after the user clicked Remind Later).
 4. Returns `{ shouldShowDialog, fromVersion, toVersion, handleClose, handleRemindLater }`.
@@ -28,32 +28,23 @@ A self-hosted app doesn't have a meaningful "latest available" remote endpoint t
 
 Two buttons: Close (mark as seen), Remind Later (1-hour snooze).
 
-## Editing `app/version/config.ts`
+## Loading and editing release data
 
-To ship a new version's notification:
+`releaseData.ts` uses the shared QueryClient with `cache: no-store`, infinite in-memory freshness and explicit retry on error. Unavailable or invalid data never writes acknowledgment state; the dialog offers retry. Navigation remains usable while loading.
 
-```ts
-export const versionUpdates: VersionUpdate[] = [
-  // … earlier releases …
-  {
-    version: '3.0.2',
-    date: '2026-05-10',
-    title: '恢复与地图体验优化',
-    description: '完善范围恢复和地图刷新。',
-    features: ['Selective world rollback at chunk level (#456)'],
-    fixes: ['Map tile cache invalidation across dimensions (#492)'],
-    improvements: ['Faster mcmap palette generation for modded servers'],
-  },
-];
-```
+Append objects to `public/static/release.json`. Required string fields are `version`, `date`, `title` and `description`; optional `features`, `fixes` and `improvements` are string arrays. Use unique complete SemVer versions without build metadata and ISO dates. Comparison, URL and rendering logic stays in TypeScript. The tag must match the greatest version.
+
+Metadata-only changes reuse business qualification and receive data validation plus final-image notification smoke verification. See [release qualification](../../docs/release.md).
 
 Append each release to the list. `currentVersion` is the greatest version under `compareVersions`, independent of list position; the dialog sorts matching entries newest-first.
 
-Comparison follows SemVer precedence: numeric major/minor/patch, followed by dot-separated prerelease identifiers. Numeric identifiers compare numerically and precede non-numeric identifiers; final releases follow their prereleases (`6.0.0-beta.1 < 6.0.0-beta.2 < 6.0.0`). Build metadata after `+` does not affect ordering. Existing stored versions may omit minor/patch or include a `v` prefix. An empty or malformed stored version compares as `0.0.0`, so it cannot break the notification UI. Release entries use complete `major.minor.patch` versions, with optional prerelease/build suffixes.
+Comparison follows SemVer precedence: numeric major/minor/patch, followed by dot-separated prerelease identifiers. Numeric identifiers compare numerically and precede non-numeric identifiers; final releases follow their prereleases (`6.0.0-beta.1 < 6.0.0-beta.2 < 6.0.0`). Build metadata after `+` does not affect ordering. Existing stored versions may omit minor/patch or include a `v` prefix. An empty or malformed stored version compares as `0.0.0`, so it cannot break the notification UI. Release entries use complete versions with optional prerelease identifiers; stored-version comparison still tolerates build metadata.
 
 ## Files
 
-- `src/app/version/config.ts` — version list + comparator
+- `public/static/release.json` — deployed entries
+- `src/app/version/config.ts` — comparator and issue URLs
+- `src/app/version/releaseData.ts` — validated loading and query policy
 - `src/app/version/useVersionCheck.ts` — detection hook
 - `src/app/version/VersionUpdateDialog.tsx` — modal UI
 - `src/app/version/issueParser.tsx` — `#123` → GitHub link
