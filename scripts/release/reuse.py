@@ -34,10 +34,30 @@ def receipt_name(content: dict[str, str]) -> str:
     return "application-qualification-" + content["verification"]
 
 
+def ensure_source(root: Path, sha: str) -> bool:
+    if not candidate.REVISION.fullmatch(sha):
+        raise ValueError("Historical source requires a full commit revision")
+    probe = subprocess.run(["git", "cat-file", "-e", sha + "^{commit}"], cwd=root,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    if probe.returncode == 0:
+        return True
+    try:
+        fetched = subprocess.run(["git", "fetch", "--no-tags", "origin", sha], cwd=root,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=60)
+    except subprocess.TimeoutExpired:
+        return False
+    return fetched.returncode == 0
+
+
 def validate_receipt(value: dict[str, Any], root: Path, *, now: datetime | None = None) -> None:
     if value.get("schema_version") != SCHEMA or value.get("mode") not in {"full", "reuse", "metadata"}:
         raise ValueError("Unsupported qualification receipt")
     current = value["producer"]
+    sources = {current["sha"], value["original"]["producer"]["sha"]}
+    if value.get("data_evidence"):
+        sources.add(value["data_evidence"]["producer"]["sha"])
+    if not all(ensure_source(root, sha) for sha in sources):
+        raise OSError("Historical qualification source is unavailable")
     if identity(root, current["sha"]) != value["identity"]:
         raise ValueError("Qualification content differs from its committed source")
     item = value["candidate"]

@@ -120,6 +120,29 @@ def test_docs_and_commit_identity_do_not_change_content_but_release_data_does(re
     assert changed["release"] != original["release"]
 
 
+def test_history_fetch_recovers_commits_outside_the_checkout(repository, tmp_path):
+    original = content.git(repository, "rev-parse", "HEAD").decode().strip()
+    (repository / "README.md").write_text("documentation only")
+    commit(repository)
+    shallow = tmp_path / "shallow"
+    subprocess.run(["git", "clone", "--quiet", "--depth=1", repository.as_uri(), str(shallow)], check=True)
+    assert subprocess.run(["git", "cat-file", "-e", original], cwd=shallow, capture_output=True, check=False).returncode != 0
+    assert reuse.ensure_source(shallow, original)
+    assert content.identity(shallow, original) == content.identity(shallow)
+    assert not reuse.ensure_source(shallow, "0" * 40)
+    with pytest.raises(ValueError, match="full commit"):
+        reuse.ensure_source(shallow, "--untrusted-argument")
+
+
+def test_missing_historical_source_falls_back_without_rebinding(repository, tmp_path, monkeypatch):
+    base = tmp_path / "base"
+    value = qualified(repository, base, monkeypatch)
+    environment(monkeypatch, repository, "101")
+    monkeypatch.setattr(reuse, "ensure_source", lambda *_: False)
+    plan = reuse.resolve(repository, tmp_path / "restored", client=History(value, base))
+    assert plan["mode"] == "full"
+
+
 @pytest.mark.parametrize("path", ["app.py", "tests/fixture.md", "new-file", "Dockerfile", "backend/uv.lock", ".github/workflows/docker-image.yml", "scripts/release/content.py"])
 def test_all_effective_and_unknown_inputs_invalidate_qualification(repository, path):
     original = content.identity(repository)

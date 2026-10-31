@@ -22,7 +22,7 @@ The resolver repeats lookup under the content lock:
 
 `application-qualification-<verification identity>` contains versioned `qualification.json`: current identity/producer/target candidate, original complete qualification with source/run/attempt/time and five gates, actual executed gates, and any inherited final-image metadata evidence. Restoration validates the artifact checksum, originating run/attempt/source, successful completion of this repository's coordinator, original run provenance and independently recomputed Git identities. PR/fork, other workflow, failed or incomplete sources cannot authorize reuse. Candidate metadata, archive checksum/blobs and runner bytes must match. Missing/expired evidence causes full validation; corrupt or inconsistent evidence fails closed.
 
-Candidates, receipts and resolutions retain 30 days. Reuse never refreshes the original full qualification timestamp, including after metadata derivation. Legacy receipts are ineligible. This is historical evidence about tested content; external providers and hosted runners can change. Scheduled provider tests and forced qualification remain available.
+Candidates, receipts and resolutions retain 30 days. Reuse never refreshes the original full qualification timestamp, including after metadata derivation. Legacy receipts are ineligible. Trusted historical commits missing after squash or branch deletion are fetched by their verified full SHA; unavailable source causes a history miss. This is historical evidence about tested content; external providers and hosted runners can change. Scheduled provider tests and forced qualification remain available.
 
 ## Metadata-only image verification
 
