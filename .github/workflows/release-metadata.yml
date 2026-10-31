@@ -96,5 +96,6 @@ jobs:
         with:
           name: release-metadata-results
           path: .release-results/
+          include-hidden-files: true
           retention-days: 14
           if-no-files-found: error
