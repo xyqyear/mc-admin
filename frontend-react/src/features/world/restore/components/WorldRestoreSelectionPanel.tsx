@@ -10,7 +10,7 @@ import {
 import { Button } from '@/shared/ui/button'
 import { Separator } from '@/shared/ui/separator'
 import { useCreateSnapshot } from '@/features/backups/commands'
-import { useSnapshotTarget } from '@/features/backups/queries'
+import { useWorldSnapshotTarget } from '@/features/backups/queries'
 import { SnapshotCreateDialog } from '@/features/backups/ui/SnapshotCreateDialog'
 import type { WorldRestoreSelectionMode } from '@/features/world/restore/selectionStore'
 import type { ChunkKey } from '@/features/world/map/contracts'
@@ -51,9 +51,9 @@ export const WorldRestoreSelectionPanel: React.FC<
   const hasSelection = stats.chunkCount > 0
   const isComplete = mode === 'region' ? stats.fullRegionCount > 0 : hasSelection
 
-  const worldTarget = useSnapshotTarget({ kind: 'world', server_id: serverId, selection: { type: 'world' } })
-  const dimensionTarget = useSnapshotTarget(regionDirRelpath ? { kind: 'world', server_id: serverId, selection: { type: 'dimension', region_dir_relpath: regionDirRelpath } } : null)
-  const selectionTarget = useSnapshotTarget(isComplete && regionDirRelpath ? { kind: 'world', server_id: serverId,
+  const worldTarget = useWorldSnapshotTarget({ kind: 'world', server_id: serverId, selection: { type: 'world' } })
+  const dimensionTarget = useWorldSnapshotTarget(regionDirRelpath ? { kind: 'world', server_id: serverId, selection: { type: 'dimension', region_dir_relpath: regionDirRelpath } } : null)
+  const selectionTarget = useWorldSnapshotTarget(isComplete && regionDirRelpath ? { kind: 'world', server_id: serverId,
     selection: buildSelection({ scope: mode === 'region' ? 'regions' : 'chunks', regionDirRelpath, selection }) } : null)
   const canWorld = worldTarget.data?.allowed === true && !worldTarget.isError
   const canDimension = dimensionTarget.data?.allowed === true && !dimensionTarget.isError
@@ -165,8 +165,7 @@ export const WorldRestoreSelectionPanel: React.FC<
         </div>
 
         {[...new Set([worldTarget, dimensionTarget, selectionTarget].flatMap(query =>
-          query.isError ? ['暂时无法检查忽略规则，请稍后重试'] : query.data?.reason ? [query.data.reason]
-            : query.data?.skipped_count ? ['所选范围包含忽略目录，创建与恢复会跳过这些内容。'] : []))].map(message =>
+          query.isError ? ['暂时无法检查所选范围，请稍后重试'] : query.data?.reason ? [query.data.reason] : []))].map(message =>
           <p key={message} className="text-xs text-muted-foreground">{message}</p>)}
         <div className="border-t pt-3 space-y-2">
           <Button

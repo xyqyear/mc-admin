@@ -3,7 +3,7 @@
 Selective rollback of Minecraft world data at four granularities — chunk, region, dimension, or whole world. Built on Restic for snapshot storage and the `mcmap replace-chunks` / `remove-chunks` subcommands for sub-region splicing. Restoration saves safety evidence before writes; rollback availability depends on retained snapshot references and server identity.
 
 `snapshots/commands.py` owns common task acceptance, recovery and rollback. `selection.py` plans confined paths
-and resource scopes; `scope_execution.py` merges protected chunks with mcmap; `snapshots/file_restore.py` applies file replacements; `snapshots/restoration_store.py` owns short history transactions; `finalization.py`
+and resource scopes; `scope_execution.py` merges selected chunks with mcmap; `snapshots/file_restore.py` applies file replacements; `snapshots/restoration_store.py` owns short history transactions; `finalization.py`
 invalidates caches; `snapshots/previews.py` owns preview tasks and binding; `preview_rendering.py` builds map copies using the
 reference-counted manager in `snapshots/preview_sessions.py`. `artifacts.py` ties feature scratch
 directories to operation recovery evidence. Adapters do not discover the
@@ -58,17 +58,17 @@ dimension scan for endpoints and restore flows that need the complete layout.
 ## Safety snapshots
 
 [Common restoration](snapshot-restoration.md) owns task acceptance, safety snapshots,
-generation-bound history, source/current/retained-chain protection and rollback.
-World execution applies these rules to terrain, entities/POI and MCC sidecars.
-An ignored overflow file and its MCA chunk entry remain one protected unit;
-other allowed chunks may still be restored. Logical selections determine exclusion
-matching, while canonical paths enforce containment and conflicting resources.
+generation-bound history and rollback. World creation, candidate queries, previews,
+safety snapshots, restoration and rollback ignore current, source and historical
+exclusions. Terrain, entities, POI and MCC data follow the full selected scope;
+chunk operations preserve unselected chunks. Data absent inside a covered source
+root is restored as absent, including data omitted by a backup exclusion.
 
 世界布局发现保留服务器数据目录内链接根的逻辑名称，搜索实际根后将维度路径映射回该名称；数据目录外的链接根不进入布局。路径边界、资源冲突和执行前链接变化检查仍使用真实路径。Restic 暂存文件按真实路径落地，世界适配将文件级链接的 MCA/MCC 副本整理到同一逻辑区域目录，保证 mcmap 与地图预览按文件名找到对应溢出数据。
 
-区块目标的 MCA 或选中 MCC 通过文件级链接指向其它目录或名称时，先复制在线区域及溢出数据到任务拥有的工作目录，在副本中合并，再发布允许的 MCC 与 MCA 到冻结的真实目标。所有发布目标在第一次写入前一起重验，每次发布再确认当前边界；同目录临时文件经原子替换发布并有限清理，逻辑链接节点保留。合并失败不发布在线数据；发布中失败可能留下部分允许结果，安全快照与恢复记录提供回滚。未选中或被逻辑规则保护的溢出数据不发布。普通目录链接的区域直接使用真实目标目录，预览合并始终只修改会话副本。
+区块目标的 MCA 或选中 MCC 通过文件级链接指向其它目录或名称时，先复制在线区域及溢出数据到任务拥有的工作目录，在副本中合并，再发布允许的 MCC 与 MCA 到冻结的真实目标。所有发布目标在第一次写入前一起重验，每次发布再确认当前边界；同目录临时文件经原子替换发布并有限清理，逻辑链接节点保留。合并失败不发布在线数据；发布中失败可能留下部分允许结果，安全快照与恢复记录提供回滚。未选中的溢出数据不发布。普通目录链接的区域直接使用真实目标目录，预览合并始终只修改会话副本。
 
-手动维度快照以 `mc-admin-absence-v1:` Restic 标签保存当时缺失的附属目录。标签是有界、版本化的路径证据。旧快照未覆盖、且没有缺失证据的附属范围保持原状，并在跳过列表中说明；覆盖某个父目录但该目录中缺少子文件则属于可确认的源缺失。
+手动维度快照以 `mc-admin-absence-v1:` Restic 标签保存当时缺失的附属目录。标签是有界、版本化的路径证据。来源未覆盖选中范围且没有缺失证据时拒绝恢复；覆盖父目录但其中缺少选中文件时按源缺失处理。
 
 History retains the planned world selection and logical-to-execution mapping,
 so rollback does not require the current world to contain MCAs. Shared absence
@@ -177,12 +177,12 @@ Claims and player locations also have `/api/servers/{server_id}/claims` and `/pl
 
 World commands pass `{kind: "world", server_id, selection}` through the
 [common snapshot API](snapshot-restoration.md). `POST /api/snapshots/targets/check`
-accepts only world scopes and checks current selection rules without reading
-Restic. Source eligibility separately checks coverage without requiring speculative
+accepts only world scopes and validates the selected layout and confined paths without reading
+Restic or exclusion settings; its response contains only `allowed` and `reason`. Source eligibility separately checks coverage without requiring speculative
 MCC files that do not exist.
 
 Map previews use `GET /api/snapshots/previews/{id}/tiles/{rx}/{rz}.png` for
-REGIONS/CHUNKS selections. Region copies retain protected online sidecars; chunk
-copies start from online MCA/MCC data and merge only allowed selected chunks.
-Unselected and ignored overflow chunks remain intact. File actions, preview
+REGIONS/CHUNKS selections. Region copies use selected source data; chunk
+copies start from online MCA/MCC data and merge selected chunks.
+Unselected overflow chunks remain intact. File actions, preview
 binding and lifetime use the common contracts above.

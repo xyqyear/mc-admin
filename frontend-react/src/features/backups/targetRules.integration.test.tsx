@@ -15,7 +15,7 @@ import type { Operation } from '@/shared/operations/contracts'
 import { queryKeys } from '@/shared/http/api'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
-import { useSnapshotRules, useSnapshotTarget } from './queries'
+import { useSnapshotRules, useSnapshotTarget, useWorldSnapshotTarget } from './queries'
 import { checkLogicalSnapshotPaths } from './targetRules'
 import { fileSnapshotScope } from './commands'
 import type { SnapshotTargetRules } from './contracts'
@@ -88,11 +88,12 @@ it('matches logical path segments and merges overlapping selected roots without 
 
 it('checks world selections through the world-only POST without loading file rules', async () => {
   const posted: unknown[] = []
-  server.use(http.post('*/api/snapshots/targets/check', async ({ request }) => { posted.push(await request.json()); return HttpResponse.json({ allowed: true, skipped_count: 1, skipped_paths: ['world/region/c.0.0.mcc'], reason: null }) }))
+  server.use(http.post('*/api/snapshots/targets/check', async ({ request }) => { posted.push(await request.json()); return HttpResponse.json({ allowed: true, reason: null }) }))
   const scope = { kind: 'world' as const, server_id: 'alpha', selection: { type: 'chunks' as const, region_dir_relpath: 'world/region', chunks: [[0, 0] as [number, number]] } }
-  const view = renderHook(() => useSnapshotTarget(scope), { wrapper })
+  const view = renderHook(() => useWorldSnapshotTarget(scope), { wrapper })
   await waitFor(() => expect(view.result.current.data?.allowed).toBe(true))
   expect(posted).toEqual([{ scope }])
+  expect(view.result.current.data).toEqual({ allowed: true, reason: null })
   expect(reads).toEqual([])
 })
 

@@ -4007,19 +4007,6 @@
                 }
               ],
               "title": "Reason"
-            },
-            "skipped_count": {
-              "default": 0,
-              "title": "Skipped Count",
-              "type": "integer"
-            },
-            "skipped_paths": {
-              "default": [],
-              "items": {
-                "type": "string"
-              },
-              "title": "Skipped Paths",
-              "type": "array"
             }
           },
           "required": [

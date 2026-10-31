@@ -132,6 +132,9 @@ export interface ActiveRestorations {
 export interface SnapshotTargetCheck {
   allowed: boolean
   reason: string | null
+}
+
+export interface SnapshotPathCheck extends SnapshotTargetCheck {
   skipped_paths: string[]
   skipped_count: number
 }

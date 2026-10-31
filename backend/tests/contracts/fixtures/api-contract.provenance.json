@@ -1,6 +1,6 @@
 {
-  "base_commit": "2003c10c2d3ec06d36699b2004a031536e61405e",
-  "source": "Reviewed working tree for unified execution observation SSE",
-  "captured_on": "2026-10-18",
-  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including authenticated task events, non-snapshot task acceptance, file batch deletion, complete download manifests, generation-bound downloads, multi-path compression with validated browser-local timestamps, snapshot notes, authenticated logical target rules, world-only target checks and server detail generations; public event, task SSE frames and task payload schemas"
+  "base_commit": "ca0077f13e7aa565405cfc0fa6b67af6ca282188",
+  "source": "Reviewed working tree for exclusion-independent world recovery",
+  "captured_on": "2026-10-31",
+  "scope": "All declared HTTP/WebSocket routes and auth/CSRF declarations; representative OpenAPI including authenticated task events, non-snapshot task acceptance, file batch deletion, complete download manifests, generation-bound downloads, multi-path compression with validated browser-local timestamps, snapshot notes, authenticated logical target rules, world-only validity checks without skip fields and server detail generations; public event, task SSE frames and task payload schemas"
 }

@@ -57,7 +57,7 @@ app/
 ├── chunk_prune/           # versioned inputs, retained preview registry, geometry, execution and guarded apply
 ├── ftb_claims/            # FTB Utilities / FTB Chunks claim extraction via mcmap extract-ftb-claims
 ├── player_locations/      # saved player-position extraction via mcmap extract-players
-├── world/                 # selection planning, protected chunk merging, preview rendering and cache finalization
+├── world/                 # selection planning, selected chunk merging, preview rendering and cache finalization
 ├── websocket/console.py   # docker attach console
 └── utils/                 # async_fs, exec, system, compression, SSE helpers
 ```

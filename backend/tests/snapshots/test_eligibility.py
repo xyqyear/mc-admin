@@ -44,18 +44,7 @@ def snapshot(number, paths, excludes=(), tags=()):
     )
 
 
-def exhaustive_scope(resolved):
-    paths = set(resolved.paths)
-    for path in resolved.paths:
-        _, rx, rz, _ = path.name.split('.')
-        for x in range(int(rx) * 32, (int(rx) + 1) * 32):
-            for z in range(int(rz) * 32, (int(rz) + 1) * 32):
-                paths.add(path.parent / f'c.{x}.{z}.mcc')
-    ordered = tuple(sorted(paths))
-    return replace(resolved, paths=ordered, mappings=tuple(SnapshotPathMapping(path, path) for path in ordered))
-
-
-async def test_region_candidates_preserve_exact_exclusions_absence_order_and_notes(tmp_path):
+async def test_world_candidates_ignore_exclusions_and_preserve_coverage_absence_order_and_notes(tmp_path):
     resolved, protection = world_selection(tmp_path, [(-1, -1), (0, 0)])
     data = resolved.servers[0].data_path
     region, entities, poi = (data / 'world' / name for name in ('region', 'entities', 'poi'))
@@ -70,48 +59,40 @@ async def test_region_candidates_preserve_exact_exclusions_absence_order_and_not
         snapshot(1, [data], tags=selection_tags([], [])),
     ]
     actual = await select_sources(resolved, protection, resolved.paths, sources)
-    full = exhaustive_scope(resolved)
-    expected = await reference_sources(full, protection.with_mappings(full.mappings), resolved.paths, sources)
-    assert actual == expected
     assert [row.id for row in actual] == [sources[i].id for i in (0, 1, 3, 4, 5)]
-    assert actual[0].skipped_count == 2050
-    assert len(actual[0].skipped_paths) == 100
-    assert actual[1].skipped_paths == [str(mcc)]
-    assert actual[2].skipped_paths == [str(region / 'c.0.0.mcc')]
+    assert all(row.skipped_count == 0 and row.skipped_paths == [] for row in actual)
     assert [row.note for row in actual] == ['note 9', 'note 2', 'note 3', 'note 6', 'note 1']
     assert mcc.read_bytes() == b'external source chunk'
     assert all(path.read_bytes() == b'unchanged terrain' for path in resolved.paths)
     assert list(data.rglob('*.mcc')) == [mcc]
 
 
-@pytest.mark.parametrize('current', ['sidecar', 'parent', 'sibling'])
-async def test_current_sidecar_rules_match_exhaustive_selection(tmp_path, current):
+@pytest.mark.parametrize('current', ['sidecar', 'parent', 'sibling', 'world'])
+async def test_world_candidates_do_not_depend_on_current_rules(tmp_path, current):
     resolved, protection = world_selection(tmp_path, [(-1, 0)])
     data = resolved.servers[0].data_path
     rules = {
         'sidecar': data / 'world/region/c.-1.0.mcc',
         'parent': data / 'world/region',
         'sibling': data / 'world/region/c.0.0.mcc',
+        'world': data / 'world',
     }
     protection = SnapshotProtection.capture([rules[current]], mappings=resolved.mappings)
-    paths = protection.select_targets(resolved.paths)
     sources = [snapshot(1, [data], [data / 'world/poi/c.-2.0.mcc'])]
-    actual = await select_sources(resolved, protection, paths, sources)
-    full = exhaustive_scope(resolved)
-    expected = await reference_sources(full, protection.with_mappings(full.mappings), paths, sources)
-    assert actual == expected
-    assert actual[0].skipped_count == (1 if current == 'sibling' else 2)
+    actual = await select_sources(resolved, protection, resolved.paths, sources)
+    assert [row.id for row in actual] == [sources[0].id]
+    assert actual[0].skipped_count == 0 and actual[0].skipped_paths == []
 
 
-@pytest.mark.parametrize('policy', ['shared', 'distinct', 'protected'])
-async def test_385_snapshots_six_regions_finish_without_starving_other_work(tmp_path, policy):
-    resolved, protection = world_selection(tmp_path, [(x, 0) for x in range(-3, 3)])
+@pytest.mark.parametrize('policy', ['shared', 'distinct_exclusions', 'distinct_roots'])
+@pytest.mark.parametrize('region_count', [6, 384])
+async def test_large_world_queries_finish_without_starving_other_work(tmp_path, policy, region_count):
+    resolved, protection = world_selection(tmp_path, [(x, 0) for x in range(-region_count // 2, region_count // 2)])
     data = resolved.servers[0].data_path
     sources = [snapshot(
-        i, [data],
-        [data / 'world/entities'] if policy == 'protected' else
-        [data / '.mcmap', data / '.mcmap' / str(i)] if policy == 'distinct' else [data / '.mcmap'],
-        selection_tags([], []),
+        i, [data, data / '.mcmap' / str(i)] if policy == 'distinct_roots' else [data],
+        [data / 'world/entities', data / '.mcmap' / str(i)],
+        selection_tags([], [data / 'world', data / 'world' / str(i)] if policy == 'distinct_exclusions' else []),
     ) for i in range(385)]
     delays = []
     started = perf_counter()
@@ -123,7 +104,7 @@ async def test_385_snapshots_six_regions_finish_without_starving_other_work(tmp_
             delays.append(perf_counter() - tick)
     observer = asyncio.create_task(monitor())
     try:
-        result = await asyncio.wait_for(query, 5)
+        result = await asyncio.wait_for(query, 15)
         elapsed = perf_counter() - started
     finally:
         if not query.done():
@@ -131,9 +112,9 @@ async def test_385_snapshots_six_regions_finish_without_starving_other_work(tmp_
         await asyncio.gather(query, observer, return_exceptions=True)
     assert [row.id for row in result] == [source.id for source in sources]
     assert [row.note for row in result] == [source.note for source in sources]
-    assert all(row.skipped_count == (6150 if policy == 'protected' else 0) for row in result)
+    assert all(row.skipped_count == 0 and row.skipped_paths == [] for row in result)
     assert delays and max(delays) < 0.5
-    print(f'385 snapshots / 6 regions / {policy}: {elapsed:.4f}s, maximum scheduler gap {max(delays):.4f}s')
+    print(f'385 snapshots / {region_count} regions / {policy}: {elapsed:.4f}s, maximum scheduler gap {max(delays):.4f}s')
 
 
 async def test_cancelled_catalog_query_settles_and_next_query_is_independent(tmp_path):

@@ -18,6 +18,11 @@ class SnapshotProtection:
     excluded: tuple[Path, ...]
     data_paths: tuple[Path, ...] | None = None
     mappings: tuple[SnapshotPathMapping, ...] = ()
+    apply_exclusions: bool = True
+
+    @classmethod
+    def world(cls, mappings: Sequence[SnapshotPathMapping] = ()) -> "SnapshotProtection":
+        return cls((), (), mappings=tuple(mappings), apply_exclusions=False)
 
     @property
     def version(self) -> str:
@@ -56,12 +61,14 @@ class SnapshotProtection:
         return replace(self, mappings=tuple(mappings))
 
     def select_targets(self, paths: Sequence[Path]) -> tuple[Path, ...]:
-        allowed = tuple(path for path in paths if self.permits(path))
+        allowed = tuple(path for path in paths if self.permits(path)) if self.excluded else tuple(paths)
         if not allowed:
             raise TargetIgnoredError("所选范围均被快照规则忽略，没有可处理的内容")
         return allowed
 
     def skipped_under(self, paths: Sequence[Path]) -> tuple[Path, ...]:
+        if not self.excluded:
+            return ()
         targets = PathIndex(paths)
         return tuple(
             path

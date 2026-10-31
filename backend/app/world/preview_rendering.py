@@ -33,7 +33,6 @@ from .selection import (
     _find_dimension,
     _restore_dimension,
     group_chunks_by_region,
-    resolve_paths,
 )
 
 
@@ -109,22 +108,11 @@ class WorldPreviewRenderer:
                 await organize_staged_region(
                     session_dir / "source", data_path, path, int(rx), int(rz), protection
                 )
-        if selection.type is RestorationType.REGIONS:
-            for path in await resolve_paths(data_path, selection, include_mcc=True):
-                if protection.permits(path) or not await aioos.path.isfile(path):
-                    continue
-                source = await async_fs.resolve_inside(data_path, path)
-                destination = await _stage_destination(
-                    session_dir / "source", path
-                )
-                await aioos.makedirs(destination.parent, exist_ok=True)
-                await async_fs.copy2(source, destination)
         if selection.type is RestorationType.CHUNKS:
             async for event in self._preview_chunk_merge(
                 data_path=data_path,
                 selection=selection,
                 session_dir=session_dir,
-                protection=protection,
             ):
                 yield event
         if selection.type in (RestorationType.REGIONS, RestorationType.CHUNKS):
@@ -141,7 +129,6 @@ class WorldPreviewRenderer:
         data_path: Path,
         selection: RestorationSelection,
         session_dir: Path,
-        protection: SnapshotProtection,
     ) -> AsyncGenerator[TaskProgress]:
         """Copy live MCAs into ``preview/`` then splice selected chunks from the staged snapshot."""
         roots = await discover_world_roots(data_path)
@@ -192,12 +179,6 @@ class WorldPreviewRenderer:
                             await async_fs.copy2(
                                 confined, preview_subdir / sidecar.name
                             )
-                allowed = await self._executor.allowed_chunks(
-                    data_path, live_mca, rx, rz, local_chunks, protection
-                )
-                if not allowed:
-                    done += 1
-                    continue
                 if await aioos.path.exists(staged_mca):
                     if not await aioos.path.exists(preview_mca):
                         # Snapshot has the region but live doesn't; seed an
@@ -207,13 +188,13 @@ class WorldPreviewRenderer:
                     await self._executor.replace_selected_chunks(
                         source_mca=staged_mca,
                         target_mca=preview_mca,
-                        chunks=allowed,
+                        chunks=local_chunks,
                         owned_by=data_path,
                     )
                 elif await aioos.path.exists(preview_mca):
                     await self._executor.remove_selected_chunks(
                         target_mca=preview_mca,
-                        chunks=allowed,
+                        chunks=local_chunks,
                         owned_by=data_path,
                     )
                 done += 1

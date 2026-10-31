@@ -37,7 +37,7 @@ async def test_empty_source_removes_selected_data_and_remains_reversible(
     assert not list(case.data.rglob(".mc-admin-absence-*"))
 
 
-async def test_dimension_snapshot_records_absence_and_legacy_sources_preserve_unknown_data(
+async def test_dimension_snapshot_records_absence_and_uncovered_sources_fail_before_writes(
     world_case,
 ):
     case = world_case
@@ -50,9 +50,10 @@ async def test_dimension_snapshot_records_absence_and_legacy_sources_preserve_un
     eligible = await case.commands.eligible(scope("dimension"))
     assert source in [item.id for item in eligible]
     legacy_restore = await case.commands.restore(scope("dimension"), legacy.id, 1)
-    result = await complete(case, legacy_restore)
+    await complete(case, legacy_restore, success=False)
     assert chunk_value(live, 0) == "new entities"
-    assert str(entities) in result["skipped_paths"]
+    record = await case.commands.store.get(legacy_restore["restoration_id"])
+    assert record is not None and record.safety_snapshot_id is None
     restored = await case.commands.restore(scope("dimension"), source, 1)
     await complete(case, restored)
     assert not entities.exists()

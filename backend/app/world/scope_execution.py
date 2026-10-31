@@ -64,8 +64,6 @@ async def organize_staged_region(
     destination = SnapshotService.stage_destination(stage_dir, directory)
     mappings = {item.logical: item.execution for item in protection.mappings}
     for path in [mca, *_mcc_paths_for_region(mca.parent, rx, rz)]:
-        if not protection.permits(path):
-            continue
         execution = mappings.get(path)
         source = SnapshotService.stage_destination(
             stage_dir,
@@ -145,7 +143,6 @@ class RestoreScopeExecutor:
                 include_paths.append(live_dir / f"r.{rx}.{rz}.mca")
                 # MCC sidecars (1024 per region) are speculative; restic ignores nonexistent ones.
                 include_paths.extend(_mcc_paths_for_region(live_dir, rx, rz))
-        include_paths = list(protection.select_targets(include_paths))
 
         async with restore_stage() as stage_root:
             yield TaskProgress(
@@ -173,12 +170,6 @@ class RestoreScopeExecutor:
                     if live_dir is None:
                         continue
                     live_mca = live_dir / f"r.{rx}.{rz}.mca"
-                    allowed = await self.allowed_chunks(
-                        data_path, live_mca, rx, rz, local_chunks, protection
-                    )
-                    if not allowed:
-                        done += 1
-                        continue
                     staged_mca = await organize_staged_region(
                         stage_root, data_path, live_mca, rx, rz, protection
                     )
@@ -191,7 +182,7 @@ class RestoreScopeExecutor:
                         source_mca=staged_mca,
                         rx=rx,
                         rz=rz,
-                        chunks=allowed,
+                        chunks=local_chunks,
                         protection=protection,
                         work_dir=stage_root / "work" / sub / f"{rx}.{rz}",
                     )
@@ -272,27 +263,6 @@ class RestoreScopeExecutor:
                     await _publish_chunk_file(work_dir / path.name, target, data_path)
 
             await finalize(publish())
-
-    @staticmethod
-    async def allowed_chunks(
-        data_path: Path,
-        mca: Path,
-        rx: int,
-        rz: int,
-        chunks: list[tuple[int, int]],
-        protection: SnapshotProtection,
-    ) -> list[tuple[int, int]]:
-        await async_fs.resolve_inside(data_path, mca)
-        if not protection.permits(mca):
-            return []
-        allowed = []
-        for x, z in chunks:
-            sidecar = mca.parent / f"c.{rx * 32 + x}.{rz * 32 + z}.mcc"
-            await async_fs.resolve_inside(data_path, sidecar)
-            # An external chunk's MCA entry and MCC payload form one writable unit.
-            if protection.permits(sidecar):
-                allowed.append((x, z))
-        return allowed
 
     async def _run_chunk_op(
         self,

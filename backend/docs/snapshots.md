@@ -1,6 +1,6 @@
 # Snapshots (`app.snapshots`)
 
-Restic-backed backup integration. Wraps the `restic` CLI behind an async API and exposes the bits the rest of the app needs: snapshot creation, listing, retention pruning, restore (with progress), staging, and lock recovery — with configurable **ignored paths** that are excluded from backups and protected from restores.
+Restic-backed backup integration. Wraps the `restic` CLI behind an async API and exposes the bits the rest of the app needs: snapshot creation, listing, retention pruning, restore (with progress), staging, and lock recovery — with configurable **ignored paths** for file, server and global scopes. World selections process their full scope without exclusions.
 
 ## Why Restic
 
@@ -20,7 +20,7 @@ app/snapshots/
 ├── rules.py     # generation-bound logical rules for shared frontend decisions
 ├── coverage.py  # component-based path index and exclude-aware coverage predicate
 ├── source.py    # compiled snapshot coverage, logical identities and protection
-├── eligibility.py # request-local compact candidate selection and sidecar accounting
+├── eligibility.py # request-local coverage selection
 ├── planner.py   # build_restore_plan(): targets + ignores → one restic invocation per step
 ├── application.py # confined listing/cron path resolution and maintenance conflict type
 ├── policy.py    # manual backup time-window policy
@@ -48,10 +48,9 @@ app/snapshots/
 The explicit scope contract distinguishes the servers root, an entire server
 project, paths relative to `data`, and world selections. It collapses duplicate
 or nested logical targets and retains their separate logical-to-execution
-mappings, lexical and canonical file claims. `SnapshotProtection` freezes
-logical current exclusions together with source and retained-chain protection.
-Execution rechecks exclusions and mappings, rejecting configuration,
-`LEVEL_NAME` or accepted link-target drift before invoking Restic.
+mappings, lexical and canonical file claims. `SnapshotProtection` carries scope mappings and file protection. File scopes freeze
+current, source and retained-chain exclusions; world scopes use no exclusions.
+Execution rechecks target mappings and file protection before invoking Restic.
 Bulk scope resolution runs every candidate's complete `Path.resolve` and
 containment check in one worker-thread call with a shared resolved base.
 Source checks and execution rebinding likewise batch complete resolutions;
@@ -68,7 +67,12 @@ permanently prevent retention. References are bounded per runtime.
 
 `dynamic_config.snapshots.ignored_paths` holds literal paths **relative to each server's data directory** (default `[".mcmap"]`, keeping tile caches out of the repo). A `<LEVEL_NAME>` segment expands per-server to the `level-name` from `server.properties` (`app.minecraft.properties.read_level_name`). Configured and expanded paths must remain relative literal paths; absolute names, traversal and globs are rejected. Ignore matching uses logical names without following symbolic links.
 
-Semantics:
+These rules apply to file, server and global scopes. Map snapshots, candidates,
+previews, restoration, safety backups and rollback ignore this setting and all
+historical exclusions. Their selected terrain, entities, POI and MCC data follow
+source presence or absence, with unselected chunks preserved.
+
+File semantics:
 
 - If `B` links to `A`, ignoring `A` protects `A` and its logical descendants while direct selection through `B` remains allowed; ignoring `B` protects `B` and leaves direct selection of `A` allowed. Parent traversal backs up the link node and does not traverse its target.
 - **Backup** projects each logical exclusion inside a selected root to that root's frozen execution tree and passes absolute `--exclude` paths to Restic. Several selected aliases can share storage while retaining different logical protection. Data allowed through another selected alias is included; irreducible overlapping nested roots fail with `多个链接范围的排除规则重叠，请分别创建快照` before a snapshot is written.
@@ -79,8 +83,8 @@ Semantics:
 
 Application snapshots carry a bounded `mc-admin-logical-v2:` tag containing
 logical exclusions and compressed non-identity path mappings. Exact stored
-roots also bind identity selections without one tag entry per speculative MCC.
-A changed source root link target omits that source from eligible candidates,
+roots also bind identity selections without one tag entry per selected file.
+For file scopes, a changed source root link target omits that source from eligible candidates,
 including when the request selects a child of an identity root;
 an explicit restore fails during source validation before safety backup or
 writes. Sources taken over a parent directory retain ordinary subtree coverage.
@@ -162,8 +166,8 @@ Nested safety backups pass their outer operation's live lease. Every requested
 scope must already be covered; a child cannot acquire additional paths or upgrade
 a normal file restore into maintenance. Safety planning can explicitly allow
 speculative missing sidecars while requiring at least one existing target.
-Manual requests retain missing-target validation. Ignored-path, coverage and
-restore planning remain shared through `SnapshotService`.
+Manual requests retain missing-target validation. Coverage and restore planning remain shared through `SnapshotService`; only file
+scopes apply ignored-path protection.
 
 Common file/world recovery uses durable tasks, retained safety evidence and
 generation-bound history. See [restoration and previews](snapshot-restoration.md)
@@ -195,23 +199,12 @@ created snapshot as a successful content result. The shared creation dialog keep
 that identity visible and offers a separate note save retry. It never resubmits
 snapshot creation to repair metadata.
 
-Eligible sources must distinguish recorded exclusions from missing coverage.
-The [source eligibility contract](snapshot-restoration.md#source-eligibility)
-defines mixed-root skips, admission stop checks and retained rollback protection.
-
-Candidate discovery resolves MCA targets without preparing a mutation or
-enumerating every possible external MCC file. Region/chunk selections retain
-directory/coordinate membership and materialize relevant current or historical
-sidecar exceptions; broad recorded exclusions still produce exact skip counts
-and the first 100 sorted paths. World sidecars are ordinary files. Generic file
-selections retain logical alias identity checks.
-
-`SnapshotSource` compiles roots and exclusions once, sharing path indexes with
-execution and historical listing. An eligible request reuses identical source
-policies and resolved bindings only within that request; IDs, times and notes
-remain specific to each returned snapshot. Computation yields between sources
-and during large projections. Disconnecting `/snapshots/eligible` cancels its
-owned lookup and waits for subprocess cleanup; it does not cancel durable tasks.
+Source eligibility is defined by the
+[source contract](snapshot-restoration.md#source-eligibility).
+File candidates retain exclusion and logical identity checks. World candidates
+use source roots and absence evidence only; they neither expand potential MCC
+files nor compute skips. Query-local reuse and cooperative yields keep large
+selections responsive. Disconnects cancel and join owned repository reads.
 
 ## Observation and target feedback
 
@@ -219,11 +212,10 @@ owned lookup and waits for subprocess cleanup; it does not cancel durable tasks.
 rule version and expanded logical relative paths without running Restic or
 scanning the file tree. File, search and ordinary snapshot controls share this
 result and match literal path ancestry locally. `POST /snapshots/targets/check`
-accepts only a world scope and checks confinement and protection without running
-Restic or creating history. Fully ignored world scopes are unavailable; mixed
-scopes report a bounded skip list and total, including protected MCC logical
-counterparts. Both forms provide advisory UI feedback: acceptance and execution
-repeat authoritative checks, including source and rollback-chain protection.
+accepts only a world scope and checks layout and confinement without running
+Restic, reading exclusions or creating history. It returns `allowed` and `reason`.
+Both forms provide advisory UI feedback; acceptance and execution repeat
+authoritative scope checks.
 
 Active restoration discovery reads journal/history state independently of
 repository availability; see [history and observation](snapshot-restoration.md#history-and-active-observation).

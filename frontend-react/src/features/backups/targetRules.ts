@@ -1,4 +1,4 @@
-import type { SnapshotTargetCheck } from './contracts'
+import type { SnapshotPathCheck } from './contracts'
 
 function normalizedPath(path: string) {
   return path.split('/').filter(part => part && part !== '.').join('/')
@@ -8,7 +8,7 @@ function within(path: string, root: string) {
   return !root || path === root || path.startsWith(root + '/')
 }
 
-export function checkLogicalSnapshotPaths(paths: readonly string[], ignoredPaths: readonly string[]): SnapshotTargetCheck {
+export function checkLogicalSnapshotPaths(paths: readonly string[], ignoredPaths: readonly string[]): SnapshotPathCheck {
   const selected = [...new Set(paths.map(normalizedPath))].sort()
   const roots = selected.filter((path, index) => !selected.slice(0, index).some(root => within(path, root)))
   const ignored = [...new Set(ignoredPaths.map(normalizedPath))].sort()

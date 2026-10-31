@@ -9,7 +9,7 @@ import RestorationHistoryDrawer from '@/features/world/restore/components/Restor
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 const active = http.get('*/api/snapshots/restorations/active', () => HttpResponse.json({ total: 0, restorations: [] }))
-const target = http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 }))
+const target = http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())
 it('keeps old-instance recovery history readable and disables rollback with a reason', async () => {

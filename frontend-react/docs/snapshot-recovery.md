@@ -28,10 +28,11 @@ reconnection, explicit refresh and relevant configuration/writes refresh it.
 Unknown, failed or mismatched rules keep protected actions disabled. Selection,
 sorting and pagination use local path matching and do not issue per-row POSTs.
 
-`useSnapshotTarget` supports paths and world scopes. `checkWorldTarget` sends
-only world scopes to `POST /snapshots/targets/check` for layout/MCA/MCC checks;
-it does not send file/project/global scopes or note fields. World selection
-feedback and source eligibility are separate from file-rule caching.
+`useSnapshotTarget` evaluates file paths against shared rules.
+`useWorldSnapshotTarget` sends world scopes to `POST /snapshots/targets/check`
+for layout and path validation, returning only `allowed` and `reason`.
+World creation, candidates, previews and recovery ignore exclusion settings
+and show no skip notice.
 
 Eligible-source queries pass TanStack Query's abort signal through the HTTP
 client. Changing the selection or closing its last observer aborts the pending
@@ -39,7 +40,7 @@ request; another observer keeps a shared query alive. Reopening can issue a new
 query. This lifetime applies to candidate reads; accepted recovery tasks retain
 their independent observation and cancellation contract below.
 
-Mixed selections skip protected roots; all-protected selections remain disabled.
+Mixed file selections skip protected roots; all-protected selections remain disabled.
 Sources come from authoritative eligibility results: recorded exclusion is
 different from missing coverage. `SnapshotSkipNotice` displays source/preview
 `skipped_paths` and `skipped_count`; the browser does not interpret repository
@@ -79,7 +80,7 @@ Ready sessions heartbeat every 30 seconds. Missing, conflicting or expired
 sessions require regeneration. Closing, replacing or unmounting ready previews
 submits cleanup; closing observation during preparation does not cancel work.
 The explicit stop action uses task cancellation. Applying a preview carries its
-ID so the backend revalidates source, scope, generation, protection and observed
+ID so the backend revalidates source, scope, generation, file exclusion rules and observed
 target version before writes. Direct recovery remains available independently.
 
 ## History, rollback and cache refresh
@@ -92,8 +93,8 @@ Use `rollback_available` and its reason, retained generation/binding information
 and feature-specific stopped-state checks to gate rollback. Historical entries
 with `binding_issue` stay readable but cannot target a replacement generation.
 A rollback replaces later edits in the selected scope and first saves current
-state, making another rollback possible. Previously skipped roots stay protected
-even if current ignore rules change.
+state, making another rollback possible. File scopes retain previously skipped roots even if current rules change.
+World rollback uses the full retained selection without exclusion records.
 
 The backups resource registry refreshes snapshots/history after terminal outcomes,
 including partial failures and off-page completion. File/world registries handle
