@@ -1,7 +1,7 @@
 ## 1. Release data
 
 - [x] 1.1 Extract pure version JSON and load validated same-origin data; verify notification, failure/retry, snooze and first-visit behavior with targeted frontend tests.
-- [ ] 1.2 Add real-image release notification smoke coverage, verify the requested version and owned cleanup.
+- [x] 1.2 Add real-image release notification smoke coverage, verify the requested version and owned cleanup.
 
 ## 2. Qualification evidence
 
@@ -16,4 +16,4 @@
 ## 4. Delivery
 
 - [x] 4.1 Pass related Python/frontend tests and required Ruff, Pyright, frontend lint/types/contracts/build checks.
-- [ ] 4.2 Commit and push with issue #184, run forced complete qualification on the latest SHA, then verify exact reuse and metadata-only paths without publishing; record Actions links and evidence.
+- [x] 4.2 Commit and push with issue #184, run forced complete qualification on the latest SHA, then verify exact reuse and metadata-only paths without publishing; record Actions links and evidence.
