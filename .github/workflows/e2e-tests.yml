@@ -17,7 +17,7 @@ jobs:
       - name: Observe DNS transports without changing records
         run: |
           mkdir -p diagnostics
-          sudo tcpdump -i any -nn -tttt -vv -l 'port 53 and (host 190.92.196.2 or host 122.112.208.254 or host 1.1.1.1 or host 8.8.8.8)' > diagnostics/packets.txt 2>&1 &
+          sudo tcpdump -i any -nn -tttt -vv -l 'port 53' > diagnostics/packets.txt 2>&1 &
           capture=$!
           trap 'sudo kill "$capture" 2>/dev/null || true; wait "$capture" 2>/dev/null || true' EXIT
           cat > "$RUNNER_TEMP/dns_probe.py" <<'PY'
@@ -52,7 +52,7 @@ jobs:
           
           def probe(task):
               iteration, ip, domain, authority, transport = task
-              command = ["dig", "@" + ip, domain, "SOA", "+time=3", "+tries=1", "+tcp" if transport == "tcp" else "+notcp", "+norecurse" if authority else "+recurse"]
+              command = ["dig", "@" + ip, domain, "SOA", "+noedns", "+time=3", "+tries=1", "+tcp" if transport == "tcp" else "+notcp", "+norecurse" if authority else "+recurse"]
               started = time.monotonic()
               try:
                   result = subprocess.run(command, capture_output=True, text=True, timeout=6)
