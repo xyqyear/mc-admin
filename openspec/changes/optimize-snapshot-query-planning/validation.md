@@ -56,3 +56,13 @@ Required after committing and pushing: `Qualify and Publish Application` on the
 implementation branch with `publish=false`, bound to the pushed SHA. Local
 success does not satisfy this gate; the run and final audited outcome must be
 recorded after completion.
+
+First run: [41176222208](https://github.com/xyqyear/mc-admin/actions/runs/41176222208),
+source `367120c9495fe482875619beaecce23a71223988`. Candidate/Go, all static and
+frontend gates, all 14 backend shards and the backend coverage audit passed.
+API/browser shards failed before test execution at candidate loading: the
+containerd image store's local image ID differed from the OCI config digest.
+Their audits and final qualification correctly failed. The CI setup now
+explicitly selects classic `overlay2` for these disposable runtime runners,
+preserving every candidate digest, outcome and cleanup assertion. Complete
+qualification must be rerun for the resulting commit.

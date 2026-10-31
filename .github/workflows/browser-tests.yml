@@ -121,6 +121,10 @@ jobs:
           path: candidate-artifacts
       - name: Load the qualified candidate inputs
         run: |
+          config="$(sudo cat /etc/docker/daemon.json 2>/dev/null || echo '{}')"
+          printf '%s\n' "$config" | jq '.features["containerd-snapshotter"] = false' | sudo tee /etc/docker/daemon.json >/dev/null
+          sudo systemctl restart docker
+          test "$(docker info --format '{{.Driver}}')" = overlay2
           sudo apt-get update
           sudo apt-get install -y skopeo
           uv run --no-project python scripts/release/candidate.py verify --directory candidate-artifacts --revision "${{ inputs.source_sha }}"
