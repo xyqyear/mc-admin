@@ -291,6 +291,10 @@ def test_unified_workflow_routes_keep_full_audits_and_final_metadata_smoke():
     root = yaml.safe_load((ROOT / ".github/workflows/docker-image.yml").read_text())
     assert root["jobs"]["qualification"]["concurrency"]["queue"] == "max"
     assert "verification" in root["jobs"]["qualification"]["concurrency"]["group"]
+    smoke = yaml.safe_load((ROOT / ".github/workflows/release-metadata.yml").read_text())
+    diagnostics = next(step for step in smoke["jobs"]["smoke"]["steps"] if step.get("with", {}).get("name") == "release-metadata-results")
+    assert diagnostics["with"]["include-hidden-files"] is True
+    assert diagnostics["with"]["if-no-files-found"] == "error"
 
 
 @pytest.mark.parametrize("data", [b"[]", notes("01.0.0"), json.dumps([json.loads(notes())[0]] * 2).encode()])
