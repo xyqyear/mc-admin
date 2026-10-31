@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from .ignores import is_ignored
+from .coverage import PathIndex
 from .path_mapping import SnapshotPathMapping, mapping_json
 from .planner import TargetIgnoredError
 
@@ -25,7 +25,11 @@ class SnapshotProtection:
         return hashlib.sha256(value.encode()).hexdigest()
 
     def permits(self, path: Path) -> bool:
-        return not is_ignored(path, self.excluded)
+        return not self._excluded_index.contains(path)
+
+    @cached_property
+    def _excluded_index(self) -> PathIndex:
+        return PathIndex(self.excluded)
 
     def execution_path(self, path: Path) -> Path:
         mapping = self._mapping_index.get(path)
@@ -58,13 +62,11 @@ class SnapshotProtection:
         return allowed
 
     def skipped_under(self, paths: Sequence[Path]) -> tuple[Path, ...]:
+        targets = PathIndex(paths)
         return tuple(
             path
             for path in self.excluded
-            if any(
-                path.is_relative_to(target) or target.is_relative_to(path)
-                for target in paths
-            )
+            if targets.overlaps(path)
         )
 
     def require_current(self, current: Sequence[Path]) -> None:

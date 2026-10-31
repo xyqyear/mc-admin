@@ -28,7 +28,7 @@ export const snapshotApi = {
     } while (page.restorations.length && restorations.length < page.total);
     return { restorations, total: restorations.length };
   },
-  eligible: async (scope: SnapshotScope) => (await api.post<ListSnapshotSourcesResponse>('/snapshots/eligible', { scope })).data,
+  eligible: async (scope: SnapshotScope, signal?: AbortSignal) => (await api.post<ListSnapshotSourcesResponse>('/snapshots/eligible', { scope }, { signal })).data,
   getAllSnapshots: async (params?: {
     server_id?: string;
     path?: string;

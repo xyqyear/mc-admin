@@ -85,7 +85,7 @@ export function useActiveRestorations(serverId?: string, enabled = true) {
 export function useEligibleSnapshots(scope: SnapshotScope | null) {
   return useQuery({
     queryKey: queryKeys.snapshots.eligible(scope),
-    queryFn: () => snapshotApi.eligible(scope!),
+    queryFn: ({ signal }) => snapshotApi.eligible(scope!, signal),
     enabled: !!scope,
     staleTime: 5000,
   });
