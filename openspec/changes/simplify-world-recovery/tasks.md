@@ -13,4 +13,4 @@
 
 - [x] 3.1 Rewrite current specs and owning docs around file/world scope boundaries; validate OpenSpec and remove superseded current-state claims.
 - [x] 3.2 Pass affected backend/frontend tests, static checks, contracts, build and Go checks; record large-selection performance and recovery evidence.
-- [ ] 3.3 Commit and push with issue #183, dispatch publish=false qualification for the latest SHA and verify its final receipt and required gates.
+- [x] 3.3 Commit and push with issue #183, dispatch publish=false qualification for the latest SHA and verify its final receipt and required gates.

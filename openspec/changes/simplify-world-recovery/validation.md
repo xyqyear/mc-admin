@@ -47,9 +47,20 @@ The scenario asserts 384-region read responsiveness, authentication, ordinary
 backup exclusions, world snapshot completeness, negative-coordinate MCA/MCC
 bytes, deletion of historically excluded data and exact safety rollback.
 
-Backend verification passed 97 unique selected tests (46 world/eligibility tests, 47 file/world/HTTP cleanup tests, three architecture checks and one reviewed API contract check). The six performance nodes were also run with timing output. Qualification is pending.
+Backend verification passed 97 unique selected tests (46 world/eligibility tests, 47 file/world/HTTP cleanup tests, three architecture checks and one reviewed API contract check). The six performance nodes were also run with timing output.
 
 ## Qualification
+
+Run [41298886125](https://github.com/xyqyear/mc-admin/actions/runs/41298886125)
+fully qualified `3244bc4b42ac788b649ad9bc7afc67ac86508602` on 2026-11-01.
+Candidate/Go, static/frontend, all 15 backend shards and their audit,
+101/101 API cases, and 23/23 browser cases across three shards passed.
+Both Huawei cases passed and their cloud manifests confirmed `cleaned: true`.
+The full-mode receipt records successful candidate, static, backend, API and
+browser gates, verification identity
+`4fa5756a521a10ed9366b7674aaea6f441ca8594123e7cb935b25d6f3ef86f15`, and candidate
+manifest `sha256:68f164ad87d45f277b9a60a0f7f69f0e2c5232767518eb1124d1ad667ed6c862`.
+This run did not publish or deploy the application.
 
 Run [41199573485](https://github.com/xyqyear/mc-admin/actions/runs/41199573485)
 tested `d75bd49f3b34ee8a5c453385382c91bf1e4f6e9f`. Candidate/Go, static/frontend,
