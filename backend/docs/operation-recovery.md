@@ -142,6 +142,13 @@ TERM is queued before CONT so normal shutdown handlers can run; timed-out
 children receive KILL through the same handles. Failed discovery resumes the
 captured processes and retains recovery evidence instead of guessing ownership.
 
+Exit confirmation first checks the boot identity. In the matching PID namespace,
+signal 0 can prove that a valid registered process group no longer exists;
+only ESRCH permits skipping enumeration. Existing groups, permission errors and
+uncertain results retain the detailed membership scan. Parent exit alone cannot
+prove descendant termination. Actual signals still use verified pidfds, and the
+persisted process identity format is unchanged.
+
 Downgrade of `2026092501` refuses to drop the journal while protected records
 remain. Rehearse migration and rollback using a disposable database copy and
 retain recovery evidence before changing a deployed schema. Once only ordinary

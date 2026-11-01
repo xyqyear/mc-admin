@@ -1,14 +1,158 @@
 import asyncio
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from app.operations import processes
+
+
+async def test_reaped_process_group_is_confirmed_without_host_scan(monkeypatch):
+    process = await processes.spawn_process(sys.executable, "-c", "pass")
+    identity = processes._identities[process]
+    await process.wait()
+
+    def unexpected_scan(_pgid):
+        raise AssertionError("An absent group does not require a host scan")
+
+    monkeypatch.setattr(processes, "_group_pids", unexpected_scan)
+    assert processes._confirmed_exit(identity)
+    await processes.stop_process(process)
+
+
+@pytest.mark.parametrize("error", [None, PermissionError(), OSError("unknown")])
+@pytest.mark.parametrize("members", [[], [12345]])
+def test_present_or_uncertain_group_requires_membership_confirmation(monkeypatch, error, members):
+    identity = processes._identity(os.getpid())
+    assert identity is not None
+    identity = replace(identity, pgid=12345)
+
+    def probe(pgid, sig):
+        assert pgid == 12345 and sig == 0
+        if error is not None:
+            raise error
+
+    monkeypatch.setattr(processes.os, "killpg", probe)
+    monkeypatch.setattr(processes, "_group_pids", lambda _pgid: iter(members))
+    assert processes._confirmed_exit(identity) is (not members)
+
+
+def test_previous_boot_does_not_probe_a_reused_group(monkeypatch):
+    identity = processes._identity(os.getpid())
+    assert identity is not None
+
+    def unexpected_probe(*args):
+        raise AssertionError("An old boot cannot own current processes")
+
+    monkeypatch.setattr(processes.os, "killpg", unexpected_probe)
+    assert processes._confirmed_exit(replace(identity, boot_id="previous-boot"))
+
+
+@pytest.mark.parametrize("namespace_stat", ["1 (foreign)", "invalid", None])
+def test_unconfirmed_pid_namespace_keeps_membership_scan(monkeypatch, namespace_stat):
+    identity = processes._identity(os.getpid())
+    assert identity is not None
+    read_text = Path.read_text
+
+    def read(path, *args, **kwargs):
+        if path == Path("/proc/self/stat"):
+            if namespace_stat is None:
+                raise PermissionError("namespace unavailable")
+            return namespace_stat
+        return read_text(path, *args, **kwargs)
+
+    def unexpected_probe(*args):
+        raise AssertionError("Signal 0 requires matching namespace evidence")
+
+    monkeypatch.setattr(Path, "read_text", read)
+    monkeypatch.setattr(processes.os, "killpg", unexpected_probe)
+    monkeypatch.setattr(processes, "_group_pids", lambda _pgid: iter([identity.pid]))
+    assert not processes._confirmed_exit(identity)
+
+
+async def test_zombie_only_group_is_confirmed_by_fallback_scan(tmp_path):
+    release = tmp_path / "exit"
+    # Keep the zombie unreaped so signal 0 still observes its process group.
+    process = await asyncio.to_thread(subprocess.Popen, [
+        sys.executable, "-c", ("import pathlib, time\n"
+        f"while not pathlib.Path({str(release)!r}).exists(): time.sleep(0.001)\n"),
+    ], start_new_session=True)
+    try:
+        identity = processes._identity(process.pid)
+        assert identity is not None
+        release.touch()
+        async with asyncio.timeout(5):
+            while (Path(f"/proc/{process.pid}/stat").read_text().rsplit(")", 1)[1].split()[0]) != "Z":
+                await asyncio.sleep(0.01)
+        os.killpg(process.pid, 0)
+        assert processes._confirmed_exit(identity)
+    finally:
+        release.touch()
+        process.kill()
+        await asyncio.to_thread(process.wait, 5)
+
+
+async def test_parent_exit_does_not_confirm_a_live_child(tmp_path):
+    release = tmp_path / "parent-exit"
+    process = await processes.spawn_process(
+        sys.executable, "-c",
+        "import os, pathlib, time\n"
+        "if os.fork() == 0:\n"
+        " print(os.getpid(), flush=True)\n"
+        " time.sleep(30)\n"
+        "else:\n"
+        f" while not pathlib.Path({str(release)!r}).exists(): time.sleep(0.001)\n"
+        " os._exit(0)\n",
+        stdout=asyncio.subprocess.PIPE,
+    )
+    identity = processes._identities[process]
+    child_fd = None
+    try:
+        assert process.stdout is not None
+        child_pid = int(await asyncio.wait_for(process.stdout.readline(), 5))
+        child_fd = processes.open_pidfd(child_pid)
+        release.touch()
+        async with asyncio.timeout(5):
+            while process.returncode is None:
+                await asyncio.sleep(0.01)
+        assert not processes._confirmed_exit(identity)
+    finally:
+        if child_fd is not None:
+            processes.send_signal(child_fd, signal.SIGKILL)
+            os.close(child_fd)
+        release.touch()
+        await asyncio.wait_for(process.communicate(), 5)
+    assert processes._confirmed_exit(identity)
+
+
+async def test_worker_ignoring_term_is_killed_and_reaped():
+    process = await processes.spawn_process(
+        sys.executable, "-c",
+        "import signal, time\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "print('ready', flush=True)\n"
+        "time.sleep(30)\n",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    identity = processes._identities[process]
+    try:
+        assert process.stdout is not None
+        assert await asyncio.wait_for(process.stdout.readline(), 5) == b"ready\n"
+        await asyncio.wait_for(processes.stop_process(process, grace=0.05), 5)
+        assert process.returncode == -signal.SIGKILL
+        assert processes._confirmed_exit(identity)
+        assert process.stdout.at_eof()
+        assert process.stderr is not None and process.stderr.at_eof()
+        await processes.stop_process(process)
+    finally:
+        if process.returncode is None:
+            await processes.stop_process(process, grace=0.05)
 
 
 @pytest.mark.parametrize("during_discovery", [False, True])

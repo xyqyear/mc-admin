@@ -213,6 +213,17 @@ async def stop_process(process: asyncio.subprocess.Process, *, grace: float = 2.
 def _confirmed_exit(identity: ProcessIdentity) -> bool:
     if Path("/proc/sys/kernel/random/boot_id").read_text().strip() != identity.boot_id:
         return True
+    try:
+        same_namespace = int(Path("/proc/self/stat").read_text().split(" ", 1)[0]) == os.getpid()
+    except (OSError, ValueError):
+        same_namespace = False
+    if identity.pgid > 1 and same_namespace:
+        try:
+            os.killpg(identity.pgid, 0)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            pass
     # Group membership is readable without inspecting unrelated process roots.
     return next(_group_pids(identity.pgid), None) is None
 
