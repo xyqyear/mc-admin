@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { BrowserContext, Page, WebSocketRoute } from '@playwright/test'
+import type { MonitoringSnapshot } from '../src/features/monitoring/contracts'
 import { test, expect, login, editorValue, navigate, type OwnedApi, type OwnedEnvironment } from './fixtures'
 import { createTaskObservationFault, interruptRestoreAfterSafetySnapshot } from './streamFault'
 import { withCleanup } from './cleanup'
@@ -14,7 +15,15 @@ test.describe('owned administration journeys', () => {
 
   journey('lifecycle acceptance stays blocked until task status confirms completion', async ({ page, api, owned }) => {
     await api.stopped()
+    const stopped = (await api.json<MonitoringSnapshot>('/api/monitoring')).servers[owned.server_id].status
     await api.operation('down')
+    let staleStatus = true
+    await page.route('**/api/monitoring', async route => {
+      const response = await route.fetch()
+      const snapshot = await response.json() as MonitoringSnapshot
+      if (staleStatus) snapshot.servers[owned.server_id].status = stopped
+      await route.fulfill({ response, json: snapshot })
+    })
     const proxy = await createTaskObservationFault(owned.base_url)
     let taskId = ''
     await page.route('**/api/servers/*/operations', async route => {
@@ -29,6 +38,7 @@ test.describe('owned administration journeys', () => {
       const start = page.getByRole('button', { name: '启动', exact: true })
       await expect(start).toBeEnabled()
       await start.click()
+      staleStatus = false
       await proxy.interrupted
       const pendingOperation = page.getByRole('status').filter({ hasText: /正在/ })
       await expect(pendingOperation).toBeVisible()

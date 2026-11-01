@@ -70,20 +70,17 @@ const Overview: React.FC = () => {
     return serverStatusUtils.isOperationAvailable(operation, status)
   }
 
-  const handleStartServer = (serverId: string, status: ServerStatus) => {
+  const handleStartServer = (serverId: string) => {
     const server = enrichedServers.find(s => s.id === serverId)
     if (!server) return
 
-    const operation = status === 'CREATED' ? 'start' : 'up'
-    const operationText = status === 'CREATED' ? '启动' : '启动(up)'
-
     confirmStart({
       title: '确认启动',
-      description: `确定要${operationText}服务器 "${server.name}" 吗？`,
-      confirmText: `确认${operationText}`,
+      description: `确定要启动服务器 "${server.name}" 吗？`,
+      confirmText: '确认启动',
       cancelText: '取消',
       onConfirm: () => {
-        serverOperationMutation.mutate({ action: operation, serverId })
+        serverOperationMutation.mutate({ action: 'start', serverId })
       },
     })
   }
@@ -295,8 +292,8 @@ const Overview: React.FC = () => {
                             size="icon"
                             className="h-7 w-7"
                             title="启动服务器"
-                            disabled={record.pending || record.maintenance?.active || (!isOperationAvailable('start', record.status) && !isOperationAvailable('up', record.status))}
-                            onClick={() => handleStartServer(record.id, record.status)}
+                            disabled={record.pending || record.maintenance?.active || !isOperationAvailable('start', record.status)}
+                            onClick={() => handleStartServer(record.id)}
                           >
                             {serverOperationMutation.isPending ? <Spinner className="size-3.5" /> : <Play className="h-3.5 w-3.5" />}
                           </Button>

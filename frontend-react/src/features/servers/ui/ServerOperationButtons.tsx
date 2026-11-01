@@ -42,8 +42,7 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
 
   const handleStartServer = () => {
     if (!status) return;
-    const operation = status === 'CREATED' ? 'start' : 'up';
-    serverOperationMutation.mutate({ action: operation, serverId });
+    serverOperationMutation.mutate({ action: 'start', serverId });
   };
 
   const handleConfirmableServerOperation = (operation: 'stop' | 'restart' | 'down') => {
@@ -61,7 +60,7 @@ const ServerOperationButtons: React.FC<ServerOperationButtonsProps> = ({
     <>
       <Button
         variant={status === 'CREATED' || status === 'EXISTS' ? 'default' : 'outline'}
-        disabled={isPending || (!isOperationAvailable('start') && !isOperationAvailable('up'))}
+        disabled={isPending || !isOperationAvailable('start')}
         onClick={handleStartServer}
         title={maintenance.data?.active ? maintenance.data.description ?? '服务器正在维护' : '启动服务器'}
       >

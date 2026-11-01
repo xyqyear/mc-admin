@@ -10,6 +10,9 @@ from app.minecraft.manager import DockerMCManager
 from app.minecraft.status import MCServerStatus
 from app.monitoring.models import Sample, ServerSamples
 from app.monitoring.service import RuntimeMonitor
+from app.operations.journal import OperationJournal
+from app.operations.journal_types import OperationState
+from app.servers.commands import ServerCommands
 from app.servers.crud import create_server_record
 from app.snapshots.file_restore import FileRestoreAdapter, SnapshotServerRunning
 from app.world.locks import ServerOperationLock
@@ -68,3 +71,43 @@ async def test_missing_container_is_not_claimed(tmp_path):
     server = DockerMCManager(tmp_path).get_instance("missing")
     with pytest.raises(RuntimeError, match="尚未创建"):
         await server.get_container_id()
+
+
+async def test_start_uses_live_container_existence_and_preserves_existing_container(tmp_path, database, isolated_runtime, monkeypatch):
+    from tests.support.runtime import set_runtime_resource
+
+    resources = OwnedDockerResources(tmp_path)
+    name = resources.name("start-intent")
+    isolated_runtime.settings.server_path = resources.root
+    manager = DockerMCManager(resources.root)
+    set_runtime_resource(monkeypatch, "docker_mc_manager", manager)
+    isolated_runtime.journal = OperationJournal(database.session_factory)
+    server = manager.get_instance(name)
+    commands = ServerCommands()
+    original = resources.compose(name)
+    try:
+        await server.create(original)
+        async with database.session_factory() as session:
+            record = await create_server_record(session, name)
+        isolated_runtime.monitor.servers[record.id] = ServerSamples(
+            generation=record.id, status=Sample.ready(MCServerStatus.CREATED),
+        )
+        await commands.execute(name, "start")
+        await asyncio.wait_for(server.wait_until_healthy(), 120)
+        container_id = await server.get_container_id()
+        await commands.execute(name, "stop")
+        compose_path = await server.get_compose_file_path()
+        assert compose_path is not None
+        compose_path.write_text(original.replace("MODE: creative", "MODE: survival"))
+        isolated_runtime.monitor.servers[record.id].status = Sample.ready(MCServerStatus.EXISTS)
+        await commands.execute(name, "start")
+        await asyncio.wait_for(server.wait_until_healthy(), 120)
+        assert await server.get_container_id() == container_id
+        assert (await server.get_server_properties()).gamemode == "creative"
+        assert await server.send_command_rcon("list")
+        history = await isolated_runtime.journal.list()
+        assert len(history) == 3
+        assert all(entry.state is OperationState.SUCCEEDED and entry.writers_stopped for entry in history)
+        assert isolated_runtime.server_write_admission.recovery_reason(name) is None
+    finally:
+        await resources.cleanup()

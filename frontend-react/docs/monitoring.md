@@ -30,6 +30,10 @@ values stale. Status consumers use only ready observations and discard status
 when their read fails; backend command admission independently verifies current
 state. Details match samples to the configuration's server generation.
 
+Startup buttons submit `start` for both EXISTS and CREATED observations. The
+backend chooses creation or starting an existing container under its operation
+lease; a stale status must not choose a different Compose mutation in the UI.
+
 CPU preserves a logical-core percentage, including values above 100%. Memory
 preserves container accounting. I/O remains cumulative bytes; the UI does not
 derive rates or join counters across incarnations. Directory size has its own

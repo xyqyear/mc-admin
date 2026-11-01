@@ -21,7 +21,7 @@
 | 服务器路径归属 | `minecraft.server-path-boundaries` | 拒绝 dot/dot-dot 服务器名称；项目 symlink 别名、指向根目录的 data symlink 均不能读取或写入目标；修复链接后通过 API 核对原文件完整。配置根 symlink 及本项目内部 data symlink 的兼容性由后端路径测试验证。 |
 | Minecraft 生命周期 | `minecraft.lifecycle` | 通过 API 保存含多个等号的合法标签值，实际创建并启动 Docker/Minecraft，等待应用返回健康状态；修改和读取 RCON 白名单，验证消息接口；拒绝删除运行中的服务器；停止后修改配置并重建，确认新配置生效且保持停止，再次启动达到健康状态；手动 up/start/restart/stop/down 均核对新增唯一成功操作历史、操作者、运行意图、结束阶段及同一服务器代次，最后删除服务器。 |
 | 运行概览与配置 | `minecraft.overview`、`minecraft.rcon-and-files` | 验证统一监控中的受管服务器与有效资源样本、在线玩家、生成的世界布局、真实 RCON 输出及生成的 `server.properties`。 |
-| 共享监控与实例重启 | `minecraft.shared-monitoring` | 并发观察保留同一服务器代次和采样身份；真实停服后运行指标明确不可用、维护已结束；重新启动后服务器代次不变、容器采样身份变化，恢复有效 CPU、内存、累计 I/O 与目录占用样本。首次预热、部分故障、慢目录、同名代次替换及未知 writer 阻塞由后端定向测试覆盖。 |
+| 共享监控与实例重启 | `minecraft.shared-monitoring` | 并发观察保留同一服务器代次和采样身份；真实停服后运行指标明确不可用、维护已结束；重新启动后服务器代次不变、容器采样身份变化，恢复有效 CPU、内存、累计 I/O 与目录占用样本；下线后直接提交启动意图可重新创建容器并通过真实 RCON 验证。首次预热、部分故障、慢目录、同名代次替换及未知 writer 阻塞由后端定向测试覆盖。 |
 | Docker 控制台与运行时修改 | `minecraft.console-and-runtime-controls` | 验证 CPU、内存、IO、磁盘计数，控制台历史、尺寸调整、输入和未知消息协议；通过标准输入执行修改，再用 RCON 核对效果；验证格式化消息、运行中填充服务器数据的冲突、停止与启动，以及运行中修改 Compose 内存限制后的重建效果。 |
 | 控制台适配器错误安全输出 | `minecraft.console-safe-adapter-errors` | 在自有运行中 Minecraft 的 Compose 中设置 `logging.driver=none`，使真实 Docker SDK 无法读取历史；验证固定中文历史错误帧，同时 attach/stdin 仍可执行命令；通过 RCON 核对实际白名单变更，正常关闭 WebSocket 后服务器仍健康，普通容器日志不包含适配器原始 HTTP/文本诊断。 |
 | 已停止、缺失与非法请求 | `minecraft.stopped-and-invalid-requests` | 验证已停止服务器的指标、RCON、消息冲突和控制台错误帧；拒绝非法命令、消息长度与字段、非法操作；检查不存在的服务器响应。 |

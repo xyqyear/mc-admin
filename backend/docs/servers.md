@@ -19,6 +19,10 @@ The frontend issues one round-trip per high-level action; the orchestrators chai
 
 Lifecycle is **not transactional**. Each primitive issues its own commit; rollback is compensation, documented at the top of `orchestrators.py`. Lifecycle code touches only the public `MCInstance` surface — no `_compose_manager` reach-arounds.
 
+Startup intent is resolved from live container state inside the operation lease;
+cached monitoring cannot choose creation versus starting an existing container.
+See [monitoring](monitoring.md) for this boundary and the shared read model.
+
 ## Sync endpoint
 
 `POST /api/servers/sync` (OWNER-only) reconciles filesystem directories vs `ACTIVE` `Server` rows. The endpoint returns 202 with a task ID. Body supports `dry_run=true` (preview only — the task result is `SyncResult` with `applied=false`) and `force=true` (bypass the empty-filesystem safety guard that would otherwise refuse to deactivate every row when the mount fails). Concurrent submissions return 423 with the owning task ID. The empty-directory refusal is a failed task with `error_code=sync_empty_directory`. Each apply batch ends with a single DNS update.

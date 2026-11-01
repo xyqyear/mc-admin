@@ -1,15 +1,16 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
 
 import ServerOperationButtons from '@/features/servers/ui/ServerOperationButtons'
 
 const maintenance = vi.hoisted(() => ({ active: false }))
+const mutate = vi.hoisted(() => vi.fn())
 vi.mock('@/features/monitoring/queries', () => ({
   useServerMaintenance: () => ({ data: maintenance }),
 }))
 vi.mock('@/features/servers/commands', () => ({
-  useServerOperation: () => ({ isPending: false, mutate: vi.fn() }),
+  useServerOperation: () => ({ isPending: false, mutate }),
 }))
 vi.mock('@/features/servers/ui/ServerOperationConfirmDialog', () => ({
   useServerOperationConfirm: () => ({ showConfirm: vi.fn(), confirmDialog: null }),
@@ -46,4 +47,11 @@ it('restores blocking and displays the active task reason after a page remount',
   view.rerender(buttons('HEALTHY'))
   for (const name of ['停止', '重启', '下线']) expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(false)
   view.unmount()
+})
+
+it.each(['EXISTS', 'CREATED'] as const)('submits startup intent for a cached %s state', status => {
+  mutate.mockClear()
+  render(<MemoryRouter><ServerOperationButtons serverId="server" serverName="服务器" status={status} /></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: '启动' }))
+  expect(mutate).toHaveBeenCalledWith({ action: 'start', serverId: 'server' })
 })

@@ -125,3 +125,27 @@ The local external Mojang probe (`e2e-85f9f374a1ec`) also timed out; direct host
 access returned HTTP 502 after 12.77 s, while the configured host proxy returned
 200. This distinguishes local direct-network failure from the monitoring change;
 it does not establish the GitHub runner's upstream network cause.
+
+The push-triggered qualification of `25bb6bd1393ce72aff3108cbc17a86968146bfd5`,
+[run 41318043542](https://github.com/xyqyear/mc-admin/actions/runs/41318043542),
+passed all backend and API shards/audits, including Mojang, plus static and
+candidate/Go checks. One browser shard exposed a startup mutation bug: after
+down, a cached CREATED sample made the UI submit Compose start for an absent
+container. The resulting daemon failure correctly retained recovery blocking,
+causing subsequent journeys on that environment to fail as well.
+
+A real Docker regression reproduced `service "mc" has no container to start`
+before the fix. The UI now submits startup intent, and the backend decides
+creation versus starting inside its existing operation lease using live state.
+The real regression passed (46.62 s), proving creation against stale CREATED,
+preservation of the existing container ID and game mode against stale EXISTS,
+successful RCON, durable success records and no recovery block. Nine selected
+daemon history/cancellation checks also passed; uncertain mutation ownership
+still blocks conflicting restores. The browser lifecycle journey supplies a
+deliberately old CREATED observation and passed (20.0 s,
+`browser-62dee5f6d31c`). The public shared-monitoring case covers down followed
+directly by startup intent and verifies the running game through RCON.
+It passed normally (`e2e-07592bcf9750`, 49.0 s) and with `--no-reuse`
+(`e2e-ff7d2d0b2e4c`, 48.4 s); cleanup manifests were verified. Backend Ruff/Pyright,
+frontend lint/types/contracts/bundle, the eight selected overview/button tests,
+and affected Go vet/build passed after the correction.

@@ -45,7 +45,7 @@ func sharedMonitoring(ctx context.Context, t *engine.Scope) error {
 	}); err != nil {
 		return err
 	}
-	return t.Step("stop removes running metrics and restart resets the container sampling identity", func() error {
+	if err = t.Step("stop removes running metrics and restart resets the container sampling identity", func() error {
 		if err := fixtures.Operation(ctx, client, id, "stop"); err != nil {
 			return err
 		}
@@ -73,5 +73,25 @@ func sharedMonitoring(ctx context.Context, t *engine.Scope) error {
 			return fmt.Errorf("restart did not reset its sampling incarnation")
 		}
 		return nil
+	}); err != nil {
+		return err
+	}
+	return t.Step("startup intent uses live container state after removal", func() error {
+		if err := fixtures.Operation(ctx, client, id, "stop"); err != nil {
+			return err
+		}
+		if err := fixtures.WaitStatus(ctx, client, id, "created"); err != nil {
+			return err
+		}
+		if err := fixtures.Operation(ctx, client, id, "down"); err != nil {
+			return err
+		}
+		if err := fixtures.Operation(ctx, client, id, "start"); err != nil {
+			return err
+		}
+		if err := fixtures.WaitStatus(ctx, client, id, "healthy"); err != nil {
+			return err
+		}
+		return client.JSON(ctx, "POST", "/api/servers/"+id+"/rcon", map[string]string{"command": "list"}, nil, 200)
 	})
 }

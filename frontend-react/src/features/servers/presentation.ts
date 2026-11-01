@@ -4,7 +4,7 @@ export const serverStatusUtils = {
   isOperationAvailable: (operation: string, status: ServerStatus): boolean => {
     switch (operation) {
       case "start":
-        return ["CREATED"].includes(status);
+        return ["CREATED", "EXISTS"].includes(status);
       case "up":
         return ["EXISTS"].includes(status);
       case "stop":

@@ -30,6 +30,12 @@ fresh Engine observations; cached monitoring never grants permission to mutate
 worlds, files or container state. Compose continues to execute lifecycle and
 RCON/Query commands.
 
+The UI submits `start` as startup intent. Under the operation lease, the command
+checks live container existence and creates missing containers with Compose up,
+or starts existing containers without reconciling changed Compose configuration.
+The UI never chooses between these operations from a cached status. Explicit
+`up` remains a Compose reconciliation operation.
+
 ## Samples and identity
 
 Each sample contains `value`, `sampled_at`, `quality` and `error`. Quality is

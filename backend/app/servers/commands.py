@@ -84,7 +84,8 @@ class ServerCommands:
         }
         phase, completed_phase, running_intent = phases[action]
         async with operation_scope(f"server_{action}", [reference.server_id], actor_id=actor_id):
+            command = instance.up if action == "start" and not await instance.created() else getattr(instance, action)
             await run_daemon_mutation(
-                getattr(instance, action), phase=phase, completed_phase=completed_phase,
+                command, phase=phase, completed_phase=completed_phase,
                 running_intent=running_intent,
             )
