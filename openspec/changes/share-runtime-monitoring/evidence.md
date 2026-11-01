@@ -149,3 +149,11 @@ It passed normally (`e2e-07592bcf9750`, 49.0 s) and with `--no-reuse`
 (`e2e-ff7d2d0b2e4c`, 48.4 s); cleanup manifests were verified. Backend Ruff/Pyright,
 frontend lint/types/contracts/bundle, the eight selected overview/button tests,
 and affected Go vet/build passed after the correction.
+
+[Push run 41320558059](https://github.com/xyqyear/mc-admin/actions/runs/41320558059)
+for `83ac6bb6decba3262b5f5be2c80837cab400a1b3` passed every API/browser shard and
+audit, candidate/Go, static/frontend and 13 of 14 backend shards. The remaining
+failure was the world-maintenance fixture's missing `created()` method after
+startup gained its live-state read. Adding that method preserves the same fake
+external state and all original maintenance assertions. All five targeted
+maintenance tests and backend Ruff/Pyright passed; no application code changed.

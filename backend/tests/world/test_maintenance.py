@@ -40,6 +40,9 @@ class Instance:
     async def exists(self):
         return True
 
+    async def created(self):
+        return self.status not in {MCServerStatus.REMOVED, MCServerStatus.EXISTS}
+
 
 @pytest.fixture
 def manager(tmp_path):
