@@ -37,7 +37,7 @@ Environment setup and binary prerequisites belong to [development](docs/developm
 
 - 本地只运行改动直接相关及受影响调用路径的定向测试，必须用明确的文件、节点、包或用例筛选限定范围。禁止运行完整项目或任一组件的全量测试，也不得通过目录、分片或多个 agent 累计执行全量。必要的 lint、类型检查和构建仍按组件要求执行；纯文档变更不运行本地测试。
 - 项目变更优先使用独立分支。完成本地定向验证后，必须 commit、push，再对最新提交运行资格验证。只改明确的纯文档时不运行本地测试或手动完整 CI；自动入口可执行轻量等价验证。交付必须具有最新 SHA 的成功凭据，记录完整执行或经过校验的内容等价复用；旧 SHA 的绿灯本身不能代表交付完成。
-- 交付验证必须手动触发 `Qualify and Publish Application`（`.github/workflows/docker-image.yml`），选择开发分支并设置 `publish=false`。协调器决定完整执行、等价复用或版本数据验证；修改验证机制或显式要求重新验证时设置 `force_full=true`。普通 push 检查不能替代此次手动交付验证。
+- 交付验证使用开发分支 push 自动触发的 `Qualify and Publish Application`（`.github/workflows/docker-image.yml`），等待最新 SHA 的该运行，不重复手动触发。协调器决定完整执行、等价复用或版本数据验证。自动入口未触发时可手动补充；明确需要绕过等价复用时才手动设置 `force_full=true`，开发分支验证使用 `publish=false`。其他零散检查不能替代完整 qualification。
 - 执行完整 CI 前阅读 [CI 验证流程](docs/ci.md#validation)。确认最新 SHA 对应的 run ID 后，由主 agent 启动一次 `gh run watch <run-id> --exit-status --interval 60 --compact > <log-path> 2>&1`。等待期间静默，不读日志或进度、不开展其他工作；所有 agent 不得另行轮询同一 run/job。工具分段返回时继续等待同一命令。用户新消息可以中断等待；命令中断或连接失败不代表 CI 结束或通过。
 - 等待命令退出后统一核对一次 SHA、最终结论和 qualification 凭据。完整执行核对 candidate/Go、static/frontend、全部 backend/API/browser 分片、覆盖及清理审计；复用核对原始完整 run、内容指纹、期限和最终镜像，版本数据变化另核对定向冒烟及清理。失败后读取失败步骤，修复、定向验证、提交推送，再验证新 SHA；不得跳过检查、降低业务断言或用局部重跑代替。报告须附 SHA 和 Actions 链接；尚未通过时明确说明。
 - 功能变化必须配套行为测试，从用户场景、输入输出、副作用、权限、失败与恢复边界验证。不得机械复刻实现；删除旧测试须有行为移除、契约替换或有效覆盖合并的依据。

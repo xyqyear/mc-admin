@@ -51,11 +51,11 @@ Follow the repository's [delivery and test requirements](../AGENTS.md#交付与�
 
 Pure documentation changes need no local tests or manually dispatched complete run. Automatic entry points still compute content identity and can attach existing evidence. Eligibility comes from `scripts/release/content.py`; Markdown fixtures are not excluded by extension.
 
-For delivery, manually dispatch `Qualify and Publish Application` on the latest implementation branch with `publish=false`. Set `force_full=true` when changing qualification machinery or explicitly requesting fresh validation. Otherwise the coordinator accepts trusted complete evidence for the same verification identity, checks metadata-only derived images when required, or runs all gates on a miss. Independent static/backend push/PR triggers are not used; API scheduled and explicitly selected diagnostic runs remain available. For E2E engine changes, also run the API workflow with environment reuse disabled.
+For delivery, wait for `Qualify and Publish Application` automatically triggered by the implementation branch push. Do not manually dispatch a duplicate run for the same latest SHA. The coordinator accepts trusted complete evidence for the same verification identity, checks metadata-only derived images when required, or runs all gates on a miss. Changed verification inputs invalidate prior evidence through that identity. A manual run is appropriate when the automatic entry did not trigger or an explicit request needs `force_full=true` to bypass reuse; development-branch manual validation uses `publish=false`. Independent static/backend push/PR triggers are not used; API scheduled and explicitly selected diagnostic runs remain available. For E2E engine changes, also run the API workflow with environment reuse disabled.
 
 Equivalent qualification calls share a content-keyed `queue: max` concurrency group and recheck history after acquiring it; publication runs outside this group. GitHub retains up to 100 pending requests; overflow is a visible cancellation, never successful qualification. Workflow syntax uses pinned `actionlint.kjanat.dev/cmd/actionlint@v1.17.0`, the maintained fork supporting queue value/combination validation.
 
-Bind the dispatched run ID to the latest pushed commit, then have the primary agent start a single persistent wait command:
+Bind the push-triggered run ID to the latest pushed commit, then have the primary agent start a single persistent wait command:
 
 ```bash
 gh run watch <run-id> --exit-status --interval 60 --compact > <log-path> 2>&1

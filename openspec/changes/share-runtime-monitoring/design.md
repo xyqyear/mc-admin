@@ -146,7 +146,7 @@ HTTP 读取失败时，界面可保留上次值，但必须显示更新失败/�
 2. 迁移前端唯一观察入口及操作失效映射，迁移全部 API E2E 调用，删除分散旧接口和 helper；前后端只交付配套版本。
 3. 独立实现进程确认快速路径，完成真实进程、快照/恢复相关定向回归和性能比较。
 4. 更新 `backend/docs/monitoring.md`（新主题及索引）、runtime、minecraft、architecture、operation-recovery，以及前端 data-architecture、operation-refresh 和新 monitoring 主题/索引；更新 E2E 覆盖索引及受影响域文档。AGENTS 仅在新增阅读路由或边界要求时调整，不把实现细节写入指令文件。
-5. 定向本地验证、必要静态检查与构建通过后提交推送，对最新 SHA 手动执行 `Qualify and Publish Application` 的 `publish=false` 资格验证。记录行为、清理审计和性能证据。
+5. 定向本地验证、必要静态检查与构建通过后提交推送，等待最新 SHA 的 push 自动触发的 `Qualify and Publish Application`，不重复手动触发。记录行为、清理审计和性能证据。
 
 不需要数据库迁移或数据回填。回滚为整个应用镜像回退并刷新前端，内存样本重建，既有操作日志继续使用原恢复机制。本方案阶段不修改或压测线上；部署属于后续发布任务。
 

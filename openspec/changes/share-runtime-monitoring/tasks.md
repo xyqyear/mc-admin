@@ -34,5 +34,5 @@
 
 - [x] 6.1 同步本 change 的行为规范并更新监控主题、组件索引、Runtime/Minecraft/恢复及前端数据/刷新文档，更新 E2E 覆盖索引和相关域文档；检查链接、删除过时接口和轮询描述，AGENTS 仅补必要阅读路由。
 - [x] 6.2 完成改动路径的明确文件/节点定向测试及必要静态检查：后端 Pyright/Ruff，前端 lint/typecheck/boundaries/contracts/build，受影响 Go 包的格式/vet/build；记录实际选择与结果，不在本地执行全量测试。
-- [ ] 6.3 提交前询问 issue 编号，按逻辑分离监控重构与进程确认优化提交并推送；核对最终 diff、提交范围和最新 SHA，确保没有无关线上或部署修改。
-- [ ] 6.4 阅读 CI 验证流程，对最新 SHA 手动触发 `Qualify and Publish Application` 且 `publish=false`，按仓库规则等待并核验 qualification、全部要求的检查及清理凭据；记录 SHA、Actions 链接和性能报告，未成功不得声明完成。
+- [x] 6.3 提交前询问 issue 编号，按逻辑分离监控重构与进程确认优化提交并推送；核对最终 diff、提交范围和最新 SHA，确保没有无关线上或部署修改。
+- [ ] 6.4 阅读 CI 验证流程，等待最新 SHA 的 push 自动触发的 `Qualify and Publish Application`，不重复手动触发；按仓库规则核验 qualification、全部要求的检查及清理凭据，记录 SHA、Actions 链接和性能报告，未成功不得声明完成。
