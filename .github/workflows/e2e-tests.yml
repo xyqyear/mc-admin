@@ -15,6 +15,8 @@ jobs:
         replica: [1, 2]
     env:
       PROBE_REPLICA: ${{ matrix.replica }}
+      PROBE_DELAYS: '[30]'
+      PROBE_OFFSETS: '[30,45,60]'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

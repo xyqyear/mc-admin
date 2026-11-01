@@ -30,7 +30,8 @@ from huaweicloudsdkdns.v2.region.dns_region import DnsRegion
 
 OUT = Path(os.environ.get("PROBE_OUT", "diagnostics"))
 ALLOWED_ZONE = "e2e-test-mc.xyqyear.com"
-OFFSETS = (0, 2, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180)
+OFFSETS = tuple(json.loads(os.environ.get("PROBE_OFFSETS", "[0,2,5,10,15,20,30,45,60,90,120,180]")))
+DELAYS = tuple(json.loads(os.environ.get("PROBE_DELAYS", "[0,5,10]")))
 
 
 def utc():
@@ -88,7 +89,7 @@ class Cloud:
 
     def reserve(self, round_no, delay):
         scope = f"delay-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{os.environ['PROBE_REPLICA']}-r{round_no}-d{delay}"
-        if not re.fullmatch(r"delay-\d+-\d+-\d+-r\d+-d(?:0|5|10)", scope):
+        if not re.fullmatch(r"delay-\d+-\d+-\d+-r\d+-d(?:0|5|10|30)", scope):
             raise ValueError("invalid diagnostic ownership scope")
         base = f"primary.{scope}.{self.domain}."
         host = "vanilla." + base
@@ -136,7 +137,7 @@ class Cloud:
         allowed = {}
         for entry in manifest["scopes"]:
             expected_prefix = f"delay-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{os.environ['PROBE_REPLICA']}-"
-            if not entry["scope"].startswith(expected_prefix) or not re.fullmatch(r"delay-\d+-\d+-\d+-r\d+-d(?:0|5|10)", entry["scope"]):
+            if not entry["scope"].startswith(expected_prefix) or not re.fullmatch(r"delay-\d+-\d+-\d+-r\d+-d(?:0|5|10|30)", entry["scope"]):
                 raise ValueError("invalid cleanup scope")
             for definition in entry["definitions"]:
                 if not definition["name"].endswith("." + entry["scope"] + "." + self.domain + "."):
@@ -239,7 +240,7 @@ def summarize():
 
 async def run():
     mapping, ips, current = await discover()
-    metadata = {"utc": utc(), "zone": ALLOWED_ZONE, "nameservers": mapping, "ips": ips, "currently_advertised_ips": current, "revision": os.environ.get("GITHUB_SHA"), "replica": os.environ.get("PROBE_REPLICA"), "query_timeout_seconds": 3, "ttl": 600, "offsets": OFFSETS, "initial_delays": [0, 5, 10]}
+    metadata = {"utc": utc(), "zone": ALLOWED_ZONE, "nameservers": mapping, "ips": ips, "currently_advertised_ips": current, "revision": os.environ.get("GITHUB_SHA"), "replica": os.environ.get("PROBE_REPLICA"), "query_timeout_seconds": 3, "ttl": 600, "offsets": OFFSETS, "initial_delays": DELAYS}
     try:
         request = urllib.request.Request("http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01", headers={"Metadata": "true"})
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -255,7 +256,7 @@ async def run():
     try:
         for round_no in range(1, 4):
             async with asyncio.TaskGroup() as group:
-                for delay in (0, 5, 10):
+                for delay in DELAYS:
                     entry = cloud.reserve(round_no, delay)
                     epoch = await asyncio.to_thread(cloud.create, entry)
                     group.create_task(measure(entry, epoch, ips, global_limit, limits))
@@ -269,7 +270,8 @@ async def run():
 
 def validate():
     assert list(OFFSETS) == sorted(set(OFFSETS))
-    for delay in (0, 5, 10):
+    for delay in DELAYS:
+        assert delay in (0, 5, 10, 30)
         assert delay in OFFSETS
     message = dns.message.make_query("vanilla.primary.example.test.", "A", flags=0, use_edns=False)
     assert message.flags == 0 and message.edns == -1
