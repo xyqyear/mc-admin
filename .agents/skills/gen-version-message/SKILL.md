@@ -58,6 +58,7 @@ Follow this style guide for the version update message:
 
 **Style Guidelines:**
 
+- **Brevity**: Keep release notes as short as possible: a short title, one brief description, and normally 1–3 short items total. Merge related changes; omit implementation details, validation history and repeated summaries. Use the same concise wording for GitHub Releases.
 - **Language**: Chinese for user-facing text (title, description, features, fixes, improvements)
 - **Title**: Concise, describes the main theme (e.g., "控制台系统重构", "文件上传权限修复")
 - **Description**: One sentence explaining the update's value to users
