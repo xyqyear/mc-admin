@@ -109,7 +109,8 @@ class SnapshotService:
         )
 
     async def revalidate_protection(self, protection: SnapshotProtection) -> None:
-        protection.require_current(await self._current_ignores(protection.data_paths))
+        if protection.apply_exclusions:
+            protection.require_current(await self._current_ignores(protection.data_paths))
 
     async def _current_ignores(
         self, data_paths: Sequence[Path] | None = None
@@ -134,11 +135,13 @@ class SnapshotService:
         *,
         protection: SnapshotProtection | None = None,
     ) -> list[Path]:
-        """Restore recorded absence without deleting configured ignored descendants."""
+        """Restore recorded absence under the selected scope's protection."""
         protection = await self._bind_paths(
             paths, protection or await self.protection()
         )
-        protection = await SnapshotSource(await self.get_snapshot(snapshot_id)).protect(protection)
+        protection = await SnapshotSource(
+            await self.get_snapshot(snapshot_id), apply_exclusions=protection.apply_exclusions,
+        ).protect(protection)
         await self.revalidate_protection(protection)
         removed: list[Path] = []
 
@@ -205,10 +208,7 @@ class SnapshotService:
         tags: Sequence[str] = (),
         on_progress: BackupProgressCallback | None = None,
     ) -> ResticSnapshotWithSummary:
-        """Snapshot the given absolute paths, excluding configured ignores.
-
-        Protected roots are skipped; an entirely protected selection is rejected.
-        """
+        """Snapshot absolute paths under the supplied policy, defaulting to file rules."""
         with self.repository_use.retain():
             protection = protection or await self.protection()
             paths = protection.select_targets(paths)
@@ -270,7 +270,9 @@ class SnapshotService:
         protection = await self._bind_paths(
             targets, protection or await self.protection()
         )
-        protection = await SnapshotSource(await self.get_snapshot(snapshot_id)).protect(protection)
+        protection = await SnapshotSource(
+            await self.get_snapshot(snapshot_id), apply_exclusions=protection.apply_exclusions,
+        ).protect(protection)
         await self.revalidate_protection(protection)
         targets = protection.select_targets(targets)
         groups: dict[tuple[Path, ...], list[SnapshotPathMapping]] = {}

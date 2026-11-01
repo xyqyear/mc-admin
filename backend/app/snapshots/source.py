@@ -17,13 +17,13 @@ PathResolver = Callable[[Sequence[Path]], Awaitable[tuple[Path, ...]]]
 
 
 class SnapshotSource:
-    def __init__(self, snapshot: ResticSnapshot) -> None:
+    def __init__(self, snapshot: ResticSnapshot, *, apply_exclusions: bool = True) -> None:
         self.snapshot = snapshot
         self.paths = tuple(Path(value) for value in snapshot.paths)
-        self.excludes = tuple(Path(value) for value in snapshot.excludes)
+        self.excludes = tuple(Path(value) for value in snapshot.excludes) if apply_exclusions else ()
         self.roots = PathIndex(self.paths)
         self.excluded = PathIndex(self.excludes)
-        self.selection = snapshot_selection(snapshot)
+        self.selection = snapshot_selection(snapshot) if apply_exclusions else None
         self._root_set = frozenset(self.paths)
 
     @cached_property
@@ -54,6 +54,8 @@ class SnapshotSource:
         *,
         resolve: PathResolver = async_fs.resolve_many,
     ) -> SnapshotProtection:
+        if not protection.apply_exclusions:
+            return protection
         excluded = set(protection.excluded)
         if self.selection is not None:
             excluded.update(self.selection.excluded)

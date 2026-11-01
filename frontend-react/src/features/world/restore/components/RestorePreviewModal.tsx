@@ -271,7 +271,6 @@ export const RestorePreviewModal: React.FC<RestorePreviewModalProps> = ({
             </div>
             {state.percent != null && <Progress value={state.percent} />}
             {preview.result && <p className="text-sm text-muted-foreground">{preview.result.notice}</p>}
-            {!!preview.result?.skipped_count && <p className="text-sm">所选范围包含忽略内容，将保持不变。</p>}
             {preview.active && <Button variant="destructive" disabled={!preview.taskId || preview.cancelling} onClick={() => void preview.cancel()}>停止准备</Button>}
             {preview.result && onRestore && <Button onClick={() => onRestore(preview.result!.preview_id)}>按此预览恢复</Button>}
 

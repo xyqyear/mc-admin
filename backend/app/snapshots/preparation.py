@@ -11,13 +11,11 @@ from ..files.resources import path_claims
 from ..operations.context import revalidate_targets
 from ..operations.coordinator import ResourceClaim, ResourceKind
 from ..utils import async_fs
-from ..world.scope_execution import RestoreScopeExecutor
-from ..world.selection import group_chunks_by_region
+from ..world.selection import resolve_paths
 from .evidence import snapshot_absence
 from .file_restore import FileRestoreAdapter
 from .models import ResticSnapshot
 from .protection import SnapshotProtection
-from .restoration_models import RestorationType
 from .restoration_store import SessionFactory
 from .scopes import (
     GlobalScope,
@@ -78,10 +76,13 @@ class SnapshotPlanner:
             history_paths=history_paths,
             allow_missing_dimension=from_history,
         )
-        protection = await self.snapshots.protection(
-            retained=retained,
-            data_paths=[ref.data_path for ref in resolved.servers],
-        )
+        if isinstance(scope, WorldScope):
+            protection = SnapshotProtection.world()
+        else:
+            protection = await self.snapshots.protection(
+                retained=retained,
+                data_paths=[ref.data_path for ref in resolved.servers],
+            )
         protection = protection.with_mappings(resolved.mappings)
         paths = protection.select_targets(resolved.paths)
         executions = tuple(protection.execution_path(path) for path in paths)
@@ -173,7 +174,7 @@ class SnapshotPlanner:
     ) -> tuple[PreparedSnapshot, tuple[Path, ...]]:
         scope = prepared.resolved.scope
         selection = scope.selection if isinstance(scope, WorldScope) else None
-        source_index = SnapshotSource(source)
+        source_index = SnapshotSource(source, apply_exclusions=prepared.protection.apply_exclusions)
         protection = await source_index.protect(prepared.protection)
         documented_absence = snapshot_absence(source)
         absent = tuple(
@@ -184,52 +185,14 @@ class SnapshotPlanner:
                 if any(path.is_relative_to(parent) for parent in documented_absence)
             }
         )
-        if selection:
-            covered = {
-                path
-                for path in prepared.paths
-                if path.suffix != ".mcc"
-                and (
-                    path in absent
-                    or any(
-                        protection.execution_path(path).is_relative_to(parent)
-                        for parent in absent_parents
-                    )
-                    or source_index.covers(path, protection)
-                )
-            }
-            if not covered:
-                raise HTTPException(status_code=400, detail="源快照未覆盖所选范围")
-            uncovered = {
-                path
-                for path in prepared.paths
-                if path.suffix != ".mcc" and path not in covered
-            }
-            uncovered_dirs = {
-                path.parent for path in uncovered if path.suffix == ".mca"
-            }
-            covered_dirs = {path.parent for path in covered if path.suffix == ".mca"}
-            uncovered_dirs -= covered_dirs
-            uncovered = {
-                path for path in uncovered if path.parent not in uncovered_dirs
-            } | uncovered_dirs
-            for path in prepared.paths:
-                if path.suffix == ".mcc":
-                    _, x, z, _ = path.name.split(".")
-                    region = path.with_name(f"r.{int(x) // 32}.{int(z) // 32}.mca")
-                    if region in uncovered:
-                        uncovered.add(path)
-            if uncovered:
-                protection = SnapshotProtection.capture(
-                    protection.current,
-                    [*protection.excluded, *uncovered],
-                    data_paths=protection.data_paths,
-                    mappings=protection.mappings,
-                )
         prepared = replace(prepared, protection=protection)
         protection.select_targets(prepared.resolved.paths)
-        await self.require_permitted_chunks(prepared.resolved, protection)
-        for path in prepared.paths:
+        coverage_paths = prepared.paths
+        if selection and not prepared.from_history:
+            coverage_paths = tuple(await resolve_paths(
+                prepared.resolved.servers[0].data_path, selection, include_mcc=False,
+            ))
+        for path in coverage_paths:
             if selection and path.suffix == ".mcc":
                 continue
             if (
@@ -242,31 +205,3 @@ class SnapshotPlanner:
             ):
                 raise HTTPException(status_code=400, detail="源快照未覆盖所选范围")
         return prepared, absent
-
-    @staticmethod
-    async def require_permitted_chunks(
-        resolved: ResolvedScope, protection: SnapshotProtection
-    ) -> None:
-        scope = resolved.scope
-        if (
-            isinstance(scope, WorldScope)
-            and scope.selection.type is RestorationType.CHUNKS
-        ):
-            selection = scope.selection
-            permitted_chunks = False
-            for (rx, rz), chunks in group_chunks_by_region(selection.chunks).items():
-                for path in resolved.paths:
-                    if (
-                        path.name == f"r.{rx}.{rz}.mca"
-                        and await RestoreScopeExecutor.allowed_chunks(
-                            resolved.servers[0].data_path,
-                            path,
-                            rx,
-                            rz,
-                            chunks,
-                            protection,
-                        )
-                    ):
-                        permitted_chunks = True
-            if not permitted_chunks:
-                protection.select_targets([])

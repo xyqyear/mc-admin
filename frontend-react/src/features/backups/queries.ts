@@ -53,20 +53,20 @@ export function useSnapshotRules(serverId: string, refreshOnEntry = false) {
   return { ...query, isError: query.isError || identity.isError, checking: !checked || query.isFetching || !query.isSuccess || !bound || identity.isError };
 }
 
-export function useSnapshotTarget(scope: PathsScope | WorldScope | null) {
-  const paths = scope?.kind === 'paths' ? scope : null;
-  const world = scope?.kind === 'world' ? scope : null;
-  const rules = useSnapshotRules(paths?.server_id ?? '');
-  const target = useQuery({
-    queryKey: queryKeys.snapshots.target(world),
-    queryFn: () => snapshotApi.checkWorldTarget(world!),
-    enabled: !!world,
+export function useWorldSnapshotTarget(scope: WorldScope | null) {
+  return useQuery({
+    queryKey: queryKeys.snapshots.target(scope),
+    queryFn: () => snapshotApi.checkWorldTarget(scope!),
+    enabled: !!scope,
     staleTime: 5000,
   });
-  if (!paths) return target;
+}
+
+export function useSnapshotTarget(scope: PathsScope | null) {
+  const rules = useSnapshotRules(scope?.server_id ?? '');
   return {
     ...rules,
-    data: rules.checking || !rules.data ? undefined : checkLogicalSnapshotPaths(paths.paths, rules.data.ignored_paths),
+    data: !scope || rules.checking || !rules.data ? undefined : checkLogicalSnapshotPaths(scope.paths, rules.data.ignored_paths),
     isPending: rules.checking && !rules.isError,
     isLoading: rules.checking && !rules.isError,
   };

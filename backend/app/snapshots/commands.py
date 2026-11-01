@@ -1,6 +1,5 @@
 import errno
 import json
-import re
 import secrets
 from collections.abc import AsyncGenerator
 from contextlib import ExitStack, aclosing
@@ -44,7 +43,6 @@ from .evidence import absence_tags
 from .file_restore import FileRestoreAdapter
 from .models import ResticSnapshotWithSummary
 from .path_mapping import execution_parent_mappings, mapping_json
-from .planner import TargetIgnoredError
 from .preparation import PreparedSnapshot, SnapshotPlanner
 from .preview_models import PreviewBinding
 from .previews import SnapshotPreviews, get_snapshot_previews
@@ -92,36 +90,10 @@ class SnapshotCommands:
         self._active: dict[str, ResolvedScope] = {}
 
     async def check_world_target(self, scope: WorldScope) -> SnapshotTargetCheck:
-        resolved = await resolve_scope(
+        await resolve_scope(
             scope, root=self._root, sessions=self._sessions, include_mcc=False
         )
-        protection = await self.snapshots.protection(
-            data_paths=[ref.data_path for ref in resolved.servers]
-        )
-        try:
-            protection.select_targets(resolved.paths)
-            await self._planner.require_permitted_chunks(resolved, protection)
-        except TargetIgnoredError:
-            return SnapshotTargetCheck(
-                allowed=False, reason="此范围已被快照规则忽略，不能创建快照或恢复"
-            )
-        skipped = set(protection.skipped_under(resolved.paths))
-        selected_chunks = set(scope.selection.chunks)
-        selected_paths = set(resolved.paths)
-        for path in protection.excluded:
-            match = re.fullmatch(r"c\.(-?\d+)\.(-?\d+)\.mcc", path.name)
-            if match is None:
-                continue
-            x, z = map(int, match.groups())
-            if selected_chunks and (x, z) not in selected_chunks:
-                continue
-            if path.with_name(f"r.{x // 32}.{z // 32}.mca") in selected_paths:
-                skipped.add(path)
-        return SnapshotTargetCheck(
-            allowed=True,
-            skipped_paths=[str(path) for path in sorted(skipped)[:100]],
-            skipped_count=len(skipped),
-        )
+        return SnapshotTargetCheck(allowed=True)
 
     def require_deletable(self, server_id: str) -> None:
         for task_id, resolved in self._active.items():
@@ -320,10 +292,11 @@ class SnapshotCommands:
                     raise HTTPException(
                         status_code=409, detail="恢复记录或安全快照已变化"
                     )
-                recorded_protection = json.loads(original.protection_json or "{}")
-                retained = [
-                    Path(value) for value in recorded_protection.get("excluded", [])
-                ]
+                if not isinstance(scope, WorldScope):
+                    recorded_protection = json.loads(original.protection_json or "{}")
+                    retained = [
+                        Path(value) for value in recorded_protection.get("excluded", [])
+                    ]
                 evidence = json.loads(original.selection_json)
                 absent = tuple(Path(path) for path in evidence.get("absent_paths", []))
                 absent_parents = tuple(

@@ -42,7 +42,7 @@ async def test_world_tasks_restore_and_rollback_missing_sidecars(world_case, kin
     assert not (case.region.parent / "poi").exists()
 
 
-async def test_chunk_protection_preserves_ignored_sidecars_and_unselected_data(
+async def test_chunk_restore_ignores_rules_and_safety_captures_all_selected_data(
     world_case,
 ):
     case = world_case
@@ -55,7 +55,7 @@ async def test_chunk_protection_preserves_ignored_sidecars_and_unselected_data(
     (entities / "r.0.0.mca").write_bytes(
         region_bytes(["protected entity", "protected sibling"])
     )
-    protected = (entities / "r.0.0.mca").read_bytes()
+    before_entities = (entities / "r.0.0.mca").read_bytes()
     (case.region / "r.0.0.mca").write_bytes(
         region_bytes(["protected terrain", "restorable terrain"])
     )
@@ -70,13 +70,14 @@ async def test_chunk_protection_preserves_ignored_sidecars_and_unselected_data(
     )
     accepted = await case.commands.restore(selection, source["snapshot"]["id"], 1)
     await complete(case, accepted)
-    assert (entities / "r.0.0.mca").read_bytes() == protected
-    assert chunk_value(case.region / "r.0.0.mca", 0) == "protected terrain"
+    assert chunk_value(entities / "r.0.0.mca", 0) == "source entity"
+    assert chunk_value(entities / "r.0.0.mca", 1) == "other entity"
+    assert chunk_value(case.region / "r.0.0.mca", 0) == "source zero"
     assert chunk_value(case.region / "r.0.0.mca", 1) == "source one"
     await complete(case, await case.commands.rollback(accepted["restoration_id"], 1))
     assert chunk_value(case.region / "r.0.0.mca", 0) == "protected terrain"
     assert chunk_value(case.region / "r.0.0.mca", 1) == "restorable terrain"
-    assert (entities / "r.0.0.mca").read_bytes() == protected
+    assert (entities / "r.0.0.mca").read_bytes() == before_entities
 
 
 async def test_mcc_only_world_change_invalidates_its_tile_despite_cache_exclusion(

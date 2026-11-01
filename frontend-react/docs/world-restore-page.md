@@ -135,12 +135,12 @@ for task latching, blocking and single-observer ownership.
 
 Lazy-loaded in `App.tsx`. Sidebar entry: `Map` icon under each server's submenu.
 
-## Ignored targets and refresh
+## Selection checks and refresh
 
-The selection panel checks current rules for world, dimension and region/chunk
-scopes. Fully protected selections disable creation/restoration; mixed scopes
-show one skip notice. Creation composes `SnapshotCreateDialog`, and restoration
-retains its closing guard and task-center entry.
+The selection panel validates world, dimension and region/chunk paths.
+Map snapshots, previews and recovery ignore exclusion settings and display no
+skip notice. Creation composes `SnapshotCreateDialog`; recovery retains its
+closing guard and task-center entry.
 
 [Application operation refresh](operation-refresh.md) handles off-page completion
 and tile URL revisions, including MCC-only changes and unchanged MCA mtimes.

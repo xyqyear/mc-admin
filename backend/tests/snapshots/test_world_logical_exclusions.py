@@ -78,7 +78,7 @@ async def test_world_restore_uses_its_selected_name_and_retains_rollback(
 
 
 @pytest.mark.parametrize("ignored_name", ["world", "world_alias"])
-async def test_alias_chunk_restore_keeps_only_logically_excluded_mcc_entries(
+async def test_alias_chunk_restore_processes_selected_entries_regardless_of_rules(
     world_case, ignored_name,
 ):
     case = world_case
@@ -102,9 +102,7 @@ async def test_alias_chunk_restore_keeps_only_logically_excluded_mcc_entries(
     accepted = await case.commands.restore(selected, source["snapshot"]["id"], 1)
     await complete(case, accepted)
 
-    assert chunk_value(mca, 0) == (
-        "live zero" if ignored_name == "world_alias" else "source zero"
-    )
+    assert chunk_value(mca, 0) == "source zero"
     assert chunk_value(mca, 1) == "source one"
     await complete(case, await case.commands.rollback(accepted["restoration_id"], 1))
     assert chunk_value(mca, 0) == "live zero"
@@ -114,7 +112,7 @@ async def test_alias_chunk_restore_keeps_only_logically_excluded_mcc_entries(
 
 @pytest.mark.parametrize("kind", ["regions", "chunks"])
 @pytest.mark.parametrize("ignored_name", ["world", "world_alias"])
-async def test_alias_map_preview_uses_logical_mcc_rules_and_preserves_live_data(
+async def test_alias_map_preview_processes_selected_mcc_and_preserves_live_data(
     world_case, kind, ignored_name,
 ):
     case = world_case
@@ -165,9 +163,7 @@ async def test_alias_map_preview_uses_logical_mcc_rules_and_preserves_live_data(
     staged = case.snapshots.stage_destination(
         directory / ("preview" if kind == "chunks" else "source"), case.region
     )
-    assert zlib.decompress((staged / "c.0.0.mcc").read_bytes()) == (
-        b"live 0" if ignored_name == "world_alias" else b"source 0"
-    )
+    assert zlib.decompress((staged / "c.0.0.mcc").read_bytes()) == b"source 0"
     assert zlib.decompress((staged / "c.1.0.mcc").read_bytes()) == b"source 1"
     assert zlib.decompress((staged / "c.2.0.mcc").read_bytes()) == (
         b"live 2" if kind == "chunks" else b"source 2"

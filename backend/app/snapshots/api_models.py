@@ -37,8 +37,6 @@ class SnapshotTaskAccepted(BaseModel):
 class SnapshotTargetCheck(BaseModel):
     allowed: bool
     reason: str | None = None
-    skipped_paths: list[str] = []
-    skipped_count: int = 0
 
 
 class CheckWorldSnapshotTargetRequest(BaseModel):

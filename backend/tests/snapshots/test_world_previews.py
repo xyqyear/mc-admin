@@ -13,7 +13,7 @@ pytestmark = [pytest.mark.binary("restic"), pytest.mark.binary("fd"), pytest.mar
 
 
 @pytest.mark.parametrize("kind", ["regions", "chunks"])
-async def test_map_preview_preserves_source_protected_and_unselected_external_chunks(world_case, kind):
+async def test_map_preview_includes_excluded_external_chunks_and_preserves_unselected_data(world_case, kind):
     case = world_case
     case.config.snapshots.ignored_paths = [".mcmap", "world/region/c.0.0.mcc"]
     header = bytearray(8192)
@@ -34,11 +34,11 @@ async def test_map_preview_preserves_source_protected_and_unselected_external_ch
     previews = current_runtime().snapshot_previews
     assert previews is not None
     result = await complete(case, await previews.submit(scope, source["snapshot"]["id"], 1))
-    assert result["kind"] == "map" and result["skipped_count"] > 0
+    assert result["kind"] == "map" and result["skipped_count"] == 0
     directory = previews.manager.get_session_dir(result["preview_id"])
     assert directory is not None
     staged = case.snapshots.stage_destination(directory / ("preview" if kind == "chunks" else "source"), case.region)
-    assert zlib.decompress((staged / "c.0.0.mcc").read_bytes()) == b"live 0"
+    assert zlib.decompress((staged / "c.0.0.mcc").read_bytes()) == b"source 0"
     assert zlib.decompress((staged / "c.1.0.mcc").read_bytes()) == b"source 1"
     assert zlib.decompress((staged / "c.2.0.mcc").read_bytes()) == (b"live 2" if kind == "chunks" else b"source 2")
     assert [zlib.decompress((case.region / f"c.{chunk}.0.mcc").read_bytes()) for chunk in range(3)] == [b"live 0", b"live 1", b"live 2"]

@@ -6,8 +6,8 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"net/url"
 	"slices"
-	"strings"
 	"time"
 
 	"mc-admin/e2e/internal/engine"
@@ -40,22 +40,33 @@ func snapshotQueryResponsiveness(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	dimension := map[string]any{"type": "dimension", "region_dir_relpath": fixtureRegion}
+	if err = s.config(ctx, "snapshots", func(data map[string]any) { data["ignored_paths"] = []string{"world"} }); err != nil {
+		return err
+	}
 	full, err := s.snapshot(ctx, dimension)
 	if err != nil {
 		return err
 	}
-	if err = s.config(ctx, "snapshots", func(data map[string]any) { data["ignored_paths"] = []string{mccPath} }); err != nil {
+	if err = s.config(ctx, "snapshots", func(data map[string]any) { data["ignored_paths"] = []string{regionPath, mccPath} }); err != nil {
 		return err
 	}
-	protected, err := s.snapshot(ctx, dimension)
-	if err != nil {
+	var partial struct {
+		Snapshot struct {
+			ID       string   `json:"id"`
+			Excludes []string `json:"excludes"`
+		} `json:"snapshot"`
+	}
+	if err = s.client.RunTask(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "server", "server_id": s.id}}, &partial); err != nil {
 		return err
 	}
-	if err = s.config(ctx, "snapshots", func(data map[string]any) { data["ignored_paths"] = []string{} }); err != nil {
+	if partial.Snapshot.ID == "" || len(partial.Snapshot.Excludes) != 2 {
+		return fmt.Errorf("ordinary backup did not retain its exclusions: %+v", partial)
+	}
+	if err = s.config(ctx, "snapshots", func(data map[string]any) { data["ignored_paths"] = []string{"world"} }); err != nil {
 		return err
 	}
 	var regions [][2]int
-	for x := -32; x < 32; x++ {
+	for x := -192; x < 192; x++ {
 		regions = append(regions, [2]int{x, 0})
 	}
 	selection := map[string]any{"type": "regions", "region_dir_relpath": fixtureRegion, "regions": regions}
@@ -99,14 +110,11 @@ func snapshotQueryResponsiveness(ctx context.Context, t *engine.Scope) error {
 		return fmt.Errorf("candidate query changed source coverage: %+v", result)
 	}
 	for _, row := range result.Snapshots {
-		if row.ID == full && (row.Count != 0 || len(row.Skipped) != 0) {
-			return fmt.Errorf("unprotected source acquired skipped data: %+v", row)
-		}
-		if row.ID == protected && (row.Count != 1 || len(row.Skipped) != 1 || !strings.HasSuffix(row.Skipped[0], "/"+mccPath)) {
-			return fmt.Errorf("historical MCC protection was lost: %+v", row)
+		if row.Count != 0 || len(row.Skipped) != 0 {
+			return fmt.Errorf("world candidate applied exclusions: %+v", row)
 		}
 	}
-	if !slices.ContainsFunc(result.Snapshots, func(row candidate) bool { return row.ID == full }) || !slices.ContainsFunc(result.Snapshots, func(row candidate) bool { return row.ID == protected }) {
+	if !slices.ContainsFunc(result.Snapshots, func(row candidate) bool { return row.ID == full }) || !slices.ContainsFunc(result.Snapshots, func(row candidate) bool { return row.ID == partial.Snapshot.ID }) {
 		return fmt.Errorf("candidate query returned unrelated sources")
 	}
 	if content, err := s.download(ctx, mccPath); err != nil || !bytes.Equal(content, before) {
@@ -133,6 +141,23 @@ func snapshotQueryResponsiveness(ctx context.Context, t *engine.Scope) error {
 	}
 	if content, err := s.download(ctx, mccPath); err != nil || !bytes.Equal(content, live) {
 		return fmt.Errorf("rollback lost pre-recovery external chunk bytes: %v", err)
+	}
+	restored, err = s.client.RunTaskResult(ctx, "POST", "/api/snapshots/restorations", s.restoreRequest(partial.Snapshot.ID, selection))
+	if err != nil {
+		return err
+	}
+	for _, path := range []string{regionPath, mccPath} {
+		if err = s.client.JSON(ctx, "GET", s.base+"/files/download?path="+url.QueryEscape("/"+path), nil, nil, 404); err != nil {
+			return fmt.Errorf("historically excluded world data was not removed: %w", err)
+		}
+	}
+	if err = s.client.RunTask(ctx, "POST", "/api/snapshots/restorations/"+fmt.Sprint(restored["restoration_id"])+"/rollback", nil, nil); err != nil {
+		return err
+	}
+	for path, expected := range map[string][]byte{regionPath: external, mccPath: live} {
+		if content, err := s.download(ctx, path); err != nil || !bytes.Equal(content, expected) {
+			return fmt.Errorf("rollback lost historically excluded world data %s: %v", path, err)
+		}
 	}
 	return nil
 }

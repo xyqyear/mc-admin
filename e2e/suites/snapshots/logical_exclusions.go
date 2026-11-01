@@ -135,23 +135,21 @@ func logicalExclusions(ctx context.Context, t *engine.Scope) error {
 	pathScope := func(path string) map[string]any {
 		return map[string]any{"kind": "paths", "server_id": id, "paths": []string{path}}
 	}
-	checkWorld := func(path string, allowed bool) error {
-		var feedback struct {
-			Allowed bool `json:"allowed"`
-		}
+	checkWorld := func(path string) error {
+		var feedback map[string]any
 		body := map[string]any{"scope": map[string]any{"kind": "world", "server_id": id, "selection": map[string]any{"type": "dimension", "region_dir_relpath": path + "/region"}}}
 		if err := client.JSON(ctx, "POST", "/api/snapshots/targets/check", body, &feedback, 200); err != nil {
 			return err
 		}
-		if feedback.Allowed != allowed {
-			return fmt.Errorf("world scope %s allowed=%v, expected %v", path, feedback.Allowed, allowed)
+		if len(feedback) != 2 || feedback["allowed"] != true || feedback["reason"] != nil {
+			return fmt.Errorf("world scope %s did not return exclusion-independent validity: %+v", path, feedback)
 		}
 		return nil
 	}
-	if err := checkWorld("alias", false); err != nil {
+	if err := checkWorld("alias"); err != nil {
 		return err
 	}
-	if err := checkWorld("target", true); err != nil {
+	if err := checkWorld("target"); err != nil {
 		return err
 	}
 	if err := client.JSON(ctx, "POST", "/api/snapshots/targets/check", map[string]any{"scope": pathScope("target")}, nil, 422); err != nil {
@@ -185,10 +183,10 @@ func logicalExclusions(ctx context.Context, t *engine.Scope) error {
 	if !slices.ContainsFunc(history.Snapshots, func(source notedSnapshot) bool { return source.ID == direct.Snapshot.ID }) {
 		return fmt.Errorf("current ignore configuration hid a historical snapshot")
 	}
-	if err := checkWorld("target", false); err != nil {
+	if err := checkWorld("target"); err != nil {
 		return err
 	}
-	if err := checkWorld("alias", true); err != nil {
+	if err := checkWorld("alias"); err != nil {
 		return err
 	}
 	if err := client.JSON(ctx, "POST", "/api/snapshots", map[string]any{"scope": pathScope("target")}, nil, 400); err != nil {

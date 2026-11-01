@@ -65,7 +65,8 @@ class SnapshotsConfig(BaseConfigSchema):
         Field(
             title="忽略路径",
             description=(
-                "相对于服务器数据目录的路径列表；备份时排除这些路径，恢复时不会覆盖或删除它们。"
+                "相对于服务器数据目录的路径列表；普通备份时排除这些路径，文件恢复时不会覆盖或删除它们。"
+                "地图快照及回档功能不应用此处的排除设置。"
                 f"支持 {LEVEL_NAME_TOKEN} 占位符（须为完整路径段），展开为 server.properties 中的 level-name。"
                 "不支持通配符。"
             ),

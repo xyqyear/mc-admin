@@ -93,7 +93,7 @@ async def test_safety_snapshot_is_eligible_without_speculative_overflow_files(
     ]
 
 
-async def test_world_source_exclusions_survive_configuration_change_and_rollback(
+async def test_world_snapshot_includes_configured_exclusions_and_rollback_restores_live_data(
     world_case,
 ):
     case = world_case
@@ -110,9 +110,10 @@ async def test_world_source_exclusions_survive_configuration_change_and_rollback
     accepted = await case.commands.restore(scope(), source, 1)
     await complete(case, accepted)
     assert not extra.exists()
-    for operation in [None, accepted["restoration_id"]]:
-        if operation:
-            await complete(case, await case.commands.rollback(operation, 1))
-        assert (ignored / "tile").read_bytes() == b"new cache"
-        assert (ignored / "new").read_bytes() == b"new file"
+    assert (ignored / "tile").read_bytes() == b"original cache"
+    assert not (ignored / "new").exists()
+    await complete(case, await case.commands.rollback(accepted["restoration_id"], 1))
+    assert (ignored / "tile").read_bytes() == b"new cache"
+    assert (ignored / "new").read_bytes() == b"new file"
+    assert extra.read_bytes() == b"remove this"
 

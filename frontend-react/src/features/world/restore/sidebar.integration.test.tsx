@@ -12,7 +12,7 @@ import WorldRestoreSelectionPanel from '@/features/world/restore/components/Worl
 
 const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-const target = http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null, skipped_paths: [], skipped_count: 0 }))
+const target = http.post('*/api/snapshots/targets/check', () => HttpResponse.json({ allowed: true, reason: null }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())
 

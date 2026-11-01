@@ -109,7 +109,7 @@ async def test_world_target_feedback_rejects_unused_file_and_project_scopes(
     assert await world_case.journal.list() == []
 
 
-async def test_target_feedback_protects_external_chunk_payload_as_one_unit(http, world_case):
+async def test_world_target_feedback_ignores_external_chunk_exclusions(http, world_case):
     case = world_case
     case.config.snapshots.ignored_paths = [
         f"world/{directory}/c.0.0.mcc" for directory in ("region", "entities", "poi")
@@ -117,9 +117,8 @@ async def test_target_feedback_protects_external_chunk_payload_as_one_unit(http,
     scope = {"kind": "world", "server_id": "survival", "selection": {
         "type": "chunks", "region_dir_relpath": "world/region", "chunks": [[0, 0]],
     }}
-    denied = await http.post("/api/snapshots/targets/check", json={"scope": scope})
-    assert denied.status_code == 200 and not denied.json()["allowed"]
-    scope["selection"]["chunks"] = [[0, 0], [1, 0]]
-    mixed = await http.post("/api/snapshots/targets/check", json={"scope": scope})
-    assert mixed.status_code == 200 and mixed.json()["allowed"]
-    assert mixed.json()["skipped_count"] > 0
+    response = await http.post("/api/snapshots/targets/check", json={"scope": scope})
+    assert response.status_code == 200
+    assert response.json() == {"allowed": True, "reason": None}
+    assert case.tasks.get_all_tasks() == []
+    assert await case.journal.list() == []
