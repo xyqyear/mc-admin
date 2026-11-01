@@ -1,89 +1,45 @@
-name: DNS read-only network diagnostics
+name: DNS propagation timing diagnostics
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   probe:
-    name: DNS probe ${{ matrix.replica }}
+    name: DNS propagation probe ${{ matrix.replica }}
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 20
+    environment: dns-e2e
     strategy:
       fail-fast: false
       matrix:
         replica: [1, 2]
+    env:
+      PROBE_REPLICA: ${{ matrix.replica }}
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - uses: astral-sh/setup-uv@v8.1.0
-      - name: Observe DNS transports without changing records
-        run: |
-          mkdir -p diagnostics
-          sudo tcpdump -i any -nn -tttt -vv -l 'port 53' > diagnostics/packets.txt 2>&1 &
-          capture=$!
-          trap 'sudo kill "$capture" 2>/dev/null || true; wait "$capture" 2>/dev/null || true' EXIT
-          cat > "$RUNNER_TEMP/dns_probe.py" <<'PY'
-          import concurrent.futures
-          import datetime
-          import json
-          import pathlib
-          import re
-          import socket
-          import subprocess
-          import time
-          import urllib.request
-          
-          out = pathlib.Path("diagnostics")
-          out.mkdir(exist_ok=True)
-          zone = "e2e-test-mc.xyqyear.com"
-          names = ["ns1.huaweicloud-dns." + suffix for suffix in ("cn", "com", "net", "org")]
-          mapping = {name: sorted({item[4][0] for item in socket.getaddrinfo(name, 53, socket.AF_INET, socket.SOCK_STREAM)}) for name in names}
-          metadata = {"utc": datetime.datetime.now(datetime.UTC).isoformat(), "nameservers": mapping}
-          try:
-              request = urllib.request.Request("http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01", headers={"Metadata": "true"})
-              opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-              with opener.open(request, timeout=3) as response:
-                  cloud = json.load(response)
-              metadata["azure_location"] = cloud.get("location")
-          except Exception as error:
-              metadata["azure_metadata_error"] = type(error).__name__
-          (out / "metadata.json").write_text(json.dumps(metadata, indent=2))
-          print(json.dumps(metadata), flush=True)
-          addresses = sorted({ip for values in mapping.values() for ip in values} | {"190.92.196.2", "122.112.208.254"})
-          targets = [(ip, zone, True) for ip in addresses] + [("1.1.1.1", "example.com", False), ("8.8.8.8", "example.com", False)]
-          
-          def probe(task):
-              iteration, ip, domain, authority, transport = task
-              command = ["dig", "@" + ip, domain, "SOA", "+noedns", "+time=3", "+tries=1", "+tcp" if transport == "tcp" else "+notcp", "+norecurse" if authority else "+recurse"]
-              started = time.monotonic()
-              try:
-                  result = subprocess.run(command, capture_output=True, text=True, timeout=6)
-                  output = result.stdout + result.stderr
-                  status = re.search(r"status: (\w+)", output)
-                  flags = re.search(r"flags: ([^;]+);", output)
-                  flags = flags.group(1).split() if flags else []
-                  ok = result.returncode == 0 and status is not None and status.group(1) == "NOERROR" and (not authority or "aa" in flags)
-                  row = {"round": iteration, "ip": ip, "transport": transport, "control": not authority, "ok": ok, "exit": result.returncode, "status": status.group(1) if status else None, "flags": flags, "elapsed": round(time.monotonic() - started, 3)}
-              except subprocess.TimeoutExpired:
-                  output = "subprocess timeout"
-                  row = {"round": iteration, "ip": ip, "transport": transport, "control": not authority, "ok": False, "elapsed": round(time.monotonic() - started, 3)}
-              (out / f"{iteration}-{ip}-{transport}.txt").write_text(output)
-              return row
-          
-          rows = []
-          for iteration in range(1, 4):
-              tasks = [(iteration, *target, transport) for target in targets for transport in ("tcp", "udp")]
-              with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-                  for row in pool.map(probe, tasks):
-                      rows.append(row)
-                      print(json.dumps(row), flush=True)
-              if iteration < 3:
-                  time.sleep(5)
-          (out / "results.json").write_text(json.dumps(rows, indent=2))
-          
-          PY
-          uv run --no-project python "$RUNNER_TEMP/dns_probe.py"
+      - name: Measure only independently owned test-zone records
+        env:
+          HUAWEICLOUD_AK: ${{ secrets.HUAWEICLOUD_AK }}
+          HUAWEICLOUD_SK: ${{ secrets.HUAWEICLOUD_SK }}
+          HUAWEICLOUD_DNS_ZONE: ${{ vars.HUAWEICLOUD_DNS_ZONE }}
+          HUAWEICLOUD_DNS_REGION: ${{ vars.HUAWEICLOUD_DNS_REGION }}
+        run: uv run --no-project --with huaweicloudsdkdns==3.1.198 --with dnspython==2.8.0 python dns_probe.py run
+      - name: Independently verify cleanup even after failure
+        if: always()
+        env:
+          HUAWEICLOUD_AK: ${{ secrets.HUAWEICLOUD_AK }}
+          HUAWEICLOUD_SK: ${{ secrets.HUAWEICLOUD_SK }}
+          HUAWEICLOUD_DNS_ZONE: ${{ vars.HUAWEICLOUD_DNS_ZONE }}
+          HUAWEICLOUD_DNS_REGION: ${{ vars.HUAWEICLOUD_DNS_REGION }}
+        run: uv run --no-project --with huaweicloudsdkdns==3.1.198 --with dnspython==2.8.0 python dns_probe.py cleanup
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: dns-probe-${{ matrix.replica }}
+          name: dns-propagation-${{ matrix.replica }}
           path: diagnostics/
-          retention-days: 7
+          retention-days: 14
+          if-no-files-found: error
