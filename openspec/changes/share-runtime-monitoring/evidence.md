@@ -93,8 +93,9 @@ Backend Pyright and Ruff passed. Frontend lint/import boundaries, type checking,
 OpenAPI contract freshness and production bundle passed. A separate browser
 TypeScript project now resolves the same application aliases for imported wire
 contracts. Affected Go packages passed vet and the runner build. Main OpenSpec
-specifications and the change passed strict validation. Qualification and final
-commit evidence are recorded after the latest pushed SHA is verified.
+specifications and the change passed strict validation. Complete qualification
+evidence is recorded below; subsequent documentation-only commits use the
+coordinator's checked content-equivalent qualification.
 
 ## Qualification follow-up
 
@@ -157,3 +158,25 @@ failure was the world-maintenance fixture's missing `created()` method after
 startup gained its live-state read. Adding that method preserves the same fake
 external state and all original maintenance assertions. All five targeted
 maintenance tests and backend Ruff/Pyright passed; no application code changed.
+
+## Successful complete qualification
+
+- Source: `3b9a15c24bdac67406b827a5a0b0738d3f1179fe`, branch
+  `refactor/shared-runtime-monitoring`.
+- [Push run 41321868833](https://github.com/xyqyear/mc-admin/actions/runs/41321868833)
+  completed successfully; no duplicate manual run was dispatched.
+- All 14 backend shards, six API shards, three browser shards, their complete
+  coverage/cleanup audits, candidate/Go and static/frontend gates passed.
+  Publication was skipped, as intended for a development branch.
+- Receipt mode: `full`; executed gates: `api`, `backend`, `browser`, `candidate`,
+  `static`; every gate is `success`.
+- Verification identity:
+  `542584146fb54e9d8d4de98d5f9849e310bf339f7b21a06805fd6009295b5d58`.
+- Original verification time: `2026-11-01T15:47:11.297406+00:00`.
+- Qualified OCI manifest:
+  `sha256:5214b7c9dfc4f24c849b435ac49eead0a53f9fbdecfc7361678c59bd3ff54b15`.
+- Local receipt:
+  `/root/.local/share/mc-admin-ci/41321868833/qualification/qualification.json`.
+
+Performance conditions, raw measurements and fixed idle cost remain in
+[performance.md](performance.md). Production was not deployed or modified.
