@@ -73,17 +73,20 @@ export class OwnedApi {
 
   async stopped() {
     await this.operation('stop')
-    await expect.poll(() => this.status(), { timeout: 60_000 }).toMatch(/^(created|exists)$/)
+    const observedAfter = Date.now()
+    await expect.poll(() => this.status(observedAfter), { timeout: 60_000 }).toMatch(/^(created|exists)$/)
   }
 
   async running() {
     await this.operation('up')
-    await expect.poll(() => this.status(), { timeout: 120_000 }).toBe('healthy')
+    const observedAfter = Date.now()
+    await expect.poll(() => this.status(observedAfter), { timeout: 120_000 }).toBe('healthy')
   }
 
-  async status() {
+  async status(observedAfter = 0) {
     const sample = (await this.json<MonitoringSnapshot>('/api/monitoring')).servers[this.environment.server_id]?.status
-    return sample?.quality === 'ready' ? sample.value?.toLowerCase() ?? 'unknown' : 'unknown'
+    return sample?.quality === 'ready' && sample.sampled_at && Date.parse(sample.sampled_at) >= observedAfter
+      ? sample.value?.toLowerCase() ?? 'unknown' : 'unknown'
   }
 
   async task(id: string, requireSuccess = true) {
@@ -133,7 +136,8 @@ export const test = base.extend<{ api: OwnedApi; observation: NetworkObservation
   owned: [async ({ playwright }, use) => { void playwright; await use(await ownedEnvironment()) }, { scope: 'worker' }],
   api: async ({ owned }, use) => {
     const api = new OwnedApi(owned)
-    await expect.poll(() => api.status()).not.toBe('unknown')
+    const observedAfter = Date.now()
+    await expect.poll(() => api.status(observedAfter)).not.toBe('unknown')
     const original = await api.status()
     await withCleanup(() => use(api), {
       label: 'original server state',

@@ -95,7 +95,7 @@ func Operation(ctx context.Context, client *api.Client, id, action string) error
 	return client.RunTask(ctx, "POST", "/api/servers/"+id+"/operations", map[string]string{"action": action}, nil)
 }
 
-func Status(ctx context.Context, client *api.Client, id, expected string) error {
+func statusAfter(ctx context.Context, client *api.Client, id, expected string, observedAfter time.Time) error {
 	snapshot, err := Monitoring(ctx, client)
 	if err != nil {
 		return api.Permanent(err)
@@ -107,15 +107,17 @@ func Status(ctx context.Context, client *api.Client, id, expected string) error 
 		}
 		return api.Permanent(fmt.Errorf("monitoring omitted registered server %s", id))
 	}
-	if !response.Status.Ready() || !strings.EqualFold(*response.Status.Value, expected) {
+	if !response.Status.Ready() || response.Status.SampledAt.Before(observedAfter) || !strings.EqualFold(*response.Status.Value, expected) {
 		return fmt.Errorf("server %s status=%+v, expected %s", id, response.Status, expected)
 	}
 	return nil
 }
 
 func WaitStatus(ctx context.Context, client *api.Client, id, expected string) error {
+	// Owned clients and their Docker deployment share a host clock.
+	observedAfter := time.Now().UTC()
 	return api.Wait(ctx, time.Second, "server "+id+" "+expected, func(ctx context.Context) (bool, error) {
-		err := Status(ctx, client, id, expected)
+		err := statusAfter(ctx, client, id, expected, observedAfter)
 		return err == nil, err
 	})
 }

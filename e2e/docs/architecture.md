@@ -42,6 +42,11 @@ The dependency direction keeps the engine independent of MC Admin routes and fea
 
 `internal/api/multipart.go` encodes ordered `files` parts with their complete filenames and bytes. Suites own upload admission, overwrite policies, HTTP status expectations and data assertions. Configuration and world-alias observations decode every GET into a fresh DTO so retained expected maps and slices remain independent. `fixtures.CheckFile` requires a present string `content`; an empty string is valid, while missing or null content is a protocol failure.
 
+`fixtures.WaitStatus` waits for a ready monitoring sample captured after the
+wait begins. The owned client and its Docker deployment share a host clock.
+An older HEALTHY sample cannot prove readiness after a completed restart or
+rebuild; task settlement and Minecraft readiness remain separate assertions.
+
 ## Environment composition
 
 An `environment.Provider` has an ID, dependency IDs, `Setup`, and optional `Verify`. An `environment.Recipe` declares its providers and Minecraft slot requirement. The graph is validated before deployment for missing dependencies, duplicates, cycles and invalid budgets. A recipe ID refers to one definition in the catalog; changing its initial-state contract requires changing the definition/version, not silently reusing the same name for different setups.

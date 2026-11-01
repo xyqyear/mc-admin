@@ -95,3 +95,33 @@ TypeScript project now resolves the same application aliases for imported wire
 contracts. Affected Go packages passed vet and the runner build. Main OpenSpec
 specifications and the change passed strict validation. Qualification and final
 commit evidence are recorded after the latest pushed SHA is verified.
+
+## Qualification follow-up
+
+The first manual qualification of `bf7b722851c3a6c3ccc6c358a928e531e7324ddc`,
+[run 41314770929](https://github.com/xyqyear/mc-admin/actions/runs/41314770929),
+passed candidate/Go, static/frontend, all 14 backend shards and their audit,
+and all three browser shards and their audit. API shard 5 failed three cases;
+the qualification was not accepted.
+
+`minecraft.scheduled-restart` and `minecraft.console-safe-adapter-errors` could
+read a previous HEALTHY sample after task settlement, then hit the command's
+correct live-state rejection. The shared fixture now requires a ready sample
+captured after the wait begins; it does not weaken the RCON/game-state assertions
+or force sampling through HTTP. A protocol test supplies old HEALTHY, fresh
+STARTING and fresh HEALTHY in sequence and verifies the wait only accepts the
+last observation.
+
+`players.live-profile-and-skin` failed because the runner timed out fetching the
+Mojang profile, confirmed by `skin_fetcher:fetch_player_profile` diagnostics.
+Its external reachability and persistence assertions remain unchanged.
+
+The readiness correction passed the race-enabled fixture protocol test, affected
+Go vet/build, both real cases normally (`e2e-f4e78d392697`) and with `--no-reuse`
+(`e2e-6d5699dd1ecd`), and the shared monitoring browser journey
+(`browser-29d6115de355`, 32.0 s). All owned environments were cleaned. The browser
+fixture applies the same freshness requirement, and frontend lint/types passed.
+The local external Mojang probe (`e2e-85f9f374a1ec`) also timed out; direct host
+access returned HTTP 502 after 12.77 s, while the configured host proxy returned
+200. This distinguishes local direct-network failure from the monitoring change;
+it does not establish the GitHub runner's upstream network cause.
