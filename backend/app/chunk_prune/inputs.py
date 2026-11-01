@@ -13,7 +13,7 @@ from ..servers.references import ServerRef
 from ..utils.exec import exec_command
 
 PRUNE_INPUT_SCHEMA = 1
-MCMAP_PRUNE_VERSION = "mcmap 0.8.4"
+MCMAP_PRUNE_VERSION = "mcmap 0.9.0"
 
 
 class PrunePreviewConflict(HTTPException):
@@ -69,7 +69,7 @@ async def require_supported_adapter() -> None:
     settings = get_settings()
     version = await exec_command(str(settings.mcmap_binary_path), "--version", timeout=10)
     if version.strip() != MCMAP_PRUNE_VERSION:
-        raise PublicOperationError("裁剪需要已验证的 mcmap 0.8.4，请检查应用使用的二进制版本")
+        raise PublicOperationError(f"裁剪需要已验证的 {MCMAP_PRUNE_VERSION}，请检查应用使用的二进制版本")
 
 
 @dataclass(frozen=True)

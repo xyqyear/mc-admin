@@ -75,8 +75,8 @@ RUN curl -L "https://github.com/restic/restic/releases/download/v${RESTIC_VERSIO
  && chmod +x /usr/local/bin/restic \
  && rm /tmp/restic.bz2
 
-ARG MCMAP_VERSION=v0.8.4
-ARG MCMAP_SHA256=3160526699df40a25db684ea1c8db69edb1f5a0e3fe582e6316644fc6859808e
+ARG MCMAP_VERSION=v0.9.0
+ARG MCMAP_SHA256=bc9bf938a15ea0f4a6936a4c42c2ae030d8a5683051687cbd93e4ce28927a954
 RUN curl -L "https://github.com/xyqyear/mcmap/releases/download/${MCMAP_VERSION}/mcmap-${MCMAP_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
       -o /tmp/mcmap.tar.gz \
  && echo "${MCMAP_SHA256}  /tmp/mcmap.tar.gz" | sha256sum -c - \

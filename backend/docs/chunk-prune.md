@@ -20,7 +20,7 @@ mcmap --json prune-inhabited <server_data_dir> --threshold <ticks> --mode <chunk
 The prune root is the server `data/` directory, so mcmap scans every world root
 and dimension it can discover under that server.
 
-The supported prune adapter is exactly `mcmap 0.8.4`, checked against the actual
+The supported prune adapter is exactly `mcmap 0.9.0`, checked against the actual
 binary. Preview and apply share the same schema version, adapter version,
 server generation, confined data path, threshold and mode. A version also hashes
 the world file manifest and canonical FTB claims payload. The manifest includes

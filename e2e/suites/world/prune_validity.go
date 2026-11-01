@@ -74,8 +74,8 @@ func prunePreviewValidity(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(version) != "mcmap 0.8.4" {
-		return fmt.Errorf("prune qualification requires mcmap 0.8.4, received %q", version)
+	if strings.TrimSpace(version) != "mcmap 0.9.0" {
+		return fmt.Errorf("prune qualification requires mcmap 0.9.0, received %q", version)
 	}
 	t.Recorder.Event("adapter_version", map[string]string{"tool": "mcmap", "version": strings.TrimSpace(version)})
 	if err = s.seedStoppedWorld(); err != nil {

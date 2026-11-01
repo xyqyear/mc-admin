@@ -17,7 +17,7 @@
 | 删除期间的写入排空 | `world.delete-waits-for-writer` | 对归属明确的真实 mcmap 写入进程施加暂停；删除冻结期间拒绝新的启动、文件写入、所有权任务和地图初始化/渲染；应用自行终止并回收写入者后删除成功，核对取消任务 ID、进程退出、任务取消终态及操作历史的先后顺序，拒绝写入者仍存活时项目已消失。 |
 | 预览会话生命周期 | `world.preview-lifecycle` | 验证真实预览 PNG、心跳续期、预览替换、范围外请求被拒绝、结束操作幂等、磁盘空间保护，以及真实后台清理器执行的过期回收；有效预览阻止源快照删除和仓库锁清理，过期后允许删除。 |
 | 区块清理 | `world.chunk-prune` | 验证配置与最新状态；先在停服时完成有效预览，再启动服务器，验证应用以停服要求被拒绝且不创建任务；拒绝非法请求；覆盖两种预览与应用模式、多边形几何、领地保护、处理后的 Anvil 区块表，以及活跃预览任务的取消。 |
-| 清理预览有效性 | `world.prune-preview-validity` | 使用独立生成的 NBT/Anvil/SNBT 输入和真实 mcmap；统一 SSE 验证 ready、stale、自然到期及 consumed 状态，已结束预览携带真实区域计数和有限结果，TTL 到期观察不轮询 HTTP；世界或领地文件变化后以 `prune_preview_stale` 拒绝旧预览且不改数据；自然到期返回 `prune_preview_expired`；新预览完成实际删除并保留领地区块，重复应用返回 `prune_preview_consumed`，状态保留唯一应用 ID。输入版本用于检测变化，不宣称 mcmap 接受冻结的区块清单。 |
+| 清理预览有效性 | `world.prune-preview-validity` | 核对已部署 mcmap 为 0.9.0，使用独立生成的 NBT/Anvil/SNBT 输入和真实二进制；统一 SSE 验证 ready、stale、自然到期及 consumed 状态，已结束预览携带真实区域计数和有限结果，TTL 到期观察不轮询 HTTP；世界或领地文件变化后以 `prune_preview_stale` 拒绝旧预览且不改数据；自然到期返回 `prune_preview_expired`；新预览完成实际删除并保留领地区块，重复应用返回 `prune_preview_consumed`，状态保留唯一应用 ID。输入版本用于检测变化，不宣称 mcmap 接受冻结的区块清单。 |
 | 应用期间关闭预览 | `world.prune-dismiss-active` | 对归属明确的真实 mcmap apply 进程暂停；从任务中心删除已完成预览后，新 SSE 初始任务列表不含该记录，但裁剪索引保留其结果和运行中 apply 的终态保护。实际领地保护文件及其 SHA256 不变，专属状态和几何仍可读，重复应用被拒绝；恢复同一进程后应用成功且内容符合领地边界。后台重启后旧预览产物不能再次读取或应用。 |
 | 恢复记录实例归属 | `world.restoration-generation` | 真实 Restic 恢复记录绑定服务器代次；删除后同名重建仍可查看旧历史与安全快照，但旧记录显示 `generation_changed` 并以 `restoration_identity_conflict` 拒绝回滚，新实例字节保持；后台重启保留保护，新实例可用自己的代次正常恢复。 |
 | 恢复中断后的处理 | `world.interrupted-restore-recovery` | 验证操作锁冲突；在恢复记录已经持久化的执行过程中杀死测试后端；正常重启后检查中断历史，并通过安全快照回滚恢复原始字节。 |
