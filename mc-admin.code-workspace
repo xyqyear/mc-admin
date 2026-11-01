@@ -13,7 +13,7 @@
       "path": "frontend-react"
     },
     {
-      "path": "../../rust/mcmap"
+      "path": "../mcmap"
     }
   ],
   "settings": {
