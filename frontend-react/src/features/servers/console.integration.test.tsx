@@ -7,6 +7,8 @@ import { Route, Routes } from 'react-router'
 import { createTestClient, deferred } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 import { queryKeys } from '@/shared/http/api'
+import { MonitoringObserver } from '@/features/monitoring/ui/MonitoringObserver'
+import { monitoringFixture } from '@/test/monitoring'
 import type { ServerTerminalProps, ServerTerminalRef } from './ui/ServerTerminal'
 import ServerConsole from './ServerConsoleScreen'
 
@@ -37,21 +39,21 @@ const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
-beforeEach(() => { client = createTestClient(); Socket.instances = []; vi.stubGlobal('WebSocket', Socket) })
+beforeEach(() => { client = createTestClient(); client.setQueryData(queryKeys.user.me(), { id: 1 }); Socket.instances = []; vi.stubGlobal('WebSocket', Socket) })
 afterEach(() => { client.clear(); server.resetHandlers(); vi.unstubAllGlobals() })
 function mount() {
-  return render(<TestProviders client={client} route="/server/alpha/console"><Routes><Route path="/server/:id/console" element={<ServerConsole />} /></Routes></TestProviders>)
+  return render(<TestProviders client={client} route="/server/alpha/console"><MonitoringObserver userId={1} /><Routes><Route path="/server/:id/console" element={<ServerConsole />} /></Routes></TestProviders>)
 }
 
 it.each(['delayed', 'cached'])('connects once when terminal and %s server responses become ready, and closes on ineligible state and unmount', async mode => {
   const release = deferred<void>()
   server.use(
     http.get('*/api/servers/alpha', async () => { await release.promise; return HttpResponse.json({ id: 'alpha', name: 'alpha', serverType: 'VANILLA', javaVersion: 25, gameVersion: '1.21.11', gamePort: 25565, rconPort: 25575, maxMemoryBytes: 1024 }) }),
-    http.get('*/api/servers/alpha/status', async () => { await release.promise; return HttpResponse.json({ status: 'HEALTHY' }) }),
+    http.get('*/api/monitoring', async () => { await release.promise; return HttpResponse.json(monitoringFixture()) }),
   )
   if (mode === 'cached') {
     client.setQueryData(queryKeys.serverInfos.detail('alpha'), { name: 'alpha' })
-    client.setQueryData(queryKeys.serverStatuses.detail('alpha'), 'HEALTHY')
+    client.setQueryData(queryKeys.monitoring.snapshot(1), monitoringFixture('HEALTHY'))
     release.resolve()
   }
   const view = mount()
@@ -61,11 +63,11 @@ it.each(['delayed', 'cached'])('connects once when terminal and %s server respon
   const first = Socket.instances[0]!
   expect(first.close).not.toHaveBeenCalled()
   act(() => first.open())
-  await act(async () => { client.setQueryData(queryKeys.serverStatuses.detail('alpha'), 'HEALTHY') })
+  await act(async () => { client.setQueryData(queryKeys.monitoring.snapshot(1), monitoringFixture('HEALTHY')) })
   expect(Socket.instances).toHaveLength(1)
-  await act(async () => { client.setQueryData(queryKeys.serverStatuses.detail('alpha'), 'CREATED') })
+  await act(async () => { client.setQueryData(queryKeys.monitoring.snapshot(1), monitoringFixture('CREATED')) })
   await waitFor(() => expect(first.close).toHaveBeenCalledTimes(1))
-  await act(async () => { client.setQueryData(queryKeys.serverStatuses.detail('alpha'), 'HEALTHY') })
+  await act(async () => { client.setQueryData(queryKeys.monitoring.snapshot(1), monitoringFixture('HEALTHY')) })
   await waitFor(() => expect(Socket.instances).toHaveLength(2))
   view.unmount()
   expect(Socket.instances[1]!.close).toHaveBeenCalledTimes(1)

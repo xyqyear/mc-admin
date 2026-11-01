@@ -138,5 +138,5 @@ func consoleSafeAdapterErrors(ctx context.Context, t *engine.Scope) error {
 	if !strings.Contains(logs, "Cannot read console history: APIError") || strings.Contains(logs, "configured logging driver does not support reading") || strings.Contains(logs, "Client Error for http+docker") {
 		return fmt.Errorf("Docker history error logs lack safe diagnostics or expose adapter response text")
 	}
-	return fixtures.Status(ctx, c, s.ID, "healthy")
+	return fixtures.WaitStatus(ctx, c, s.ID, "healthy")
 }

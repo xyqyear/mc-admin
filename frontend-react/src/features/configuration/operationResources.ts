@@ -12,9 +12,7 @@ export function configurationOperationResources(operation: Operation) {
       queryKeys.templates.serverConfig(id),
       queryKeys.templates.serverConfigPreview(id),
       queryKeys.serverInfos.detail(id),
-      queryKeys.serverStatuses.all,
-      queryKeys.serverMaintenance.detail(id),
-      queryKeys.serverRuntimes.detail(id),
+      queryKeys.monitoring.all,
       queryKeys.players.serverOnline(id),
     ]
   })]

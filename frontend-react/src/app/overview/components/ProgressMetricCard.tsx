@@ -1,10 +1,13 @@
 import React from 'react'
 import { Card, CardContent } from '@/shared/ui/card'
+import type { Sample } from '@/features/monitoring/contracts'
 
 interface ProgressMetricCardProps {
-  value: number
+  value: number | null
   title: string
   extraInfo?: string
+  sample?: Sample<unknown>
+  failed?: boolean
 }
 
 const getProgressColor = (percentage: number) => {
@@ -70,12 +73,14 @@ const ProgressMetricCard: React.FC<ProgressMetricCardProps> = ({
   value,
   title,
   extraInfo,
+  sample,
+  failed,
 }) => {
   return (
     <Card className="h-full w-full">
       <CardContent className="h-full flex flex-col items-center justify-center text-center p-3">
         <div className="flex-1 flex items-center justify-center mb-3">
-          <CircularProgress value={value} />
+          {value == null ? <span className="text-muted-foreground">{failed ? '更新失败' : sample?.error ?? '等待采样'}</span> : <CircularProgress value={value} />}
         </div>
         <div className="w-full">
           <div className="text-sm font-semibold text-foreground mb-2">
@@ -89,6 +94,7 @@ const ProgressMetricCard: React.FC<ProgressMetricCardProps> = ({
               {extraInfo}
             </div>
           )}
+          {(failed || sample?.quality === 'stale') && <div className="text-xs text-muted-foreground">数据已过期</div>}
         </div>
       </CardContent>
     </Card>

@@ -30,7 +30,7 @@ func configurationPartialFailure(ctx context.Context, t *engine.Scope) error {
 		if err := fixtures.Operation(ctx, c, server.ID, "up"); err != nil {
 			return err
 		}
-		return fixtures.Status(ctx, c, server.ID, "running")
+		return fixtures.WaitStatus(ctx, c, server.ID, "running")
 	}); err != nil {
 		return err
 	}
@@ -81,14 +81,14 @@ func configurationPartialFailure(ctx context.Context, t *engine.Scope) error {
 		if (operation.State != "failed" && operation.State != "interrupted") || !operation.Changed || operation.RunningIntent == nil || !*operation.RunningIntent {
 			return fmt.Errorf("partial operation lost its failure, data impact or original running intent: %+v", operation)
 		}
-		var status struct {
-			Status string `json:"status"`
-		}
-		if err := c.JSON(ctx, "GET", base+"/status", nil, &status, 200); err != nil {
+		if err := api.Wait(ctx, 100*time.Millisecond, "failed start leaves stopped state", func(ctx context.Context) (bool, error) {
+			status, err := fixtures.ServerMonitoring(ctx, c, server.ID)
+			if err != nil {
+				return false, api.Permanent(err)
+			}
+			return status.Status.Ready() && (strings.EqualFold(*status.Status.Value, "created") || strings.EqualFold(*status.Status.Value, "exists")), nil
+		}); err != nil {
 			return err
-		}
-		if !strings.EqualFold(status.Status, "created") && !strings.EqualFold(status.Status, "exists") {
-			return fmt.Errorf("failed container start unexpectedly left the server running: %s", status.Status)
 		}
 		if !operation.WritersStopped {
 			return c.JSON(ctx, "POST", base+"/compose", map[string]string{"yaml_content": valid}, nil, 423)

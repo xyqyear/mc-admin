@@ -26,7 +26,7 @@ REPRESENTATIVE_PATHS = {
     "/snapshots/targets/check",
     "/snapshots/targets/rules",
     "/snapshots/restorations/active",
-    "/servers/{server_id}/maintenance",
+    "/monitoring",
     "/servers/{server_id}",
     "/servers/sync",
     "/servers/{server_id}/files",

@@ -98,7 +98,7 @@ func interruptedHistory(ctx context.Context, t *engine.Scope) error {
 		if cron.Status != "paused" || cron.Count != 1 || cron.Registration != "inactive" {
 			return fmt.Errorf("startup replayed or resumed the paused cron job: %+v", cron)
 		}
-		if err := fixtures.Status(ctx, client, id, "exists"); err != nil {
+		if err := fixtures.WaitStatus(ctx, client, id, "exists"); err != nil {
 			return err
 		}
 		return fixtures.CheckFile(ctx, client, id, "/recovery-marker.txt", "completed data must not be replayed")

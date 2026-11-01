@@ -9,6 +9,7 @@
 | --- | --- |
 | [data-architecture.md](data-architecture.md) | feature 归属、查询、传输与生成契约 |
 | [operation-refresh.md](operation-refresh.md) | 跨页面任务终态与缓存刷新 |
+| [monitoring.md](monitoring.md) | 共享监控查询、采样状态和观察生命周期 |
 | [configuration.md](configuration.md) | 配置草稿、版本冲突和模式转换 |
 | [ui-conventions.md](ui-conventions.md) | Base UI、生成组件和项目 UI 约定 |
 | [testing.md](testing.md) | 定向单元/集成验证与真实 Query 边界 |

@@ -182,7 +182,7 @@ it('refreshes global file roots while preserving unrelated archive and read-only
 })
 
 it.each([
-  ['server_create', queryKeys.serverInfos.all], ['server_sync', queryKeys.serverStatuses.all],
+  ['server_create', queryKeys.serverInfos.all], ['server_sync', queryKeys.monitoring.all],
   ['self_check', queryKeys.selfCheck.all], ['dns_update', queryKeys.dns.all],
   ['archive_publish', queryKeys.archive.all], ['archive_delete', queryKeys.archive.all],
   ['map_initialize', queryKeys.map.status('alpha')], ['server_restart', queryKeys.cron.all],

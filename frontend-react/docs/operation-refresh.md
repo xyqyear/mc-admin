@@ -21,6 +21,11 @@ First entry, changed backend instance and unavailable notification history retur
 
 ## Resource ownership
 
+Monitoring changes invalidate `queryKeys.monitoring.all`. The authenticated
+layout owns its single periodic reader; accepted task observation also wakes
+this query. Maintenance comes from current backend ownership, while metrics
+retain their sampling timestamps. See [monitoring](monitoring.md).
+
 Files and world publish their own terminal resource mappings. File keys scope
 invalidation by server; explicit global file-root resources refresh all affected
 server caches. Archive-root resources alone do not invalidate unrelated servers.

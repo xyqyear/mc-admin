@@ -4,6 +4,12 @@
 
 ## Owned dependencies
 
+The runtime also owns the Docker Engine reader and shared monitor. The monitor
+starts after journal recovery and owns independent host, server and directory
+workers. Shutdown drains these workers before closing its serialized Docker
+client/thread and database. First-sample availability and Docker connectivity
+do not gate startup or health. See [monitoring](monitoring.md).
+
 `Runtime(settings, hooks=...)` owns its settings, database engine and session factory, dynamic configuration cache, coordinator/admission state, task manager, event subscriptions, cron scheduler/registry, DNS clients, player producers, login codes and JWT key, map queues, world previews, prune metadata, upload sessions, and application/audit log handlers. Each resource has a concrete typed lazy property and private cache. A distinct uninitialized sentinel separates resources not yet constructed from disabled optional resources cached as `None`. Tests replace owned cache fields through explicit fixture helpers and restore their exact previous state; engine and session-factory overrides remain independent of the database object.
 
 ## Configuration paths
@@ -30,7 +36,7 @@ Startup closes write admission, acquires the single-writer guard for both SQLite
 
 Alembic command execution is serialized within the process because its environment proxy is global even when two apps have different databases. Startup cancellation waits for the migration thread to finish before releasing the writer guard. This library boundary does not serialize normal application requests or separate servers' operations.
 
-After journal recovery, the prune registry starts and world restoration prepares its artifacts before DNS and player producers. DNS initialization and reconciliation precede player startup. Ordinary DNS/provider failures are logged safely and leave connectivity degraded; they do not prevent player and cron startup. Cancellation still aborts startup and closes acquired resources. Player heartbeat recovery runs before player loops and log monitors, then cron jobs are loaded, and the world-preview janitor starts. Write admission opens only after startup succeeds. A failure in a required startup stage closes resources already acquired and releases the writer guard. The same runtime cannot restart after closing; create a fresh runtime.
+After journal recovery, shared monitoring and the prune registry start, and world restoration prepares its artifacts before DNS and player producers. DNS initialization and reconciliation precede player startup. Ordinary DNS/provider failures are logged safely and leave connectivity degraded; they do not prevent player and cron startup. Cancellation still aborts startup and closes acquired resources. Player heartbeat recovery runs before player loops and log monitors, then cron jobs are loaded, and the world-preview janitor starts. Write admission opens only after startup succeeds. A failure in a required startup stage closes resources already acquired and releases the writer guard. The same runtime cannot restart after closing; create a fresh runtime.
 
 ## Shutdown
 

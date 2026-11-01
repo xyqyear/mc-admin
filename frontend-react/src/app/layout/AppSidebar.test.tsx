@@ -1,3 +1,4 @@
+import { monitoringFixture } from '@/test/monitoring'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { useLocation } from 'react-router'
@@ -22,6 +23,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 beforeEach(() => {
   client = createTestClient()
+  client.setQueryData(queryKeys.monitoring.snapshot(1), monitoringFixture('CREATED'))
   role = UserRole.OWNER
   logouts = 0
   localStorage.clear()
@@ -33,7 +35,6 @@ beforeEach(() => {
   }))
   server.use(
     http.get('*/api/servers/', () => HttpResponse.json([{ id: 'alpha' }])),
-    http.get('*/api/servers/alpha/status', () => HttpResponse.json({ status: 'CREATED' })),
     http.get('*/api/user/me', () => HttpResponse.json({ id: 1, username: 'owner', role })),
     http.get('*/api/self-check/status', () => HttpResponse.json({ current_state: { findings: [] } })),
     http.post('*/api/auth/logout', () => { logouts++; return new HttpResponse(null, { status: 204 }) }),

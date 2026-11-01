@@ -2,7 +2,8 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { AxiosError } from 'axios'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { api, AUTH_EXPIRED_EVENT } from '@/shared/http/api'
-import { useServerCpuPercent } from '@/features/servers/queries';
+import { useQuery } from '@tanstack/react-query'
+import { monitoringQueryOptions } from '@/features/monitoring/queries'
 import { createTestClient, httpResponse } from '@/test/http'
 import { TestProviders } from '@/test/TestProviders'
 
@@ -49,14 +50,14 @@ it('expires authenticated sessions only for 401, excluding login and session pro
   } finally { window.removeEventListener(AUTH_EXPIRED_EVENT, expired) }
 })
 
-it.each([401, 403, 409, 422, 500, 'network'] as const)('uses normalized errors for runtime retry policy (%s)', async status => {
+it.each([401, 403, 409, 422, 500, 'network'] as const)('returns normalized monitoring errors without immediate retry storms (%s)', async status => {
   adapter.mockImplementation(async config => {
     if (status === 'network') throw new AxiosError('Network Error', 'ERR_NETWORK', config)
     return httpResponse(config, { detail: '暂时不可用' }, status)
   })
-  const { result } = renderHook(() => useServerCpuPercent('server', 'RUNNING', {
+  const { result } = renderHook(() => useQuery({ ...monitoringQueryOptions(1), enabled: true,
     retryDelay: 0, refetchInterval: false,
   }), { wrapper: ({ children }) => <TestProviders client={client}>{children}</TestProviders> })
   await waitFor(() => expect(result.current.isError).toBe(true))
-  expect(adapter).toHaveBeenCalledTimes(status === 500 || status === 'network' ? 3 : 1)
+  expect(adapter).toHaveBeenCalledTimes(1)
 })

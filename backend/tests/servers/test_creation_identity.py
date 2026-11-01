@@ -10,7 +10,6 @@ from sqlalchemy import select
 
 from app.errors import PublicOperationError
 from app.minecraft import DockerMCManager, MCInstance
-from app.minecraft.docker.manager import ComposeManager
 from app.operation_admission import ServerWriteAdmission
 from app.operations.coordinator import OperationCoordinator, ResourceClaim, ResourceKind
 from app.servers import port_utils
@@ -45,7 +44,7 @@ async def creation_environment(tmp_path, monkeypatch, db_session_factory):
     monkeypatch.setattr(orchestrators.get_log_monitor(), "stop_watching", AsyncMock())
     monkeypatch.setattr(orchestrators.get_dns_manager(), "update", AsyncMock())
     monkeypatch.setattr(port_utils, "get_system_used_ports", Mock(return_value=set()))
-    monkeypatch.setattr(ComposeManager, "created", AsyncMock(return_value=False))
+    monkeypatch.setattr(MCInstance, "created", AsyncMock(return_value=False))
     yield sessions, manager
 
 

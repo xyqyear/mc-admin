@@ -125,7 +125,7 @@ func safetySnapshotDisconnect(ctx context.Context, t *engine.Scope) error {
 	if !bytes.Equal(restored, live) {
 		return fmt.Errorf("early-disconnect safety rollback did not restore the exact pre-request region bytes")
 	}
-	return fixtures.Status(ctx, s.client, s.id, "exists")
+	return fixtures.WaitStatus(ctx, s.client, s.id, "exists")
 }
 
 func (s *scenario) waitSafetyDisconnect(ctx context.Context, id, safety string) error {
@@ -188,10 +188,8 @@ func (s *scenario) waitSafetyDisconnect(ctx context.Context, id, safety string) 
 		if !bound || !safetyRetained || !historyRetained {
 			return false, api.Permanent(fmt.Errorf("operation %s lost its exact region file scope or recovery references", operation.ID))
 		}
-		var maintenance struct {
-			Active bool `json:"active"`
-		}
-		if err := s.client.JSON(ctx, "GET", s.base+"/maintenance", nil, &maintenance, 200); err != nil {
+		maintenance, err := fixtures.ServerMaintenance(ctx, s.client, s.id)
+		if err != nil {
 			return false, api.Permanent(err)
 		}
 		if maintenance.Active {

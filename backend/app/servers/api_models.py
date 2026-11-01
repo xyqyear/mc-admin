@@ -2,7 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.players.crud.query.session_query import OnlinePlayerLite
 from app.servers.restart_schedule import RestartScheduleRequest
 
 MinecraftColor = Literal[
@@ -54,40 +53,11 @@ class ServerInfo(BaseModel):
     javaVersion: int
 
 
-class ServerStatus(BaseModel):
-    status: str
-
-
-class ServerOverviewItem(BaseModel):
-    id: str
-    name: str
-    gamePort: int
-    status: str
-    online_players: list[OnlinePlayerLite]
-
-
-class ServerCpuPercent(BaseModel):
-    cpuPercentage: float
-
-
-class ServerMemory(BaseModel):
-    memoryUsageBytes: int
-
-
-class ServerIOStats(BaseModel):
-    # Disk I/O statistics
-    diskReadBytes: int
-    diskWriteBytes: int
-    # Network I/O statistics
-    networkReceiveBytes: int
-    networkSendBytes: int
-
-
-class ServerDiskUsage(BaseModel):
-    # Disk usage and space information
-    diskUsageBytes: int
-    diskTotalBytes: int
-    diskAvailableBytes: int
+class ServerMaintenance(BaseModel):
+    active: bool = False
+    kind: str | None = None
+    description: str | None = None
+    task_id: str | None = None
 
 
 class SyncRequest(BaseModel):

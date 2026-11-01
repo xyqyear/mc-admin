@@ -8,11 +8,11 @@ from app.configuration.preparation import ServerConfiguration
 from app.configuration.state import read_configuration_state
 from app.db.metadata import Base
 from app.minecraft import DockerMCManager
-from app.minecraft.docker.manager import DockerManager
 from app.operations.journal import OperationJournal
 from app.operations.journal_types import OperationState
 from app.runtime import Runtime
 from app.servers.models import Server
+from app.utils.exec import exec_command
 from tests.fixtures.test_utils import (
     OwnedDockerResources,
     owned_docker_resources,  # noqa: F401
@@ -61,7 +61,7 @@ async def test_configuration_task_rebuilds_real_container_environment(
     assert record.running_intent is True
     await server.wait_until_healthy()
     assert await server.get_container_id() != original_container
-    environment = await DockerManager.run_sub_command(
+    environment = await exec_command("docker",
         "inspect", f"mc-{server_name}", "--format", "{{range .Config.Env}}{{println .}}{{end}}",
     )
     assert "MODE=survival" in environment.splitlines()

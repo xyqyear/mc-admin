@@ -184,5 +184,5 @@ func prunePreviewValidity(ctx context.Context, t *engine.Scope) error {
 	if err = s.checkChunk(ctx, 1, nil); err != nil {
 		return err
 	}
-	return fixtures.Status(ctx, s.client, s.id, "exists")
+	return fixtures.WaitStatus(ctx, s.client, s.id, "exists")
 }

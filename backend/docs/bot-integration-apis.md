@@ -4,7 +4,7 @@ mc-admin exposes a small generic API surface for external automation such as
 chat bridges. The API is intentionally not bot-specific: consumers own command
 parsing, user binding, rate limits, and chat-platform identifiers.
 
-The surface consists of four endpoints:
+The surface provides commands, events and shared observations:
 
 1. `POST /api/servers/{server_id}/rcon` executes one Minecraft command through
    the server's RCON client and returns the command output.
@@ -12,8 +12,7 @@ The surface consists of four endpoints:
    game with server-side `tellraw` JSON escaping.
 3. `WS /api/events` streams persisted chat and live server/player events, with
    cursor-based chat replay on reconnect.
-4. `GET /api/servers/overview` returns every active server, its runtime status,
-   and lightweight online-player data in one round trip.
+4. `GET /api/monitoring` returns recent runtime samples and current maintenance for ACTIVE servers. Static metadata and online players have separate reads.
 
 ## Authentication
 
@@ -146,33 +145,6 @@ Filtering and identity resolution happen before publication. Ignored player
 names are not streamed when they are not persisted, and unresolved online-mode
 identities are still dropped by the tracking layer.
 
-## Server Overview
+## Server observations
 
-```text
-GET /api/servers/overview
-200:
-[
-  {
-    "id": "vanilla",
-    "name": "vanilla",
-    "gamePort": 25565,
-    "status": "HEALTHY",
-    "online_players": [
-      {"name": "Notch", "uuid": "069a79f4...", "player_db_id": 7}
-    ]
-  }
-]
-```
-
-The endpoint covers every ACTIVE server row, including stopped servers. It
-performs one grouped database query for open player sessions, then reads each
-server's compose metadata and runtime status concurrently. Rows whose compose
-state has drifted away are skipped with a warning, matching `GET /api/servers/`.
-
-Online players are shown only for statuses at or above `RUNNING`
-(`RUNNING`, `STARTING`, `HEALTHY`). Stopped or merely-created servers always
-return an empty `online_players` list so stale open sessions do not appear as
-live players after crashes.
-
-Online-player data is session-derived, so it has the same staleness envelope as
-`GET /api/servers/{server_id}/online-players`.
+Use `GET /api/servers/` for static server metadata, `GET /api/monitoring` for runtime status and resources, and `GET /api/servers/{server_id}/online-players` for session-derived players. Monitoring samples carry generation, quality and timestamps; a failed or pending sample is not a stopped server. Only display online players when a ready running observation supports it. See [monitoring](monitoring.md) for the complete observation contract.

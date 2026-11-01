@@ -65,6 +65,7 @@ with `asyncio.to_thread`; do not reintroduce `asyncer.asyncify`. Annotate
 | Change | Read before implementation |
 | --- | --- |
 | Module ownership or new subsystem | [Architecture](docs/architecture.md), [runtime](docs/runtime.md) |
+| Docker reads, resource samples or monitoring APIs | [Monitoring](docs/monitoring.md), [Minecraft adapter](docs/minecraft.md) |
 | Tasks, cancellation, filesystem writers or deletion | [Background tasks](docs/background-tasks.md), [operations](docs/operations.md), [server admission](docs/servers.md) |
 | Snapshot/restore protection or history | [Snapshot architecture](docs/snapshots.md), [restoration](docs/snapshot-restoration.md), [world adapters](docs/world-restore.md) |
 | Compose/template application | [Configuration](docs/configuration.md), [Minecraft adapter](docs/minecraft.md) |

@@ -384,5 +384,5 @@ func reconciliation(ctx context.Context, t *engine.Scope) error {
 	if len(listed) != 1 || listed[0].ID != s.ID {
 		return fmt.Errorf("adopted server absent from database inventory")
 	}
-	return fixtures.Status(ctx, c, s.ID, "exists")
+	return fixtures.WaitStatus(ctx, c, s.ID, "exists")
 }

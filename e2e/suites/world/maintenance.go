@@ -10,6 +10,7 @@ import (
 
 	"mc-admin/e2e/internal/api"
 	"mc-admin/e2e/internal/engine"
+	"mc-admin/e2e/internal/fixtures"
 )
 
 func missingSidecars(ctx context.Context, t *engine.Scope) error {
@@ -151,10 +152,8 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 	if err := waitResticPause(ctx, t, "backup"); err != nil {
 		return err
 	}
-	var maintenance struct {
-		Active bool `json:"active"`
-	}
-	if err := s.client.JSON(ctx, "GET", s.base+"/maintenance", nil, &maintenance, 200); err != nil {
+	maintenance, err := fixtures.ServerMaintenance(ctx, s.client, s.id)
+	if err != nil {
 		return err
 	}
 	if !maintenance.Active {
@@ -220,10 +219,8 @@ func disconnectedRestore(ctx context.Context, t *engine.Scope) error {
 		if row.Status != "cancelled" || row.Finished == nil || !row.SafetyExists {
 			return false, api.Permanent(fmt.Errorf("disconnected restore has inconsistent terminal state: %+v", row))
 		}
-		var maintenance struct {
-			Active bool `json:"active"`
-		}
-		if err := s.client.JSON(ctx, "GET", s.base+"/maintenance", nil, &maintenance, 200); err != nil {
+		maintenance, err := fixtures.ServerMaintenance(ctx, s.client, s.id)
+		if err != nil {
 			return false, api.Permanent(err)
 		}
 		return !maintenance.Active, nil

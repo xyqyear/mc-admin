@@ -116,17 +116,15 @@ export const sleep = (ms: number): Promise<void> =>
 // Single source of truth for React Query cache keys. Hooks and invalidations
 // must always reference these factories so prefix-invalidation works.
 export const queryKeys = {
+  monitoring: {
+    all: ['monitoring'] as const,
+    snapshot: (userId: number | null) => [...queryKeys.monitoring.all, userId] as const,
+  },
   release: () => ['application-release'] as const,
   operations: {
     all: ['operations'] as const,
     session: (session: string) => [...queryKeys.operations.all, session] as const,
     checkpoint: (session: string) => [...queryKeys.operations.session(session), 'checkpoint'] as const,
-  },
-  system: {
-    all: ["system"] as const,
-    info: () => [...queryKeys.system.all, "info"] as const,
-    cpuPercent: () => [...queryKeys.system.info(), "cpu"] as const,
-    diskUsage: () => [...queryKeys.system.all, "disk-usage"] as const,
   },
 
   serverInfos: {
@@ -135,30 +133,7 @@ export const queryKeys = {
       [...queryKeys.serverInfos.all, "detail", id] as const,
   },
 
-  serverRuntimes: {
-    all: ["serverRuntimes"] as const,
-    detail: (id: string) =>
-      [...queryKeys.serverRuntimes.all, "detail", id] as const,
-    cpu: (id: string) => [...queryKeys.serverRuntimes.detail(id), "cpu"] as const,
-    memory: (id: string) =>
-      [...queryKeys.serverRuntimes.detail(id), "memory"] as const,
-    ioStats: (id: string) =>
-      [...queryKeys.serverRuntimes.detail(id), "iostats"] as const,
-    disk: (id: string) =>
-      [...queryKeys.serverRuntimes.detail(id), "disk"] as const,
-  },
 
-  serverStatuses: {
-    all: ["serverStatuses"] as const,
-    detail: (id: string) =>
-      [...queryKeys.serverStatuses.all, "detail", id] as const,
-    batch: (ids: readonly string[]) =>
-      [...queryKeys.serverStatuses.all, "batch", ids] as const,
-  },
-  serverMaintenance: {
-    all: ['serverMaintenance'] as const,
-    detail: (id: string) => [...queryKeys.serverMaintenance.all, 'detail', id] as const,
-  },
 
   players: {
     all: ["players"] as const,

@@ -68,7 +68,7 @@ func management(ctx context.Context, t *engine.Scope) error {
 	if err = owner.RunTask(ctx, "POST", base+"/operations", map[string]string{"action": "remove"}, nil); err != nil {
 		return err
 	}
-	if err = fixtures.Status(ctx, owner, id, "removed"); err != nil {
+	if err = fixtures.WaitStatus(ctx, owner, id, "removed"); err != nil {
 		return err
 	}
 	return owner.RunTask(ctx, "POST", base, map[string]string{"yaml_content": fixtures.ServerOf(t.Env).Compose}, nil)

@@ -24,21 +24,14 @@ const ServerDetail: React.FC = () => {
   const {
     serverInfo,
     status,
-    cpu,
-    memory,
-    iostats,
-    diskUsage,
+    samples,
+    monitoringFailed,
     restartSchedule,
     restartScheduleQuery,
     isLoading,
     isError,
     error,
     hasServerInfo,
-    hasCpuData,
-    hasMemoryData,
-    hasIOStatsData,
-    hasDiskUsageData,
-    isRunning,
     isHealthy,
   } = useServerDetailData(id || '')
 
@@ -139,12 +132,10 @@ const ServerDetail: React.FC = () => {
       />
 
       <ServerResourcesCard
-        cpuPercentage={cpu?.cpuPercentage}
-        memoryUsageBytes={memory?.memoryUsageBytes}
+        cpu={samples?.cpu_percent}
+        memory={samples?.memory_bytes}
         serverInfo={serverInfo}
-        isRunning={isRunning || false}
-        hasCpuData={hasCpuData || false}
-        hasMemoryData={hasMemoryData || false}
+        failed={monitoringFailed}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -160,20 +151,15 @@ const ServerDetail: React.FC = () => {
           error={restartScheduleQuery.error}
         />
         <ServerDiskUsageCard
-          diskUsageBytes={diskUsage?.diskUsageBytes}
-          diskTotalBytes={diskUsage?.diskTotalBytes}
-          diskAvailableBytes={diskUsage?.diskAvailableBytes}
-          hasDiskUsageData={hasDiskUsageData || false}
+          sample={samples?.disk}
+          failed={monitoringFailed}
         />
       </div>
 
       <ServerIOStatsCard
-        diskReadBytes={iostats?.diskReadBytes}
-        diskWriteBytes={iostats?.diskWriteBytes}
-        networkReceiveBytes={iostats?.networkReceiveBytes}
-        networkSendBytes={iostats?.networkSendBytes}
-        isRunning={isRunning || false}
-        hasIOStatsData={hasIOStatsData || false}
+        disk={samples?.disk_io}
+        network={samples?.network_io}
+        failed={monitoringFailed}
       />
     </div>
   )

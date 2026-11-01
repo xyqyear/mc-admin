@@ -29,7 +29,7 @@ func templateSnapshot(ctx context.Context, t *engine.Scope) error {
 	}
 	server := fixtures.ServerOf(t.Env)
 	if err = t.Step("direct server exists and rejects duplicate creation", func() error {
-		if err := fixtures.Status(ctx, client, server.ID, "exists"); err != nil {
+		if err := fixtures.WaitStatus(ctx, client, server.ID, "exists"); err != nil {
 			return err
 		}
 		return client.JSON(ctx, "POST", "/api/servers/"+server.ID, map[string]any{"yaml_content": server.Compose}, nil, 409)

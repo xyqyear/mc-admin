@@ -40,7 +40,9 @@ if TYPE_CHECKING:
     from .files.types import UploadSession
     from .log_monitor.monitor import LogMonitor
     from .mcmap.manager import MCMapManager
+    from .minecraft.docker.reader import DockerReader
     from .minecraft.manager import DockerMCManager
+    from .monitoring.service import RuntimeMonitor
     from .operation_admission import ServerWriteAdmission
     from .operations.coordinator import OperationCoordinator
     from .operations.journal import OperationJournal
@@ -97,6 +99,8 @@ class Runtime:
         self._app_logger: OwnedLogger | _Uninitialized = UNINITIALIZED
         self._audit_logger: OwnedLogger | None | _Uninitialized = UNINITIALIZED
         self._docker_mc_manager: DockerMCManager | _Uninitialized = UNINITIALIZED
+        self._docker_reader: DockerReader | _Uninitialized = UNINITIALIZED
+        self._monitor: RuntimeMonitor | _Uninitialized = UNINITIALIZED
         self._snapshot_service: SnapshotService | None | _Uninitialized = UNINITIALIZED
         self._operation_coordinator: OperationCoordinator | _Uninitialized = UNINITIALIZED
         self._server_operation_lock: ServerOperationLock | _Uninitialized = UNINITIALIZED
@@ -199,6 +203,18 @@ class Runtime:
             with self.bind():
                 self._docker_mc_manager = runtime_factories.create_docker_mc_manager(self)
         return self._docker_mc_manager
+
+    @property
+    def docker_reader(self) -> DockerReader:
+        if isinstance(self._docker_reader, _Uninitialized):
+            self._docker_reader = runtime_factories.create_docker_reader(self)
+        return self._docker_reader
+
+    @property
+    def monitor(self) -> RuntimeMonitor:
+        if isinstance(self._monitor, _Uninitialized):
+            self._monitor = runtime_factories.create_monitor(self)
+        return self._monitor
 
     @property
     def snapshot_service(self) -> SnapshotService | None:
@@ -449,6 +465,7 @@ class Runtime:
                 await self.hooks.migrate()
                 await get_config_manager().initialize_all_configs()
                 await self._recover()
+                self.monitor.start()
 
                 previews = get_snapshot_previews()
                 await self.chunk_prune_service.start()
@@ -512,6 +529,14 @@ class Runtime:
         if isinstance(resource, _Uninitialized) or resource is None:
             return
         await resource.close()
+
+    async def _close_docker_reader(self) -> None:
+        if not isinstance(self._docker_reader, _Uninitialized):
+            await self._docker_reader.close()
+
+    async def _close_monitor(self) -> None:
+        if not isinstance(self._monitor, _Uninitialized):
+            await self._monitor.close()
 
     async def _close_mcmap_manager(self) -> None:
         resource = self._mcmap_manager
@@ -633,6 +658,7 @@ class Runtime:
                     shutdown.push_async_callback(self._close_app_logger)
                     shutdown.push_async_callback(self._close_audit_logger)
                     shutdown.push_async_callback(self._close_database)
+                    shutdown.push_async_callback(self._close_docker_reader)
                     shutdown.push_async_callback(self._close_operation_changes)
                     shutdown.push_async_callback(self._close_event_bus)
                     shutdown.push_async_callback(self._close_login_code_manager)
@@ -644,6 +670,7 @@ class Runtime:
                     shutdown.push_async_callback(self._verify_writers_stopped)
                     shutdown.push_async_callback(self._close_task_manager)
                     shutdown.push_async_callback(self._stop_tasks, self._background)
+                    shutdown.push_async_callback(self._close_monitor)
                     shutdown.push_async_callback(self._stop_tasks, self.requests)
                     shutdown.push_async_callback(self._close_heartbeat_manager)
                     shutdown.push_async_callback(self._close_log_monitor)

@@ -22,6 +22,7 @@ export async function waitForTaskResult<T>(
   const release = retainTaskStream(client)
   void client.invalidateQueries({ queryKey: taskQueryKeys.all })
   void client.invalidateQueries({ queryKey: queryKeys.operations.all })
+  void client.invalidateQueries({ queryKey: queryKeys.monitoring.all })
   try {
     return await new Promise<T>((resolve, reject) => {
       const observer = new QueryObserver(client, taskDetailQueryOptions(client, accepted.task_id))
@@ -71,6 +72,7 @@ export async function waitForTaskResult<T>(
     toast.dismiss(warningId)
     void client.invalidateQueries({ queryKey: taskQueryKeys.all })
     void client.invalidateQueries({ queryKey: queryKeys.operations.all })
+    void client.invalidateQueries({ queryKey: queryKeys.monitoring.all })
   }
 }
 export const useCancelTask = () => {

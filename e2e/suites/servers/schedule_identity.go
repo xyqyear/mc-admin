@@ -276,7 +276,7 @@ func scheduleLogicalTarget(ctx context.Context, t *engine.Scope) error {
 		if err := c.JSON(ctx, "POST", base+"/restart-schedule/pause", nil, nil, 200); err != nil {
 			return err
 		}
-		return fixtures.Status(ctx, c, server.ID, "exists")
+		return fixtures.WaitStatus(ctx, c, server.ID, "exists")
 	}); err != nil {
 		return err
 	}

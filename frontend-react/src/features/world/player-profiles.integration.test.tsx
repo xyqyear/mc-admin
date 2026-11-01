@@ -1,3 +1,4 @@
+import { monitoringFixture } from '@/test/monitoring'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -25,10 +26,11 @@ afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
 beforeEach(() => {
   client = createTestClient()
+  client.setQueryData(queryKeys.user.me(), { id: 1, username: 'owner' })
+  client.setQueryData(queryKeys.monitoring.snapshot(1), monitoringFixture('EXISTS'))
   server.use(
     createTaskEvents().handler,
     http.get('*/api/servers/alpha', () => HttpResponse.json({ id: 'alpha', name: 'alpha', serverType: 'vanilla' })),
-    http.get('*/api/servers/alpha/status', () => HttpResponse.json({ status: 'EXISTS' })),
     http.get('*/api/servers/alpha/online-players', () => HttpResponse.json([])),
     http.get('*/api/servers/alpha/world-restore/layout', () => HttpResponse.json({ world_roots: [{ name: 'world', path: '/servers/alpha/data/world', dimensions: [{ region_dir: '/servers/alpha/data/world/region' }] }] })),
     http.get('*/api/servers/alpha/world-restore/dimension-labels', () => HttpResponse.json({ dimension_labels: {} })),

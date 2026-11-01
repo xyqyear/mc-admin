@@ -59,7 +59,7 @@ func stoppedConfigurationTask(ctx context.Context, c *api.Client, id, taskID str
 	if wasRunning, ok := task.Result["was_running"].(bool); !ok || wasRunning {
 		return fmt.Errorf("configuration task lost its stopped running intent: %+v", task.Result)
 	}
-	return fixtures.Status(ctx, c, id, "exists")
+	return fixtures.WaitStatus(ctx, c, id, "exists")
 }
 
 func configurationVersions(ctx context.Context, t *engine.Scope) error {
@@ -225,6 +225,6 @@ func configurationVersions(ctx context.Context, t *engine.Scope) error {
 		if direct.YAML != latest.YAML || direct.Version == latest.Version {
 			return fmt.Errorf("direct conversion changed content or failed to version its mode")
 		}
-		return fixtures.Status(ctx, owner, server.ID, "exists")
+		return fixtures.WaitStatus(ctx, owner, server.ID, "exists")
 	})
 }

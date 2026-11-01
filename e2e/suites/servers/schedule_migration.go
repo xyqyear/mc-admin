@@ -193,7 +193,7 @@ db.close()
 				return err
 			}
 		}
-		return fixtures.Status(ctx, c, second, "exists")
+		return fixtures.WaitStatus(ctx, c, second, "exists")
 	})
 }
 

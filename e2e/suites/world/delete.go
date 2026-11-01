@@ -103,13 +103,11 @@ func deletionWaitsForWriter(ctx context.Context, t *engine.Scope) error {
 			return false, api.Permanent(fmt.Errorf("deletion completed before writer admission was observed"))
 		default:
 		}
-		var state struct {
-			Kind string `json:"kind"`
-		}
-		if err := s.client.JSON(ctx, "GET", s.base+"/maintenance", nil, &state, 200); err != nil {
+		state, err := fixtures.ServerMaintenance(ctx, s.client, s.id)
+		if err != nil {
 			return false, api.Permanent(err)
 		}
-		return state.Kind == "server_remove", nil
+		return state.Kind != nil && *state.Kind == "server_remove", nil
 	}); err != nil {
 		return err
 	}

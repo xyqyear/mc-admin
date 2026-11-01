@@ -345,6 +345,14 @@
         "session_or_master"
       ],
       "method": "GET",
+      "path": "/api/monitoring"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
       "path": "/api/operations"
     },
     {
@@ -517,14 +525,6 @@
       "path": "/api/servers/"
     },
     {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/servers/overview"
-    },
-    {
       "cookie_csrf": true,
       "declared_authorization": [
         "roles:owner",
@@ -644,22 +644,6 @@
       ],
       "method": "POST",
       "path": "/api/servers/{server_id}/convert-to-template"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/servers/{server_id}/cpu_percent"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/servers/{server_id}/disk-usage"
     },
     {
       "cookie_csrf": true,
@@ -782,22 +766,6 @@
       "path": "/api/servers/{server_id}/files/upload/policy"
     },
     {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/servers/{server_id}/iostats"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/servers/{server_id}/maintenance"
-    },
-    {
       "cookie_csrf": true,
       "declared_authorization": [
         "session_or_master"
@@ -828,14 +796,6 @@
       ],
       "method": "GET",
       "path": "/api/servers/{server_id}/map/tiles/{x}/{z}.png"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/servers/{server_id}/memory"
     },
     {
       "cookie_csrf": true,
@@ -924,14 +884,6 @@
       ],
       "method": "POST",
       "path": "/api/servers/{server_id}/restart-schedule/resume"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/servers/{server_id}/status"
     },
     {
       "cookie_csrf": false,
@@ -1167,33 +1119,9 @@
     },
     {
       "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/system/cpu_percent"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/system/disk-usage"
-    },
-    {
-      "cookie_csrf": false,
       "declared_authorization": [],
       "method": "GET",
       "path": "/api/system/health"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/system/info"
     },
     {
       "cookie_csrf": true,
@@ -2745,6 +2673,24 @@
           "title": "Body_login_for_access_token_auth_token_post",
           "type": "object"
         },
+        "ByteCounters": {
+          "properties": {
+            "read": {
+              "title": "Read",
+              "type": "integer"
+            },
+            "write": {
+              "title": "Write",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "read",
+            "write"
+          ],
+          "title": "ByteCounters",
+          "type": "object"
+        },
         "CheckWorldSnapshotTargetRequest": {
           "additionalProperties": false,
           "properties": {
@@ -2950,6 +2896,29 @@
             "scope"
           ],
           "title": "CreateSnapshotRequest",
+          "type": "object"
+        },
+        "DiskUsage": {
+          "properties": {
+            "available": {
+              "title": "Available",
+              "type": "integer"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            },
+            "used": {
+              "title": "Used",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "used",
+            "total",
+            "available"
+          ],
+          "title": "DiskUsage",
           "type": "object"
         },
         "DownloadManifestEntry": {
@@ -3203,6 +3172,56 @@
             "user"
           ],
           "title": "LoginResponse",
+          "type": "object"
+        },
+        "MCServerStatus": {
+          "enum": [
+            "REMOVED",
+            "EXISTS",
+            "CREATED",
+            "RUNNING",
+            "STARTING",
+            "HEALTHY"
+          ],
+          "title": "MCServerStatus",
+          "type": "string"
+        },
+        "MemoryUsage": {
+          "properties": {
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            },
+            "used": {
+              "title": "Used",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "used",
+            "total"
+          ],
+          "title": "MemoryUsage",
+          "type": "object"
+        },
+        "MonitoringSnapshot": {
+          "properties": {
+            "servers": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/ServerSamples"
+              },
+              "title": "Servers",
+              "type": "object"
+            },
+            "system": {
+              "$ref": "#/components/schemas/SystemSamples"
+            }
+          },
+          "required": [
+            "system",
+            "servers"
+          ],
+          "title": "MonitoringSnapshot",
           "type": "object"
         },
         "OperationChangePublic": {
@@ -3872,6 +3891,475 @@
           "title": "RestoreRequest",
           "type": "object"
         },
+        "Sample_ByteCounters_": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "quality": {
+              "default": "pending",
+              "enum": [
+                "ready",
+                "pending",
+                "stale",
+                "unavailable"
+              ],
+              "title": "Quality",
+              "type": "string"
+            },
+            "sampled_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sampled At"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ByteCounters"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "title": "Sample[ByteCounters]",
+          "type": "object"
+        },
+        "Sample_DiskUsage_": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "quality": {
+              "default": "pending",
+              "enum": [
+                "ready",
+                "pending",
+                "stale",
+                "unavailable"
+              ],
+              "title": "Quality",
+              "type": "string"
+            },
+            "sampled_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sampled At"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DiskUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "title": "Sample[DiskUsage]",
+          "type": "object"
+        },
+        "Sample_MCServerStatus_": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "quality": {
+              "default": "pending",
+              "enum": [
+                "ready",
+                "pending",
+                "stale",
+                "unavailable"
+              ],
+              "title": "Quality",
+              "type": "string"
+            },
+            "sampled_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sampled At"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MCServerStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "title": "Sample[MCServerStatus]",
+          "type": "object"
+        },
+        "Sample_MemoryUsage_": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "quality": {
+              "default": "pending",
+              "enum": [
+                "ready",
+                "pending",
+                "stale",
+                "unavailable"
+              ],
+              "title": "Quality",
+              "type": "string"
+            },
+            "sampled_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sampled At"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MemoryUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "title": "Sample[MemoryUsage]",
+          "type": "object"
+        },
+        "Sample_float_": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "quality": {
+              "default": "pending",
+              "enum": [
+                "ready",
+                "pending",
+                "stale",
+                "unavailable"
+              ],
+              "title": "Quality",
+              "type": "string"
+            },
+            "sampled_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sampled At"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value"
+            }
+          },
+          "title": "Sample[float]",
+          "type": "object"
+        },
+        "Sample_int_": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "quality": {
+              "default": "pending",
+              "enum": [
+                "ready",
+                "pending",
+                "stale",
+                "unavailable"
+              ],
+              "title": "Quality",
+              "type": "string"
+            },
+            "sampled_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sampled At"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value"
+            }
+          },
+          "title": "Sample[int]",
+          "type": "object"
+        },
+        "Sample_tuple_float__float__float__": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "quality": {
+              "default": "pending",
+              "enum": [
+                "ready",
+                "pending",
+                "stale",
+                "unavailable"
+              ],
+              "title": "Quality",
+              "type": "string"
+            },
+            "sampled_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sampled At"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value"
+            }
+          },
+          "title": "Sample[tuple[float, float, float]]",
+          "type": "object"
+        },
+        "ServerInfo": {
+          "properties": {
+            "gamePort": {
+              "title": "Gameport",
+              "type": "integer"
+            },
+            "gameVersion": {
+              "title": "Gameversion",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "javaVersion": {
+              "title": "Javaversion",
+              "type": "integer"
+            },
+            "maxMemoryBytes": {
+              "title": "Maxmemorybytes",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "rconPort": {
+              "title": "Rconport",
+              "type": "integer"
+            },
+            "serverType": {
+              "title": "Servertype",
+              "type": "string"
+            },
+            "server_generation": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Server Generation"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "serverType",
+            "gameVersion",
+            "gamePort",
+            "maxMemoryBytes",
+            "rconPort",
+            "javaVersion"
+          ],
+          "title": "ServerInfo",
+          "type": "object"
+        },
+        "ServerMaintenance": {
+          "properties": {
+            "active": {
+              "default": false,
+              "title": "Active",
+              "type": "boolean"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "kind": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            },
+            "task_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
+          "title": "ServerMaintenance",
+          "type": "object"
+        },
         "ServerOperation": {
           "properties": {
             "action": {
@@ -3883,6 +4371,51 @@
             "action"
           ],
           "title": "ServerOperation",
+          "type": "object"
+        },
+        "ServerSamples": {
+          "properties": {
+            "cpu_percent": {
+              "$ref": "#/components/schemas/Sample_float_"
+            },
+            "disk": {
+              "$ref": "#/components/schemas/Sample_DiskUsage_"
+            },
+            "disk_io": {
+              "$ref": "#/components/schemas/Sample_ByteCounters_"
+            },
+            "generation": {
+              "title": "Generation",
+              "type": "integer"
+            },
+            "incarnation": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Incarnation"
+            },
+            "maintenance": {
+              "$ref": "#/components/schemas/ServerMaintenance"
+            },
+            "memory_bytes": {
+              "$ref": "#/components/schemas/Sample_int_"
+            },
+            "network_io": {
+              "$ref": "#/components/schemas/Sample_ByteCounters_"
+            },
+            "status": {
+              "$ref": "#/components/schemas/Sample_MCServerStatus_"
+            }
+          },
+          "required": [
+            "generation"
+          ],
+          "title": "ServerSamples",
           "type": "object"
         },
         "ServerScope": {
@@ -4094,6 +4627,24 @@
           "title": "SyncRequest",
           "type": "object"
         },
+        "SystemSamples": {
+          "properties": {
+            "cpu_percent": {
+              "$ref": "#/components/schemas/Sample_float_"
+            },
+            "disk": {
+              "$ref": "#/components/schemas/Sample_DiskUsage_"
+            },
+            "load": {
+              "$ref": "#/components/schemas/Sample_tuple_float__float__float__"
+            },
+            "memory": {
+              "$ref": "#/components/schemas/Sample_MemoryUsage_"
+            }
+          },
+          "title": "SystemSamples",
+          "type": "object"
+        },
         "TaskAccepted": {
           "properties": {
             "task_id": {
@@ -4265,65 +4816,6 @@
             "selection"
           ],
           "title": "WorldScope",
-          "type": "object"
-        },
-        "app__routers__servers__misc__ServerInfo": {
-          "properties": {
-            "gamePort": {
-              "title": "Gameport",
-              "type": "integer"
-            },
-            "gameVersion": {
-              "title": "Gameversion",
-              "type": "string"
-            },
-            "id": {
-              "title": "Id",
-              "type": "string"
-            },
-            "javaVersion": {
-              "title": "Javaversion",
-              "type": "integer"
-            },
-            "maxMemoryBytes": {
-              "title": "Maxmemorybytes",
-              "type": "integer"
-            },
-            "name": {
-              "title": "Name",
-              "type": "string"
-            },
-            "rconPort": {
-              "title": "Rconport",
-              "type": "integer"
-            },
-            "serverType": {
-              "title": "Servertype",
-              "type": "string"
-            },
-            "server_generation": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Server Generation"
-            }
-          },
-          "required": [
-            "id",
-            "name",
-            "serverType",
-            "gameVersion",
-            "gamePort",
-            "maxMemoryBytes",
-            "rconPort",
-            "javaVersion"
-          ],
-          "title": "ServerInfo",
           "type": "object"
         }
       }
@@ -5089,6 +5581,66 @@
           }
         }
       },
+      "/monitoring": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MonitoringSnapshot"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
       "/operations/changes": {
         "get": {
           "parameters": [
@@ -5425,7 +5977,7 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/app__routers__servers__misc__ServerInfo"
+                    "$ref": "#/components/schemas/ServerInfo"
                   }
                 }
               },
@@ -6213,73 +6765,6 @@
                   "schema": {
                     "$ref": "#/components/schemas/DownloadManifestResponse"
                   }
-                }
-              },
-              "description": "Successful Response"
-            },
-            "422": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              },
-              "description": "Validation Error"
-            }
-          }
-        }
-      },
-      "/servers/{server_id}/maintenance": {
-        "get": {
-          "parameters": [
-            {
-              "in": "path",
-              "name": "server_id",
-              "required": true,
-              "schema": {
-                "title": "Server Id",
-                "type": "string"
-              }
-            },
-            {
-              "in": "header",
-              "name": "authorization",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Authorization"
-              }
-            },
-            {
-              "in": "cookie",
-              "name": "mc_admin_session",
-              "required": false,
-              "schema": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Mc Admin Session"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {}
                 }
               },
               "description": "Successful Response"

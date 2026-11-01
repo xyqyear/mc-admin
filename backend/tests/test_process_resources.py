@@ -1,73 +1,50 @@
 import asyncio
 import sys
-from threading import Event
+from pathlib import Path
 
 import psutil
 import pytest
 
-from app.utils import system
+from app.monitoring.cpu import read_process_counter
 
 
-async def test_owned_process_sampling_and_exit():
+async def test_real_process_counter_measures_work_and_refuses_exited_process(monkeypatch):
     process = await asyncio.create_subprocess_exec(
         sys.executable, "-u", "-c",
+        "import ctypes\nctypes.CDLL(None).prctl(15, b'java', 0, 0, 0)\n"
         "print('ready', flush=True)\nwhile True: pass",
         stdout=asyncio.subprocess.PIPE,
     )
+    read_text = Path.read_text
+
+    def owned_cgroup(path, *args, **kwargs):
+        if path == Path(f"/proc/{process.pid}/cgroup"):
+            return "0::/docker/owned-test-container"
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", owned_cgroup)
     try:
         assert process.stdout is not None
         assert await asyncio.wait_for(process.stdout.readline(), 5) == b"ready\n"
-        assert await system.get_process_cpu_usage(process.pid) > 0
+        first = await asyncio.to_thread(read_process_counter, process.pid, "owned-test-container")
+        await asyncio.sleep(0.2)
+        second = await asyncio.to_thread(read_process_counter, process.pid, "owned-test-container")
+        percentage = second.percent_since(first)
+        assert percentage is not None and percentage > 0
+        with pytest.raises(RuntimeError, match="归属"):
+            await asyncio.to_thread(read_process_counter, process.pid, "another-container")
     finally:
         if process.returncode is None:
             process.terminate()
         await process.wait()
-    assert await system.get_process_cpu_usage(process.pid) == 0.0
+    with pytest.raises(psutil.NoSuchProcess):
+        read_process_counter(process.pid, "owned-test-container")
 
 
-async def test_access_denied_remains_an_error(monkeypatch):
+def test_process_access_denied_is_not_reported_as_zero(monkeypatch):
     def denied(pid):
         raise psutil.AccessDenied(pid)
 
-    monkeypatch.setattr(system.psutil, "Process", denied)
+    monkeypatch.setattr("app.monitoring.cpu.psutil.Process", denied)
     with pytest.raises(psutil.AccessDenied):
-        await system.get_process_cpu_usage(101)
-
-
-async def test_sampling_runs_off_loop_and_keeps_multicore_percentage(monkeypatch):
-    entered, release = Event(), Event()
-    intervals = []
-
-    class OwnedSample:
-        def cpu_percent(self, interval):
-            intervals.append(interval)
-            entered.set()
-            if not release.wait(5):
-                raise TimeoutError("sample was not released")
-            return 175.0
-
-    monkeypatch.setattr(system.psutil, "Process", lambda pid: OwnedSample())
-    sampling = asyncio.create_task(system.get_process_cpu_usage(102))
-    try:
-        assert await asyncio.to_thread(entered.wait, 5)
-        assert not sampling.done()
-    finally:
-        release.set()
-        result = await sampling
-    assert result == 175.0
-    assert len(intervals) == 1 and intervals[0] > 0
-
-
-async def test_reused_pid_is_sampled_from_current_process(monkeypatch):
-    samples = iter([11, 22])
-
-    class CurrentProcess:
-        def __init__(self):
-            self.percentage = next(samples)
-
-        def cpu_percent(self, interval):
-            return self.percentage
-
-    monkeypatch.setattr(system.psutil, "Process", lambda pid: CurrentProcess())
-    assert await system.get_process_cpu_usage(103) == 11
-    assert await system.get_process_cpu_usage(103) == 22
+        read_process_counter(101, "owned-test-container")

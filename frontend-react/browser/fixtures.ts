@@ -5,6 +5,7 @@ import { withCleanup } from './cleanup'
 import path from 'node:path'
 import { test as base, expect, type Page } from '@playwright/test'
 import { NetworkObservation } from './observation'
+import type { MonitoringSnapshot } from '../src/features/monitoring/contracts'
 
 export interface OwnedEnvironment {
   base_url: string
@@ -71,15 +72,18 @@ export class OwnedApi {
   }
 
   async stopped() {
-    const current = await this.json<{ status: string }>(this.server('/status'))
-    if (!['created', 'exists'].includes(current.status.toLowerCase())) await this.operation('stop')
-    await expect.poll(async () => (await this.json<{ status: string }>(this.server('/status'))).status.toLowerCase(), { timeout: 60_000 }).toMatch(/^(created|exists)$/)
+    await this.operation('stop')
+    await expect.poll(() => this.status(), { timeout: 60_000 }).toMatch(/^(created|exists)$/)
   }
 
   async running() {
-    const current = await this.json<{ status: string }>(this.server('/status'))
-    if (!['healthy', 'running', 'starting'].includes(current.status.toLowerCase())) await this.operation('up')
-    await expect.poll(async () => (await this.json<{ status: string }>(this.server('/status'))).status.toLowerCase(), { timeout: 120_000 }).toBe('healthy')
+    await this.operation('up')
+    await expect.poll(() => this.status(), { timeout: 120_000 }).toBe('healthy')
+  }
+
+  async status() {
+    const sample = (await this.json<MonitoringSnapshot>('/api/monitoring')).servers[this.environment.server_id]?.status
+    return sample?.quality === 'ready' ? sample.value?.toLowerCase() ?? 'unknown' : 'unknown'
   }
 
   async task(id: string, requireSuccess = true) {
@@ -129,7 +133,8 @@ export const test = base.extend<{ api: OwnedApi; observation: NetworkObservation
   owned: [async ({ playwright }, use) => { void playwright; await use(await ownedEnvironment()) }, { scope: 'worker' }],
   api: async ({ owned }, use) => {
     const api = new OwnedApi(owned)
-    const original = (await api.json<{ status: string }>(api.server('/status'))).status.toLowerCase()
+    await expect.poll(() => api.status()).not.toBe('unknown')
+    const original = await api.status()
     await withCleanup(() => use(api), {
       label: 'original server state',
       run: () => ['healthy', 'running', 'starting'].includes(original) ? api.running() : api.stopped(),

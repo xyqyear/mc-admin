@@ -16,6 +16,7 @@ func Cases(recipes fixtures.Recipes) []engine.Case {
 		{ID: "minecraft.server-path-boundaries", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: time.Minute, Run: serverIdentityPaths},
 		{ID: "minecraft.lifecycle", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Lifecycle, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: lifecycle},
 		{ID: "minecraft.overview", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Running, Isolation: engine.ObserveReuse, Timeout: time.Minute, Run: overview},
+		{ID: "minecraft.shared-monitoring", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 4 * time.Minute, Run: sharedMonitoring},
 		{ID: "minecraft.rcon-and-files", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Running, Isolation: engine.ObserveReuse, Timeout: time.Minute, Run: observe},
 		{ID: "minecraft.console-and-runtime-controls", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 6 * time.Minute, Run: consoleAndControls},
 		{ID: "minecraft.console-safe-adapter-errors", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 6 * time.Minute, Run: consoleSafeAdapterErrors},
@@ -120,7 +121,7 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 		if _, err := client.Task(ctx, task.ID); err != nil {
 			return err
 		}
-		if err := fixtures.Status(ctx, client, id, "exists"); err != nil {
+		if err := fixtures.WaitStatus(ctx, client, id, "exists"); err != nil {
 			return err
 		}
 		var compose struct {
@@ -149,7 +150,7 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 		if err := history.run(ctx, "down"); err != nil {
 			return err
 		}
-		if err := fixtures.Status(ctx, client, id, "exists"); err != nil {
+		if err := fixtures.WaitStatus(ctx, client, id, "exists"); err != nil {
 			return err
 		}
 		if err := fixtures.Operation(ctx, client, id, "remove"); err != nil {
@@ -166,17 +167,17 @@ func overview(ctx context.Context, t *engine.Scope) error {
 	}
 	id := fixtures.ServerOf(t.Env).ID
 	return t.Step("overview and resource APIs describe the running server", func() error {
-		var items []struct {
-			ID     string `json:"id"`
-			Status string `json:"status"`
-		}
-		if err := client.JSON(ctx, "GET", "/api/servers/overview", nil, &items, 200); err != nil {
+		if _, err := fixtures.WaitServerMetrics(ctx, client, id); err != nil {
 			return err
 		}
-		if len(items) != 1 || items[0].ID != id || !strings.EqualFold(items[0].Status, "healthy") {
-			return fmt.Errorf("unexpected overview: %+v", items)
+		snapshot, err := fixtures.Monitoring(ctx, client)
+		if err != nil {
+			return err
 		}
-		for _, suffix := range []string{"/memory", "/disk-usage", "/online-players", "/world-restore/layout"} {
+		if len(snapshot.Servers) != 1 || !snapshot.Servers[id].Status.Ready() || !strings.EqualFold(*snapshot.Servers[id].Status.Value, "healthy") {
+			return fmt.Errorf("unexpected monitoring snapshot")
+		}
+		for _, suffix := range []string{"/online-players", "/world-restore/layout"} {
 			if err := client.JSON(ctx, "GET", "/api/servers/"+id+suffix, nil, nil, 200); err != nil {
 				return err
 			}

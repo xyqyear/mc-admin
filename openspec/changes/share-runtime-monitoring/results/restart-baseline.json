@@ -1,0 +1,41 @@
+{
+  "mode": "baseline",
+  "image": "sha256:2445c074736508f0c51efc9239f52429a9458186a608282a9890525a46264a69",
+  "run_id": "perf-restart-baseline-20261101",
+  "results": [
+    {
+      "servers": 6,
+      "observers": 1,
+      "concurrent_restart": true,
+      "seconds": 31.4533827919513,
+      "admin_cpu_percent": 271.0502001133437,
+      "requests": 331,
+      "errors": [],
+      "p50_ms": 112.29865404311568,
+      "p95_ms": 3647.013563080691,
+      "health_p95_ms": 49.704230041243136,
+      "cpu_sample_age_p95_seconds": null,
+      "unique_cpu_samples": 0,
+      "diagnostic_tracing": false,
+      "before": {
+        "cpu_seconds": 19.509735,
+        "fds": 20,
+        "threads": 23,
+        "processes": 1
+      },
+      "after": {
+        "cpu_seconds": 104.764192,
+        "fds": 20,
+        "threads": 44,
+        "processes": 1
+      },
+      "drained": {
+        "cpu_seconds": 104.797636,
+        "fds": 20,
+        "threads": 44,
+        "processes": 1
+      }
+    }
+  ],
+  "traces": []
+}

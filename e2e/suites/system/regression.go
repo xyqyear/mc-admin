@@ -155,33 +155,35 @@ func metricsStaticValidation(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	if err = t.Step("system metrics are finite, bounded, and internally consistent", func() error {
-		var info struct{ Used, Total float64 }
-		var raw map[string]float64
-		if err := client.JSON(ctx, "GET", "/api/system/info", nil, &raw, 200); err != nil {
-			return err
-		}
-		info.Used, info.Total = raw["ramUsedGB"], raw["ramTotalGB"]
-		if info.Total <= 0 || info.Used < 0 || info.Used > info.Total {
-			return fmt.Errorf("invalid RAM metrics")
-		}
-		for _, key := range []string{"cpuLoad1Min", "cpuLoad5Min", "cpuLoad15Min"} {
-			if v, ok := raw[key]; !ok || v < 0 {
-				return fmt.Errorf("invalid %s", key)
+		return api.Wait(ctx, 100*time.Millisecond, "host monitoring samples", func(ctx context.Context) (bool, error) {
+			snapshot, err := fixtures.Monitoring(ctx, client)
+			if err != nil {
+				return false, api.Permanent(err)
 			}
-		}
-		if err := client.JSON(ctx, "GET", "/api/system/disk-usage", nil, &raw, 200); err != nil {
-			return err
-		}
-		if raw["diskTotalGB"] <= 0 || raw["diskUsedGB"] < 0 || raw["diskAvailableGB"] < 0 || raw["diskUsedGB"] > raw["diskTotalGB"] {
-			return fmt.Errorf("invalid disk metrics")
-		}
-		if err := client.JSON(ctx, "GET", "/api/system/cpu_percent", nil, &raw, 200); err != nil {
-			return err
-		}
-		if value, ok := raw["cpuPercentage"]; !ok || value < 0 || value > 100 {
-			return fmt.Errorf("invalid CPU percentage")
-		}
-		return nil
+			system := snapshot.System
+			if !system.CPU.Ready() || !system.Memory.Ready() || !system.Load.Ready() || !system.Disk.Ready() {
+				return false, nil
+			}
+			memory, disk := *system.Memory.Value, *system.Disk.Value
+			if memory.Total <= 0 || memory.Used < 0 || memory.Used > memory.Total {
+				return false, api.Permanent(fmt.Errorf("invalid RAM metrics"))
+			}
+			if disk.Total <= 0 || disk.Used < 0 || disk.Available < 0 || disk.Used > disk.Total || disk.Available > disk.Total {
+				return false, api.Permanent(fmt.Errorf("invalid disk metrics"))
+			}
+			if len(*system.Load.Value) != 3 {
+				return false, api.Permanent(fmt.Errorf("missing load averages"))
+			}
+			for _, value := range *system.Load.Value {
+				if value < 0 {
+					return false, api.Permanent(fmt.Errorf("negative load"))
+				}
+			}
+			if *system.CPU.Value < 0 || *system.CPU.Value > 100 {
+				return false, api.Permanent(fmt.Errorf("invalid CPU percentage"))
+			}
+			return true, nil
+		})
 	}); err != nil {
 		return err
 	}
@@ -244,7 +246,7 @@ func metricsStaticValidation(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	for _, path := range []string{"/api/system/info", "/api/system/disk-usage", "/api/system/cpu_percent"} {
+	for _, path := range []string{"/api/monitoring"} {
 		if err = anonymous.JSON(ctx, "GET", path, nil, nil, 401); err != nil {
 			return err
 		}

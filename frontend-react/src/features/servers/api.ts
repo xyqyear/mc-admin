@@ -1,9 +1,9 @@
 import type { TaskAccepted } from '@/features/tasks/contracts';
 import { getErrorStatus } from '@/shared/http/api';
 import type { SyncRequest } from "@/features/servers/lifecycleContracts";
-import type { ServerInfo, ServerStatus } from "@/features/servers/contracts";
+import type { ServerInfo } from "@/features/servers/contracts";
 import { api } from "@/shared/http/api";
-import type { ServerListItem, ServerStatusResponse, ServerMaintenanceResponse, ServerCpuPercentResponse, ServerMemoryResponse, ServerIOStatsResponse, ServerDiskUsageResponse, ServerOperationRequest, CreateServerRequest, PopulateServerRequest, PopulateServerResponse, RestartScheduleResponse } from '@/features/servers/contracts';
+import type { ServerListItem, ServerOperationRequest, CreateServerRequest, PopulateServerRequest, PopulateServerResponse, RestartScheduleResponse } from '@/features/servers/contracts';
 
 
 export const serverApi = {
@@ -37,51 +37,6 @@ export const serverApi = {
       gamePort: res.data.gamePort,
       rconPort: res.data.rconPort,
     };
-  },
-
-  getServerStatus: async (id: string): Promise<ServerStatus> => {
-    const res = await api.get<ServerStatusResponse>(`/servers/${id}/status`);
-    return res.data.status;
-  },
-
-  getServerMaintenance: async (id: string): Promise<ServerMaintenanceResponse> => {
-    const res = await api.get<ServerMaintenanceResponse>(`/servers/${id}/maintenance`);
-    return res.data;
-  },
-
-  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
-  getServerCpuPercent: async (
-    id: string,
-  ): Promise<{ cpuPercentage: number }> => {
-    const res = await api.get<ServerCpuPercentResponse>(
-      `/servers/${id}/cpu_percent`,
-    );
-    return {
-      cpuPercentage: res.data.cpuPercentage,
-    };
-  },
-
-  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
-  getServerMemory: async (
-    id: string,
-  ): Promise<{ memoryUsageBytes: number }> => {
-    const res = await api.get<ServerMemoryResponse>(`/servers/${id}/memory`);
-    return {
-      memoryUsageBytes: res.data.memoryUsageBytes,
-    };
-  },
-
-  // Backend returns 4xx unless server is RUNNING/STARTING/HEALTHY.
-  getServerIOStats: async (id: string): Promise<ServerIOStatsResponse> => {
-    const res = await api.get<ServerIOStatsResponse>(`/servers/${id}/iostats`);
-    return res.data;
-  },
-
-  getServerDiskUsage: async (id: string): Promise<ServerDiskUsageResponse> => {
-    const res = await api.get<ServerDiskUsageResponse>(
-      `/servers/${id}/disk-usage`,
-    );
-    return res.data;
   },
 
   serverOperation: async (id: string, action: string): Promise<TaskAccepted> => {
@@ -160,29 +115,4 @@ export const serverApi = {
     await api.post(`/servers/${serverId}/restart-schedule/resume`);
   },
 
-  // The list endpoint omits status, so fan out per server. A single failure
-  // must not poison the rest, so map errors to null and filter later.
-  getAllServerStatuses: async (
-    serverIds: string[],
-  ): Promise<Record<string, ServerStatus>> => {
-    const statusPromises = serverIds.map(async (id) => {
-      try {
-        const status = await serverApi.getServerStatus(id);
-        return { id, status };
-      } catch {
-        return { id, status: null };
-      }
-    });
-
-    const statuses = await Promise.all(statusPromises);
-
-    const statusMap: Record<string, ServerStatus> = {};
-    statuses.forEach(({ id, status }) => {
-      if (status !== null) {
-        statusMap[id] = status;
-      }
-    });
-
-    return statusMap;
-  },
 };

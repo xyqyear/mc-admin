@@ -21,6 +21,7 @@ from .routers import (
     cron,
     dns,
     events,
+    monitoring,
     operations,
     self_check,
     snapshots,
@@ -48,7 +49,6 @@ from .routers.servers import misc as server_misc
 from .routers.servers import operations as server_operations
 from .routers.servers import populate as server_populate
 from .routers.servers import rcon as server_rcon
-from .routers.servers import resources as server_resources
 from .routers.servers import restart_schedule as server_restart_schedule
 from .routers.servers import sync as server_sync
 from .routers.servers import template_config as server_template_config
@@ -92,6 +92,7 @@ def create_api_app(runtime: Runtime) -> FastAPI:
         api_app.include_router(user.router)
         api_app.include_router(admin.router)
         api_app.include_router(system.router)
+        api_app.include_router(monitoring.router)
         api_app.include_router(snapshots.router)
         api_app.include_router(archive.router)
         api_app.include_router(cron.router)
@@ -110,7 +111,6 @@ def create_api_app(runtime: Runtime) -> FastAPI:
         api_app.include_router(achievements.router)
 
         api_app.include_router(server_misc.router)
-        api_app.include_router(server_resources.router)
         api_app.include_router(server_compose.router)
         api_app.include_router(server_operations.router)
         api_app.include_router(server_rcon.router)

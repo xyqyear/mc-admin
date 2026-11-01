@@ -16,11 +16,11 @@ export function filesOperationResources(operation: Operation): QueryKey[] {
   if (operation.kind.startsWith('archive_')) keys.push(queryKeys.archive.all)
   if (operation.kind.startsWith('snapshot_') || operation.kind === 'world_restore') keys.push(queryKeys.snapshots.all)
   if (operation.resources.some(resource => resource.kind === 'files' && !resource.server_id)) {
-    keys.push(queryKeys.files.all, queryKeys.serverRuntimes.all, queryKeys.serverInfos.all, queryKeys.serverMaintenance.all)
+    keys.push(queryKeys.files.all, queryKeys.monitoring.all, queryKeys.serverInfos.all, queryKeys.monitoring.all)
   }
   for (const { server_id: id } of operation.resources) {
     if (!id) continue
-    keys.push(queryKeys.files.lists(id), queryKeys.serverRuntimes.disk(id), queryKeys.serverInfos.detail(id), queryKeys.serverMaintenance.detail(id))
+    keys.push(queryKeys.files.lists(id), queryKeys.monitoring.all, queryKeys.serverInfos.detail(id), queryKeys.monitoring.all)
   }
   return keys
 }

@@ -42,38 +42,6 @@ export interface ServerListItem {
   javaVersion: number;
 }
 
-export interface ServerStatusResponse {
-  status: ServerStatus;
-}
-
-export interface ServerMaintenanceResponse {
-  task_id?: string;
-  active: boolean;
-  kind: string | null;
-  description: string | null;
-}
-
-export interface ServerCpuPercentResponse {
-  cpuPercentage: number;
-}
-
-export interface ServerMemoryResponse {
-  memoryUsageBytes: number;
-}
-
-export interface ServerIOStatsResponse {
-  diskReadBytes: number;
-  diskWriteBytes: number;
-  networkReceiveBytes: number;
-  networkSendBytes: number;
-}
-
-export interface ServerDiskUsageResponse {
-  diskUsageBytes: number;
-  diskTotalBytes: number;
-  diskAvailableBytes: number;
-}
-
 export interface ServerOperationRequest {
   action: string;
 }

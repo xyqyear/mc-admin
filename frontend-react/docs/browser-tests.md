@@ -67,6 +67,12 @@ The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owne
 
 ## Journey coverage
 
+`monitoring.spec.ts` verifies one periodic monitoring source while sidebar and
+overview are displayed, navigation to details, visible stale values during a
+transport failure, and real stop/start with unavailable then renewed samples.
+Fixture lifecycle commands wait for ready monitoring observations; the shared
+response never substitutes for task settlement.
+
 `release.spec.ts` compares deployed release JSON with selected source, then verifies upgrade notification and acknowledgment. It runs in complete browser qualification and metadata-only final-image checks with the same owned fixture and cleanup.
 
 `task-progress.spec.ts` observes the built application's authenticated task SSE

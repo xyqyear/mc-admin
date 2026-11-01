@@ -1,3 +1,5 @@
+import { queryKeys } from '@/shared/http/api'
+import { monitoringFixture } from '@/test/monitoring'
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -24,14 +26,15 @@ let cancels: number
 let events: ReturnType<typeof createTaskEvents>
 const pruneState = () => ({ server_id: 'alpha', preview, preview_task: taskEvent(previewTask), apply_task: applyTask ? taskEvent(applyTask) : null })
 beforeEach(() => {
-  client = createTestClient(); cancels = 0; applyTask = null
+  client = createTestClient()
+  client.setQueryData(queryKeys.user.me(), { id: 1, username: 'owner' })
+  client.setQueryData(queryKeys.monitoring.snapshot(1), monitoringFixture('EXISTS')); cancels = 0; applyTask = null
   window.history.replaceState(null, '', '/#dim=world%2Fregion&mode=regions&z=2&cx=10&cz=-20')
   preview = { task_id: 'preview', input_version: 'v1', expires_at: null, availability: 'ready', apply_task_id: null }
   previewTask = { task_id: 'preview', task_type: 'chunk_prune_preview', name: 'preview', status: 'completed', progress: 100, message: 'ready', server_id: 'alpha', created_at: new Date().toISOString(), cancellable: false, result: { mode: 'regions', dry_run: true, threshold_seconds: 30, regions_selected: 1 } }
   events = createTaskEvents([], { pruneStates: [pruneState()] })
   server.use(events.handler,
     http.get('*/api/servers/alpha', () => HttpResponse.json({ id: 'alpha', name: 'alpha', serverType: 'vanilla' })),
-    http.get('*/api/servers/alpha/status', () => HttpResponse.json({ status: 'EXISTS' })),
     http.get('*/api/servers/alpha/online-players', () => HttpResponse.json([])),
     http.get('*/api/servers/alpha/world-restore/layout', () => HttpResponse.json({ world_roots: [{ name: 'world', path: '/servers/alpha/data/world', dimensions: [{ region_dir: '/servers/alpha/data/world/region' }, { region_dir: '/servers/alpha/data/world/DIM-1/region' }] }] })),
     http.get('*/api/servers/alpha/world-restore/dimension-labels', () => HttpResponse.json({ dimension_labels: {} })),

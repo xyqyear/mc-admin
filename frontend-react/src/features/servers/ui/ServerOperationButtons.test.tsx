@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import ServerOperationButtons from '@/features/servers/ui/ServerOperationButtons'
 
 const maintenance = vi.hoisted(() => ({ active: false }))
-vi.mock('@/features/servers/queries', () => ({
+vi.mock('@/features/monitoring/queries', () => ({
   useServerMaintenance: () => ({ data: maintenance }),
 }))
 vi.mock('@/features/servers/commands', () => ({

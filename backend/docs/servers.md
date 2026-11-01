@@ -62,7 +62,7 @@ transactions and the limits of atomic replacement across filesystem/SQLite/Docke
 
 ## Write admission and maintenance
 
-`app.operation_admission` separates deletion admission from the execution mutex. Accepted snapshot creation, preview and recovery retain target references, including queued and global work. Deletion rejects these conflicts before cancelling unrelated tasks, then rechecks inside its admission freeze and execution exclusion. Allowed cancellation, such as pruning, must stop and drain writers before removal; the wait holds no mutex needed by those tasks. New task submissions and request-scoped writes reject a frozen server. Failure/cancellation releases the freeze, permitting a deliberate retry. `/maintenance` reports kind `remove` while deletion drains.
+`app.operation_admission` separates deletion admission from the execution mutex. Accepted snapshot creation, preview and recovery retain target references, including queued and global work. Deletion rejects these conflicts before cancelling unrelated tasks, then rechecks inside its admission freeze and execution exclusion. Allowed cancellation, such as pruning, must stop and drain writers before removal; the wait holds no mutex needed by those tasks. New task submissions and request-scoped writes reject a frozen server. Failure/cancellation releases the freeze, permitting a deliberate retry. The [monitoring](monitoring.md) maintenance projection exposes the active removal task or deletion freeze while deletion drains.
 
 `app.world.locks` exposes maintenance ownership through the runtime's operation
 coordinator for backup, restore, prune, startup and rebuild. Rebuild routes reject

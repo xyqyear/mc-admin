@@ -86,12 +86,12 @@ def patch_singletons(temp_server_path):
         patch.object(current_runtime().log_monitor, 'stop_watching', new_callable=AsyncMock),
         patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
         patch(
-            "app.minecraft.docker.manager.ComposeManager.created",
+            "app.minecraft.instance.MCInstance.created",
             new_callable=AsyncMock,
             return_value=False,
         ),
         patch(
-            "app.minecraft.docker.manager.ComposeManager.running",
+            "app.minecraft.instance.MCInstance.running",
             new_callable=AsyncMock,
             return_value=False,
         ),
@@ -597,10 +597,8 @@ class TestRemoveServerFull:
                 CreateServerSpec(yaml_content=_yaml("still-up", 26200, 26210)),
             )
 
-        # Override the default ComposeManager.created (False) to True for
-        # the duration of this test
         with patch(
-            "app.minecraft.docker.manager.ComposeManager.created",
+            "app.minecraft.instance.MCInstance.created",
             new_callable=AsyncMock,
             return_value=True,
         ):

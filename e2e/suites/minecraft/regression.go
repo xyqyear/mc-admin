@@ -18,10 +18,15 @@ func negativeRequests(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	base := "/api/servers/" + fixtures.ServerOf(t.Env).ID
-	for _, suffix := range []string{"/cpu_percent", "/memory", "/iostats"} {
-		if err = c.JSON(ctx, "GET", base+suffix, nil, nil, 409); err != nil {
-			return err
-		}
+	if err = fixtures.WaitStatus(ctx, c, fixtures.ServerOf(t.Env).ID, "exists"); err != nil {
+		return err
+	}
+	stopped, err := fixtures.ServerMonitoring(ctx, c, fixtures.ServerOf(t.Env).ID)
+	if err != nil {
+		return err
+	}
+	if stopped.CPU.Value != nil || stopped.Memory.Value != nil || stopped.DiskIO.Value != nil || stopped.NetworkIO.Value != nil || stopped.CPU.Quality != "unavailable" {
+		return fmt.Errorf("stopped server advertised available runtime metrics")
 	}
 	for _, op := range []struct {
 		route  string
@@ -38,7 +43,7 @@ func negativeRequests(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 	}
-	for _, suffix := range []string{"", "/compose", "/disk-usage"} {
+	for _, suffix := range []string{"", "/compose"} {
 		if err = c.JSON(ctx, "GET", "/api/servers/missing"+suffix, nil, nil, 404); err != nil {
 			return err
 		}
@@ -65,21 +70,8 @@ func consoleAndControls(ctx context.Context, t *engine.Scope) error {
 	s := fixtures.ServerOf(t.Env)
 	base := "/api/servers/" + s.ID
 	if err = t.Step("runtime counters describe the real Minecraft container", func() error {
-		for _, suffix := range []string{"/cpu_percent", "/memory", "/iostats", "/disk-usage"} {
-			var values map[string]float64
-			if err := c.JSON(ctx, "GET", base+suffix, nil, &values, 200); err != nil {
-				return err
-			}
-			for name, value := range values {
-				if value < 0 {
-					return fmt.Errorf("negative metric %s=%f", name, value)
-				}
-			}
-			if suffix == "/memory" && values["memoryUsageBytes"] <= 0 {
-				return fmt.Errorf("running JVM has no memory usage")
-			}
-		}
-		return nil
+		_, err := fixtures.WaitServerMetrics(ctx, c, s.ID)
+		return err
 	}); err != nil {
 		return err
 	}

@@ -1,14 +1,11 @@
 import asyncio
 import json
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import api_app
-from app.minecraft import MCServerStatus
-from app.routers.servers.misc import get_servers_overview
 from app.runtime_resources import current_runtime
 from tests.support.runtime import patch_runtime_resource
 
@@ -156,53 +153,3 @@ def test_message_rejects_selector_target(client):
 
     assert response.status_code == 422
     assert "target_player" in response.json()["detail"]
-
-
-
-
-
-
-
-
-@pytest.mark.asyncio
-async def test_overview_skips_drift_and_hides_players_for_stopped_servers(
-    database, isolated_runtime, monkeypatch, caplog,
-):
-    from datetime import UTC, datetime
-
-    from app.auth.schemas import UserPublic
-    from app.minecraft import MCInstance
-    from app.players.models import Player, PlayerSession
-    from app.servers.models import Server
-    from tests.fixtures.test_utils import create_mc_server_compose_yaml
-
-    now = datetime.now(UTC)
-    async with database.session_factory() as session:
-        running, stopped, drifted = [Server(server_id=name) for name in ("running", "stopped", "drifted")]
-        notch = Player(uuid="069a79f444e94726a5befca90e38aaf5", current_name="Notch", created_at=now)
-        ghost = Player(uuid="123e4567e89b42d3a456426614174000", current_name="Ghost", created_at=now)
-        session.add_all([running, stopped, drifted, notch, ghost])
-        await session.flush()
-        session.add_all([
-            PlayerSession(player_db_id=notch.player_db_id, server_db_id=running.id, joined_at=now),
-            PlayerSession(player_db_id=ghost.player_db_id, server_db_id=stopped.id, joined_at=now),
-        ])
-        await session.commit()
-    manager = isolated_runtime.docker_mc_manager
-    for name in ("running", "stopped"):
-        await manager.get_instance(name).create(create_mc_server_compose_yaml(name, 25565, 25575))
-
-    async def docker_status(instance):
-        return MCServerStatus.HEALTHY if instance.get_name() == "running" else MCServerStatus.CREATED
-
-    monkeypatch.setattr(MCInstance, "get_status", docker_status)
-    with caplog.at_level(logging.WARNING):
-        async with database.session_factory() as session:
-            result = await get_servers_overview(
-                db=session, _=UserPublic(id=1, username="owner", created_at=now),
-            )
-
-    assert [server.id for server in result] == ["running", "stopped"]
-    assert [player.name for player in result[0].online_players] == ["Notch"]
-    assert result[1].online_players == []
-    assert any("drifted" in record.message for record in caplog.records)

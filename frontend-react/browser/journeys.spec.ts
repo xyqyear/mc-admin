@@ -344,8 +344,7 @@ test.describe('owned administration journeys', () => {
     expect((await context.cookies()).some(cookie => cookie.name === 'mc_admin_session')).toBe(false)
     expect((await context.request.get('/api/user/me')).status()).toBe(401)
     await login(page, owned)
-    const status = await api.json<{ status: string }>(api.server('/status'))
-    expect(status.status.toLowerCase()).toMatch(/^(healthy|running)$/)
+    await expect.poll(() => api.status()).toMatch(/^(healthy|running)$/)
     const sockets: Array<{ page: WebSocketRoute; server: WebSocketRoute }> = []
     const messages: string[] = []
     await page.routeWebSocket('**/api/servers/*/console?*', socket => {

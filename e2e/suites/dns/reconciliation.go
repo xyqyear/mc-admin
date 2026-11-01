@@ -142,7 +142,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 		if err := checkDegradedHealth(ctx, client); err != nil {
 			return err
 		}
-		return fixtures.Status(ctx, client, id, "exists")
+		return fixtures.WaitStatus(ctx, client, id, "exists")
 	}); err != nil {
 		return err
 	}

@@ -1,7 +1,6 @@
 import asyncio
 import re
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 
 import aiofiles
@@ -12,19 +11,14 @@ from ..dynamic_config import get_config
 from ..errors import log_safe_error
 from ..files.utils import get_uid_gid
 from ..logger import get_logger
+from ..runtime_resources import current_runtime
+from ..system.resources import get_disk_info
 from ..utils import async_fs
 from ..utils.exec import exec_command
-from ..utils.system import get_process_cpu_usage
 from .compose import MCComposeFile, ServerType
-from .docker.cgroup import (
-    BlockIOStats,
-    MemoryStats,
-    read_block_io_stats,
-    read_memory_stats,
-)
 from .docker.compose_file import ComposeFile
 from .docker.manager import ComposeManager
-from .docker.network import NetworkStats, read_network_stats
+from .docker.reader import ProjectState, ProjectTarget
 from .paths import (
     confined_server_file,
     find_compose_file,
@@ -32,19 +26,9 @@ from .paths import (
     validate_server_name,
 )
 from .properties import ServerProperties
+from .status import MCServerStatus
 
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
-
-
-class MCServerStatus(str, Enum):
-    """Hierarchical lifecycle states for a Minecraft server."""
-
-    REMOVED = "REMOVED"
-    EXISTS = "EXISTS"
-    CREATED = "CREATED"
-    RUNNING = "RUNNING"
-    STARTING = "STARTING"
-    HEALTHY = "HEALTHY"
 
 
 @dataclass(frozen=True)
@@ -57,25 +41,6 @@ class MCServerInfo:
     game_version: str
     game_port: int
     rcon_port: int
-
-
-@dataclass(frozen=True)
-class MCServerRunningInfo:
-    cpu_percentage: float
-    memory_usage_bytes: int
-    disk_read_bytes: int
-    disk_write_bytes: int
-    network_receive_bytes: int
-    network_send_bytes: int
-    disk_usage_bytes: int
-    disk_total_bytes: int
-    disk_available_bytes: int
-
-    @property
-    def disk_usage_percentage(self) -> float:
-        if self.disk_total_bytes == 0:
-            return 0.0
-        return (self.disk_usage_bytes / self.disk_total_bytes) * 100
 
 
 @dataclass(frozen=True)
@@ -197,7 +162,7 @@ class MCInstance:
 
     async def remove(self) -> None:
         await self.get_compose_file_path()
-        if await self._compose_manager.created():
+        if await self.created():
             raise RuntimeError(f"Cannot remove server {self._name} while it is created")
         await async_fs.rmtree(self._project_path)
 
@@ -227,40 +192,29 @@ class MCInstance:
         return compose_file_path is not None
 
     async def created(self) -> bool:
-        """The container has been created but is not running."""
-        await self.get_compose_file_path()
-        return await self._compose_manager.created()
+        return await self.get_status() not in {MCServerStatus.REMOVED, MCServerStatus.EXISTS}
 
     async def running(self) -> bool:
-        await self.get_compose_file_path()
-        return await self._compose_manager.running()
+        return await self.get_status() in {MCServerStatus.RUNNING, MCServerStatus.STARTING, MCServerStatus.HEALTHY}
 
     async def starting(self) -> bool:
-        await self.get_compose_file_path()
-        return await self._compose_manager.starting("mc")
+        return await self.get_status() == MCServerStatus.STARTING
 
     async def healthy(self) -> bool:
-        await self.get_compose_file_path()
-        return await self._compose_manager.healthy("mc")
+        return await self.get_status() == MCServerStatus.HEALTHY
+
+    async def get_project_target(self) -> ProjectTarget:
+        compose = await self.get_compose_obj()
+        return ProjectTarget(self._project_path, compose.mc_service.container_name, compose.name)
+
+    async def get_project_state(self) -> ProjectState:
+        if not await self.exists():
+            return ProjectState(MCServerStatus.REMOVED)
+        return await current_runtime().docker_reader.observe(await self.get_project_target())
 
     async def get_status(self) -> MCServerStatus:
         """Highest reached lifecycle state; states are inclusive (HEALTHY implies RUNNING)."""
-        if not await self.exists():
-            return MCServerStatus.REMOVED
-
-        if not await self.created():
-            return MCServerStatus.EXISTS
-
-        if not await self.running():
-            return MCServerStatus.CREATED
-
-        if await self.starting():
-            return MCServerStatus.STARTING
-
-        if not await self.healthy():
-            return MCServerStatus.RUNNING
-
-        return MCServerStatus.HEALTHY
+        return (await self.get_project_state()).status
 
     async def wait_until_healthy(self) -> None:
         if not await self.running():
@@ -274,39 +228,15 @@ class MCInstance:
         if not await aioos.path.exists(self.get_data_path()):
             raise RuntimeError(f"Data directory does not exist for server {self._name}")
 
-        du_result = await exec_command("du", "-sb", str(self.get_data_path()))
-        du_usage_str = du_result.split()[0]
-        try:
-            used_bytes = int(du_usage_str)
-        except ValueError:
-            used_bytes = 0
+        du_result = await exec_command("du", "-sb", str(self.get_data_path()), timeout=60)
+        used_bytes = int(du_result.split()[0])
 
-        df_result = await exec_command("df", "-B1", str(self.get_data_path()))
-        df_lines = df_result.strip().split("\n")
-        if len(df_lines) < 2:
-            raise RuntimeError(
-                f"Unable to get filesystem info for {self.get_data_path()}"
-            )
-
-        # Long filesystem names wrap onto their own line in df output.
-        df_data_line = df_lines[1]
-        if len(df_lines) > 2 and not df_data_line.strip().split()[0].isdigit():
-            df_data_line = df_lines[2] if len(df_lines) > 2 else df_lines[1]
-
-        df_parts = df_data_line.strip().split()
-        if len(df_parts) < 4:
-            raise RuntimeError(f"Unable to parse df output: {df_result}")
-
-        try:
-            total_bytes = int(df_parts[1])
-            available_bytes = int(df_parts[3])
-        except ValueError:
-            raise RuntimeError(f"Unable to parse df output numbers: {df_result}")
+        disk = await get_disk_info(self.get_data_path())
 
         return DiskSpaceInfo(
             used_bytes=used_bytes,
-            total_bytes=total_bytes,
-            available_bytes=available_bytes,
+            total_bytes=disk.total,
+            available_bytes=disk.available,
         )
 
     async def get_server_info(self):
@@ -374,66 +304,7 @@ class MCInstance:
         return ANSI_ESCAPE_PATTERN.sub("", result).strip()
 
     async def get_container_id(self) -> str:
-        if not await self.created():
-            raise RuntimeError(f"Server {self._name} is not created")
-
-        container_id = await self._compose_manager.run_compose_command(
-            "ps", "--all", "-q", "mc"
-        )
-        container_id = container_id.strip()
-
-        if not container_id:
-            raise RuntimeError(
-                f"Could not find container ID for service 'mc' in server {self._name}"
-            )
-
-        return container_id
-
-    async def get_pid(self) -> int:
-        """Locate the container's Java process PID via ``docker compose top``."""
-        await self.get_compose_file_path()
-        result = await self._compose_manager.run_compose_command("top")
-
-        lines = result.strip().split("\n")
-
-        if not lines:
-            raise RuntimeError(
-                f"docker compose top command returned no processes for server {self._name}"
-            )
-
-        first_line = lines[0]
-        if first_line.strip().startswith("SERVICE"):
-            column_num = 10
-            pid_column = 3
-        else:
-            column_num = 8
-            pid_column = 1
-
-        for line in lines[1:]:
-            parts = line.split(maxsplit=column_num - 1)
-            if len(parts) >= column_num:
-                cmd = parts[column_num - 1]
-                if cmd.strip().startswith("java"):
-                    pid_str = parts[pid_column]
-                    try:
-                        return int(pid_str)
-                    except ValueError:
-                        continue
-
-        raise RuntimeError(f"Could not find Java process PID for server {self._name}")
-
-    async def get_memory_usage(self) -> MemoryStats:
-        container_id = await self.get_container_id()
-        return await read_memory_stats(container_id)
-
-    async def get_cpu_percentage(self) -> float:
-        pid = await self.get_pid()
-        return await get_process_cpu_usage(pid)
-
-    async def get_disk_io(self) -> BlockIOStats:
-        container_id = await self.get_container_id()
-        return await read_block_io_stats(container_id)
-
-    async def get_network_io(self) -> NetworkStats:
-        pid = await self.get_pid()
-        return await read_network_stats(pid)
+        state = await self.get_project_state()
+        if state.container is None:
+            raise RuntimeError("服务器容器尚未创建")
+        return state.container.container_id

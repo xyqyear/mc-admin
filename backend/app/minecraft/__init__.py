@@ -1,6 +1,6 @@
 from .compose import MCComposeFile
 from .docker.compose_file import ComposeFile
-from .docker.manager import ComposeManager, DockerManager
+from .docker.manager import ComposeManager
 from .instance import (
     DiskSpaceInfo,
     MCInstance,
@@ -14,7 +14,6 @@ __all__ = [
     "ComposeManager",
     "DiskSpaceInfo",
     "DockerMCManager",
-    "DockerManager",
     "MCComposeFile",
     "MCInstance",
     "MCServerInfo",

@@ -15,7 +15,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
 import { ButtonLink } from '@/shared/components/ButtonLink'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
-import { Progress } from '@/shared/ui/progress'
+import { SampleValue } from '@/features/monitoring/ui/SampleValue'
 import { Spinner } from '@/shared/ui/spinner'
 import {
   Table,
@@ -41,18 +41,11 @@ import { useServerOperationConfirm } from '@/features/servers/ui/ServerOperation
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import { openTaskCenter } from '@/features/tasks/commands'
 
-const gradientIndicatorStyle = (percent: number): React.CSSProperties => {
-  const clamped = Math.max(0, Math.min(100, percent))
-  const hue = 120 - (clamped / 100) * 120
-  return { '--indicator-color': `hsl(${hue} 70% 45%)` } as React.CSSProperties
-}
-
 const Overview: React.FC = () => {
   const {
     enrichedServers,
-    systemInfo,
-    systemCpuPercent,
-    systemDiskUsage,
+    system,
+    monitoringFailed,
     backupRepositoryUsage,
     serverNum,
     runningServers,
@@ -132,81 +125,16 @@ const Overview: React.FC = () => {
     reason: server.maintenance?.active ? server.maintenance.description : serverOperationMutation.isPending && serverOperationMutation.variables?.serverId === server.id ? '正在提交并等待操作完成' : null,
     onlinePlayers: server.onlinePlayers,
     maxPlayers: 20,
-    cpuPercentage: server.cpuPercentage,
-    memoryUsageBytes: server.memoryUsageBytes,
-    diskUsageBytes: server.diskUsageBytes,
-    diskTotalBytes: server.diskTotalBytes,
-    diskAvailableBytes: server.diskAvailableBytes,
+    samples: server.samples,
   }))
 
-  const renderResources = (record: typeof tableData[0]) => {
-    const hasRuntimeData = record.cpuPercentage != null || record.memoryUsageBytes != null
-    const hasDiskData = record.diskUsageBytes != null
-
-    if (!hasRuntimeData && !hasDiskData) {
-      return <span className="text-muted-foreground">暂无数据</span>
-    }
-
-    const cpuPercentage = record.cpuPercentage || 0
-    const memoryUsageBytes = record.memoryUsageBytes || 0
-    const memoryUsageMB = memoryUsageBytes / (1024 * 1024)
-    const memoryLimitMB = record.maxMemoryBytes / (1024 * 1024)
-    const memoryPercent = memoryLimitMB > 0 ? (memoryUsageMB / memoryLimitMB) * 100 : 0
-
-    return (
-      <div className="space-y-1">
-        {hasRuntimeData && (
-          <>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-8">CPU:</span>
-              <Progress
-                value={cpuPercentage}
-                className="w-15 **:data-[slot=progress-indicator]:bg-(--indicator-color)"
-                style={gradientIndicatorStyle(cpuPercentage)}
-              />
-              <span className="text-muted-foreground">{cpuPercentage.toFixed(1)}%</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-8">内存:</span>
-              <Progress
-                value={memoryPercent}
-                className="w-15 **:data-[slot=progress-indicator]:bg-(--indicator-color)"
-                style={gradientIndicatorStyle(memoryPercent)}
-              />
-              <span className="text-muted-foreground">{(memoryUsageMB / 1024).toFixed(1)}GB</span>
-            </div>
-          </>
-        )}
-        {hasDiskData && record.diskTotalBytes && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="w-8">磁盘:</span>
-            <div className="h-1 w-15 rounded-full bg-muted overflow-hidden flex">
-              <div
-                className="h-full bg-green-500 transition-all"
-                style={{ width: `${(record.diskUsageBytes! / record.diskTotalBytes) * 100}%` }}
-              />
-              <div
-                className="h-full bg-yellow-500 transition-all"
-                style={{ width: `${((record.diskTotalBytes - record.diskAvailableBytes! - record.diskUsageBytes!) / record.diskTotalBytes) * 100}%` }}
-              />
-            </div>
-            <span className="text-muted-foreground">
-              {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskAvailableBytes! / (1024 ** 3)).toFixed(1)}/{(record.diskTotalBytes / (1024 ** 3)).toFixed(1)}GB
-            </span>
-          </div>
-        )}
-        {hasDiskData && !record.diskTotalBytes && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="w-8">磁盘:</span>
-            <span className="text-muted-foreground ml-auto">
-              {(record.diskUsageBytes! / (1024 ** 3)).toFixed(1)}GB
-            </span>
-          </div>
-        )}
-      </div>
-    )
-  }
-
+  const renderResources = (record: typeof tableData[0]) => (
+    <div className="space-y-1 text-xs">
+      <div>CPU：<SampleValue sample={record.samples?.cpu_percent} failed={monitoringFailed}>{value => `${value.toFixed(1)}%`}</SampleValue></div>
+      <div>内存：<SampleValue sample={record.samples?.memory_bytes} failed={monitoringFailed}>{value => `${(value / 1024 ** 3).toFixed(1)}GB`}</SampleValue></div>
+      <div>存档：<SampleValue sample={record.samples?.disk} failed={monitoringFailed}>{value => `${(value.used / 1024 ** 3).toFixed(1)}GB`}</SampleValue></div>
+    </div>
+  )
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:gap-4 grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
@@ -218,11 +146,10 @@ const Overview: React.FC = () => {
         </div>
         <div className="h-60 flex min-w-50">
           <ProgressMetricCard
-            value={systemCpuPercent ?? 0}
+            value={system?.cpu_percent.value ?? null} sample={system?.cpu_percent} failed={monitoringFailed}
             title="CPU使用率"
             extraInfo={
-              systemInfo
-                ? `负载: ${systemInfo.cpuLoad1Min.toFixed(2)} ${systemInfo.cpuLoad5Min.toFixed(2)} ${systemInfo.cpuLoad15Min.toFixed(2)}`
+              system?.load.value ? `负载: ${system.load.value.map(value => value.toFixed(2)).join(" ")}`
                 : '-'
             }
           />
@@ -230,14 +157,12 @@ const Overview: React.FC = () => {
         <div className="h-60 flex min-w-50">
           <ProgressMetricCard
             value={
-              systemInfo
-                ? (systemInfo.ramUsedGB / systemInfo.ramTotalGB) * 100
-                : 0
+              system?.memory.value ? (system.memory.value.used / system.memory.value.total) * 100
+                : null
             }
-            title="内存使用率"
+            title="内存使用率" sample={system?.memory} failed={monitoringFailed}
             extraInfo={
-              systemInfo
-                ? `${systemInfo.ramUsedGB.toFixed(1)}/${systemInfo.ramTotalGB.toFixed(1)}GB`
+              system?.memory.value ? `${(system.memory.value.used / 1024 ** 3).toFixed(1)}/${(system.memory.value.total / 1024 ** 3).toFixed(1)}GB`
                 : '-'
             }
           />
@@ -245,14 +170,12 @@ const Overview: React.FC = () => {
         <div className="h-60 flex min-w-50">
           <ProgressMetricCard
             value={
-              systemDiskUsage
-                ? (systemDiskUsage.diskUsedGB / systemDiskUsage.diskTotalGB) * 100
-                : 0
+              system?.disk.value ? (system.disk.value.used / system.disk.value.total) * 100
+                : null
             }
-            title="存储使用率"
+            title="存储使用率" sample={system?.disk} failed={monitoringFailed}
             extraInfo={
-              systemDiskUsage
-                ? `${systemDiskUsage.diskUsedGB.toFixed(1)}/${systemDiskUsage.diskTotalGB.toFixed(1)}GB`
+              system?.disk.value ? `${(system.disk.value.used / 1024 ** 3).toFixed(1)}/${(system.disk.value.total / 1024 ** 3).toFixed(1)}GB`
                 : '-'
             }
           />

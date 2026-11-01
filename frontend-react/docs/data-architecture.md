@@ -1,6 +1,6 @@
 # Data Architecture
 
-Every domain is a feature under `src/features/`. The application composes features; shared code supplies primitives and transport. Feature directories include servers, configuration, files, world, archives, backups, players, schedules, templates, tasks, users, settings, health, DNS and system metrics.
+Every domain is a feature under `src/features/`. The application composes features; shared code supplies primitives and transport. Feature directories include servers, configuration, files, world, archives, backups, players, schedules, templates, tasks, users, settings, health, DNS and monitoring.
 
 ## Ownership and dependency direction
 
@@ -16,7 +16,7 @@ Every domain is a feature under `src/features/`. The application composes featur
 
 ## Shared query policy
 
-`app/overview/useOverviewData.ts` composes server, system, backup and player factories instead of constructing its own metrics requests. `features/servers/useServerDetailData.ts` uses the same options. Fresh cache values survive navigation; observers share one request and the same polling/retry policy. CPU/memory/I/O queries run only for RUNNING/STARTING/HEALTHY servers; online-player queries in the overview require HEALTHY. Disk remains available when stopped.
+Overview, sidebar and server details consume the shared monitoring Query owned by the authenticated layout. Status and resource selectors do not start independent reads or timers. Players and backup repository usage retain their own feature queries. See [monitoring](monitoring.md) for samples, pauses, session identity and partial failures.
 
 `features/players/queries.ts` streams profiles into normalized per-UUID Query keys. The map subscribes to those entries, including while profile streaming is disabled; it does not maintain a second profile Map in state. Only stream progress/error state remains local. Backend tasks likewise exist only in Query cache; browser downloads and local panel placement are separate client-owned state.
 
@@ -62,8 +62,7 @@ Defined in `shared/http/api.ts`, with task keys owned by `features/tasks/queries
 
 - `queryKeys.servers()` (top-level shortcut)
 - `queryKeys.serverInfos.all` / `.detail(id)`
-- `queryKeys.serverRuntimes.cpu(id)` / `.memory(id)` / `.ioStats(id)` / `.disk(id)`
-- `queryKeys.serverStatuses.batch(ids)`
+- `queryKeys.monitoring.snapshot(userId)` and the `monitoring.all` invalidation prefix
 - `queryKeys.players.detailByUUID(uuid)` / `.serverOnline(serverId)` / `.sessions(playerDbId, params)`
 - `queryKeys.snapshots.global()` / `.repositoryUsage()` / `.locks()` / `.forPath(serverId, path)`
 - `queryKeys.cron.detail(id)` / `.executions(id, limit)` / `.nextRunTime(id)`
@@ -81,10 +80,7 @@ Hook reads and mutation invalidations must reference the same factory path. Addi
 
 | Query                               | refetchInterval | staleTime | Gate                                    |
 | ----------------------------------- | --------------- | --------- | --------------------------------------- |
-| `serverStatuses.detail(id)`         | 5 s             | 2 s       | always                                  |
-| `serverRuntimes.cpu/memory(id)`     | 3 s             | CPU 3 s / memory 1 s       | status ∈ RUNNING / STARTING / HEALTHY   |
-| `serverRuntimes.ioStats(id)`        | 5 s             | 2 s       | same                                    |
-| `serverRuntimes.disk(id)`           | 30 s            | 15 s      | always                                  |
+| `monitoring.snapshot(userId)` | 2 s | 0 | only the visible, online layout observer |
 | `players.serverOnline(serverId)`    | 10 s            | —         | status = HEALTHY                        |
 | `snapshots.repositoryUsage()`       | 30 s            | 15 s      | retry skipped on `restic` 500           |
 | `serverInfos.detail(id)`            | —               | 5 m       | manual invalidate on mutation           |

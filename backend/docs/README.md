@@ -25,6 +25,7 @@
 | [non-snapshot-operations.md](non-snapshot-operations.md) | 非快照管理操作与任务接口清单 |
 | [servers.md](servers.md) | 服务器身份、生命周期和删除准入 |
 | [minecraft.md](minecraft.md) | Docker Compose、端口与资源监控 |
+| [monitoring.md](monitoring.md) | 共享采样、指标口径、新鲜度与监控接口 |
 | [configuration.md](configuration.md) | 配置版本、分阶段应用与源元数据 |
 | [templates.md](templates.md) | 模板定义、快照与模式转换 |
 | [dynamic-config.md](dynamic-config.md) | 动态配置、保存校验和迁移 |

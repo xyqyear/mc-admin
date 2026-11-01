@@ -21,7 +21,9 @@ if TYPE_CHECKING:
     from .events.bus import EventBus
     from .log_monitor.monitor import LogMonitor
     from .mcmap.manager import MCMapManager
+    from .minecraft.docker.reader import DockerReader
     from .minecraft.manager import DockerMCManager
+    from .monitoring.service import RuntimeMonitor
     from .operation_admission import ServerWriteAdmission
     from .operations.coordinator import OperationCoordinator
     from .players.heartbeat import HeartbeatManager
@@ -82,6 +84,18 @@ def create_docker_mc_manager(runtime: Runtime) -> DockerMCManager:
     from .minecraft.manager import DockerMCManager
 
     return DockerMCManager(runtime.settings.server_path)
+
+
+def create_docker_reader(runtime: Runtime) -> DockerReader:
+    from .minecraft.docker.reader import DockerReader
+
+    return DockerReader()
+
+
+def create_monitor(runtime: Runtime) -> RuntimeMonitor:
+    from .monitoring.service import RuntimeMonitor
+
+    return RuntimeMonitor(runtime.session_factory, runtime.docker_mc_manager, runtime.docker_reader)
 
 
 def create_snapshot_service(runtime: Runtime) -> SnapshotService | None:

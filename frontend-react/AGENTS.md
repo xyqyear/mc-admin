@@ -84,6 +84,7 @@ consistent in both TypeScript configurations. Details belong to
 | Change | Read before implementation |
 | --- | --- |
 | Queries, contracts or ownership | [Data architecture](docs/data-architecture.md) |
+| Resource samples, status or maintenance observation | [Shared monitoring](docs/monitoring.md) |
 | Task completion or cache/map refresh | [Operation refresh](docs/operation-refresh.md), [task center](docs/task-center.md) |
 | Compose/template drafts or version conflicts | [Configuration editors](docs/configuration.md) |
 | Files, bulk selection or directory export | [File management](docs/file-management.md), [file operations](docs/file-operations.md) |

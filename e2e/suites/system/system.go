@@ -47,12 +47,12 @@ func discovery(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	return t.Step("startup exposes persistent registries and empty business inventories", func() error {
-		for _, path := range []string{"/api/system/health", "/api/system/info", "/api/system/disk-usage", "/api/self-check/catalog", "/api/self-check/status", "/api/cron/registered", "/api/cron/", "/api/players/", "/api/dns/enabled"} {
+		for _, path := range []string{"/api/system/health", "/api/monitoring", "/api/self-check/catalog", "/api/self-check/status", "/api/cron/registered", "/api/cron/", "/api/players/", "/api/dns/enabled"} {
 			if err := client.JSON(ctx, "GET", path, nil, nil, 200); err != nil {
 				return err
 			}
 		}
-		for _, path := range []string{"/api/servers/", "/api/servers/overview", "/api/templates/"} {
+		for _, path := range []string{"/api/servers/", "/api/templates/"} {
 			var items []json.RawMessage
 			if err := client.JSON(ctx, "GET", path, nil, &items, 200); err != nil {
 				return err

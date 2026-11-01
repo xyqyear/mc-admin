@@ -9,7 +9,7 @@ import { useServerOperation } from '@/features/servers/commands';
 import { useServerOperationConfirm } from '@/features/servers/ui/ServerOperationConfirmDialog';
 import { serverStatusUtils } from '@/features/servers/presentation';
 import type { ServerStatus } from '@/features/servers/contracts';
-import { useServerMaintenance } from '@/features/servers/queries';
+import { useServerMaintenance } from '@/features/monitoring/queries';
 
 interface ServerOperationButtonsProps {
   serverId: string;

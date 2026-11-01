@@ -4,7 +4,7 @@ The bridge between MC Admin and the Docker daemon. Each managed server is one Do
 
 ## Owned adapter
 
-`get_docker_mc_manager()` returns the owning runtime’s adapter, constructed with its server root. It discovers valid server Compose files and returns `MCInstance` objects keyed by server name. Call each instance for its paths, status and metrics.
+`get_docker_mc_manager()` returns the owning runtime’s adapter, constructed with its server root. It discovers valid server Compose files and returns `MCInstance` objects keyed by server name. Call instances for paths and authoritative state; the Runtime monitoring service owns shared resource samples.
 
 ```python
 from app.minecraft import get_docker_mc_manager
@@ -23,7 +23,7 @@ Per-server façade. Methods fall into three groups:
 - **State queries**: `exists()`, `created()`, `running()`, plus the hierarchical `MCServerStatus` enum: `REMOVED < EXISTS < CREATED < RUNNING < STARTING < HEALTHY`.
 - **File access**: `get_compose_file()`, `get_compose_obj()`, `get_server_properties()`, `get_data_path()`.
 
-Every state-changing method shells out via `ComposeManager.run_compose_command(...)` which wraps `docker compose --project-directory ...`. Lifecycle status also reads Compose output; container details use docker-py. Docker and Compose label parsing splits each key/value pair at its first equals sign, preserving equals signs inside label values so they do not prevent healthy-state detection.
+Every state-changing method shells out via `ComposeManager.run_compose_command(...)` which wraps `docker compose --project-directory ...`. State queries use the Runtime-owned Docker Engine reader. Structured labels preserve their original values, including equals signs. The reader verifies project, service and directory ownership before using a container.
 
 ## Compose file validation
 
@@ -49,12 +49,7 @@ The game-port self-check uses `get_properties_game_port()` to extract only the f
 
 ## Resource monitoring
 
-- **Memory** (`docker/cgroup.py`): parses cgroup v2 `memory.stat` into `MemoryStats` (anon, file, kernel, …). Used totals are `total_memory` and `active_memory`; raw inactive counters remain in the model.
-- **Block I/O**: `BlockIODevice` retains each device's bytes and operation counters. Byte totals feed the application metrics.
-- **Network** (`docker/network.py`): `read_network_stats(pid)` reads `/proc/<pid>/net/dev`. `NetworkStats` retains every interface's raw counters and provides byte totals and interface lookup.
-- **CPU**: `app.utils.system.get_process_cpu_usage()` takes an independent one-second sample from a fresh psutil process in `asyncio.to_thread`. Multi-core processes may exceed 100%. CPU reads return zero for a disappeared process; other access errors propagate. Each call resolves current PID identity without retaining process objects across calls. Memory statistics come from the container's cgroup.
-
-Server listing uses feature-owned queries; lifecycle and monitoring read the selected instance's actual Compose and container state.
+The Runtime-owned monitor samples host and server resources independently of HTTP requests. See [shared monitoring](monitoring.md) for metric meanings, identity, freshness, scheduling and cleanup. Lifecycle guards always obtain fresh Engine state.
 
 ## Files
 
@@ -64,7 +59,9 @@ Server listing uses feature-owned queries; lifecycle and monitoring read the sel
 - `game_port.py` — game target/properties extraction and scoped initialization validation
 - `properties.py` — `ServerProperties` parser
 - `utils.py` — small async helpers
-- `docker/manager.py` — generic `ComposeManager` and `DockerManager`
+- `docker/manager.py` — Compose lifecycle and execution commands
 - `docker/compose_file.py` — generic `ComposeFile` model
+- `docker/reader.py` — owned Engine reads, project identity and Java process discovery
+- `status.py` — shared lifecycle states
 - `docker/cgroup.py` — cgroup v2 parsers
 - `docker/network.py` — Docker network stats

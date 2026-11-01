@@ -96,14 +96,19 @@ func Operation(ctx context.Context, client *api.Client, id, action string) error
 }
 
 func Status(ctx context.Context, client *api.Client, id, expected string) error {
-	var response struct {
-		Status string `json:"status"`
-	}
-	if err := client.JSON(ctx, "GET", "/api/servers/"+id+"/status", nil, &response, 200); err != nil {
+	snapshot, err := Monitoring(ctx, client)
+	if err != nil {
 		return api.Permanent(err)
 	}
-	if !strings.EqualFold(response.Status, expected) {
-		return fmt.Errorf("server %s status=%s, expected %s", id, response.Status, expected)
+	response, exists := snapshot.Servers[id]
+	if !exists {
+		if strings.EqualFold(expected, "removed") {
+			return nil
+		}
+		return api.Permanent(fmt.Errorf("monitoring omitted registered server %s", id))
+	}
+	if !response.Status.Ready() || !strings.EqualFold(*response.Status.Value, expected) {
+		return fmt.Errorf("server %s status=%+v, expected %s", id, response.Status, expected)
 	}
 	return nil
 }
@@ -134,7 +139,7 @@ func verifyServer(ctx context.Context, env *environment.Environment) error {
 	if server.Running {
 		expected = "healthy"
 	}
-	return Status(ctx, BackendOf(env).Admin, server.ID, expected)
+	return WaitStatus(ctx, BackendOf(env).Admin, server.ID, expected)
 }
 
 func verifyRunning(ctx context.Context, env *environment.Environment) error {

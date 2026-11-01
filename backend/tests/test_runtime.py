@@ -111,7 +111,7 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
         assert {r.json()["root"] for r in responses} == {str(first.settings.server_path), str(second.settings.server_path)}
         assert set(seen) == {first, second}
         assert all(subscription.queue.qsize() == 1 for subscription in subscriptions)
-        for name in ("task_manager", "event_bus", "config_manager", "cron_manager", "dns_manager", "database", "login_code_manager", "chunk_prune_service"):
+        for name in ("task_manager", "event_bus", "config_manager", "cron_manager", "dns_manager", "database", "login_code_manager", "chunk_prune_service", "monitor", "docker_reader"):
             assert getattr(first, name) is not getattr(second, name)
         with first.bind():
             token = jwt.encode({"alg": "HS256"}, {"exp": (datetime.now(UTC) + timedelta(minutes=1)).timestamp()}, get_identity_service().signing_key)
@@ -124,6 +124,8 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
                 assert audit_logger is not None
                 audit_logger.info("owned audit log: %s", name)
         await first.close()
+        assert not first.monitor._workers
+        assert all(not worker.done() for worker in second.monitor._workers)
         assert writers_stopped[0].is_set()
         assert not writers_stopped[1].is_set()
         cancelled_task = first.task_manager.get_task(task_ids[0])
@@ -151,7 +153,7 @@ async def test_two_running_apps_own_database_configuration_auth_events_and_tasks
         assert audit_logger is not None and not audit_logger.handlers
 
 
-@pytest.mark.parametrize("stage", ["migrate", "config", "recover", "prune", "previews", "players", "cron", "janitor"])
+@pytest.mark.parametrize("stage", ["migrate", "config", "recover", "monitor", "prune", "previews", "players", "cron", "janitor"])
 async def test_partial_startup_closes_acquired_resources_and_releases_writer_guard(tmp_path, monkeypatch, stage):
     steps = []
     runtime = make_runtime(tmp_path, stage)
@@ -172,6 +174,11 @@ async def test_partial_startup_closes_acquired_resources_and_releases_writer_gua
     cron = SimpleNamespace(initialize=lambda: execute("cron"), shutdown=AsyncMock())
     world = SimpleNamespace(prepare=lambda: execute("previews"), close=AsyncMock())
     prune = SimpleNamespace(start=lambda: execute("prune"), close=AsyncMock())
+    def start_monitor():
+        steps.append("monitor")
+        if stage == "monitor":
+            raise RuntimeError("failure at monitor")
+    monitor = SimpleNamespace(start=start_monitor, close=AsyncMock())
     def start_janitor():
         steps.append("janitor")
         if stage == "janitor":
@@ -183,12 +190,13 @@ async def test_partial_startup_closes_acquired_resources_and_releases_writer_gua
     replace_runtime_resource(runtime, "cron_manager", cron)
     replace_runtime_resource(runtime, "snapshot_previews", world)
     replace_runtime_resource(runtime, "chunk_prune_service", prune)
+    replace_runtime_resource(runtime, "monitor", monitor)
     monkeypatch.setattr("app.players.start_player_system", lambda: execute("players"))
     with pytest.raises(RuntimeError, match=f"failure at {stage}"):
         await runtime.start()
     assert runtime.closed and not runtime.started
-    assert steps == ["migrate", "config", "recover", "prune", "previews", "dns", "players", "cron", "janitor"][:steps.index(stage) + 1]
-    for closer in (database.close, dns.close, cron.shutdown, world.close, prune.close):
+    assert steps == ["migrate", "config", "recover", "monitor", "prune", "previews", "dns", "players", "cron", "janitor"][:steps.index(stage) + 1]
+    for closer in (database.close, dns.close, cron.shutdown, world.close, prune.close, monitor.close):
         closer.assert_awaited_once()
     async with SingleWriterGuard(runtime.settings.database_url, runtime.settings.server_path):
         pass
@@ -257,7 +265,7 @@ async def test_websocket_context_is_bound_through_disconnect_and_shutdown_refuse
     assert not runtime.requests
     await runtime.close()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.get("/api/system/info")).status_code == 503
+        assert (await client.get("/api/monitoring")).status_code == 503
 
 
 async def test_shutdown_cancels_and_drains_stream_before_database_close(tmp_path):

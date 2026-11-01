@@ -42,6 +42,7 @@ app/
 ├── servers/               # identity/CRUD, commands, restart scheduling, lifecycle tasks and fs↔DB reconciliation
 ├── configuration/         # immutable preparation, versioned state, staged application and source metadata
 ├── minecraft/             # Docker Compose lifecycle + cgroup v2 monitoring
+├── monitoring/            # runtime-owned recent samples, CPU baselines and freshness
 ├── players/               # owned identity/session service, producers, dynamic filters, chat, achievements and skins
 ├── log_monitor/           # latest.log parsing, watchfiles notifications and idle tail reconciliation
 ├── files/                 # confined CRUD/search/upload, canonical resource scopes, population and ownership

@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from app.background_tasks import get_task_manager
 from app.minecraft import MCServerStatus
+from app.routers.monitoring import get_monitoring
 from app.routers.servers import operations
 from app.servers.models import Server
 from app.snapshots.file_restore import FileRestoreAdapter, SnapshotServerRunning
@@ -95,7 +96,7 @@ async def test_server_cannot_start_during_world_maintenance(
     set_runtime_resource(monkeypatch, 'server_operation_lock', lock)
     holder = LockHolder(ServerOperationKind.PRUNE, datetime.now(UTC), None, "pruning")
     async with lock.acquire("one", holder):
-        status = await operations.server_maintenance("one", Mock())
+        status = (await get_monitoring()).servers["one"].maintenance.model_dump()
         assert status["active"]
         with pytest.raises(HTTPException) as error:
             await operations.server_operation(
@@ -104,7 +105,7 @@ async def test_server_cannot_start_during_world_maintenance(
                 Mock(id=1),
             )
         assert error.value.status_code == 423
-    assert not (await operations.server_maintenance("one", Mock()))["active"]
+    assert not ((await get_monitoring()).servers["one"].maintenance.model_dump())["active"]
     getattr(manager.get_instance("one"), action).assert_not_awaited()
     accepted = await operations.server_operation(
         "one", operations.ServerOperation(action=action), Mock(id=1)

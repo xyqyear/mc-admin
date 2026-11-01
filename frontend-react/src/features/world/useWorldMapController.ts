@@ -1,5 +1,6 @@
 import { usePlayerMapProfiles, useServerOnlinePlayers } from '@/features/players/queries'
-import { useServerStatus, useServerInfo } from '@/features/servers/queries';
+import { useServerInfo } from '@/features/servers/queries';
+import { useServerStatus } from '@/features/monitoring/queries';
 import { readHashUrlParams, replaceHashUrlParams, useHashUrlParams, type HashUrlParamsUpdater } from '@/shared/hooks/useHashUrlParams'
 import { queryKeys } from '@/shared/http/api'
 import { useQueryClient } from '@tanstack/react-query'

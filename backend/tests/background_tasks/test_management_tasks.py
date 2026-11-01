@@ -1,7 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -15,7 +15,7 @@ from app.minecraft.docker.manager import ComposeManager
 from app.operation_admission import get_server_write_admission
 from app.operations.journal import OperationJournal
 from app.operations.journal_types import OperationState, ResourceReference
-from app.routers.servers.operations import server_maintenance
+from app.routers.monitoring import get_monitoring
 from app.servers.crud import create_server_record, mark_server_removed
 from app.servers.lifecycle import CreateServerSpec, orchestrators
 from app.servers.tasks import submit_creation, submit_lifecycle
@@ -79,7 +79,7 @@ async def management(isolated_runtime, monkeypatch, database):
     monkeypatch.setattr(orchestrators.get_log_monitor(), 'stop_watching', AsyncMock())
     monkeypatch.setattr(orchestrators.get_dns_manager(), 'update', AsyncMock())
     monkeypatch.setattr(orchestrators, 'check_port_conflicts', AsyncMock(return_value=[]))
-    monkeypatch.setattr(ComposeManager, 'created', AsyncMock(return_value=False))
+    monkeypatch.setattr(MCInstance, 'created', AsyncMock(return_value=False))
     instance = manager.get_instance('managed')
     await instance.create(create_mc_server_compose_yaml('managed', 35401, 35402))
     async with runtime.database.session_factory() as session:
@@ -107,7 +107,7 @@ async def test_acceptance_exposes_reason_and_refuses_conflicts_until_terminal(ma
     accepted = await asyncio.wait_for(submit_lifecycle('managed', 'up', 1), 2)
     try:
         await asyncio.wait_for(entered.wait(), 2)
-        status = await server_maintenance('managed', Mock())
+        status = (await get_monitoring()).servers['managed'].maintenance.model_dump()
         assert status['active'] and status['task_id'] == accepted.task_id
         assert '镜像' in status['description']
         with pytest.raises(HTTPException) as conflict:
@@ -123,7 +123,7 @@ async def test_acceptance_exposes_reason_and_refuses_conflicts_until_terminal(ma
     assert (await completed(env, accepted)).success
     record = await env.journal.get(accepted.task_id)
     assert record and record.state is OperationState.SUCCEEDED and record.origin == 'task'
-    assert not (await server_maintenance('managed', Mock()))['active']
+    assert not ((await get_monitoring()).servers['managed'].maintenance.model_dump())['active']
 
 
 async def test_queued_task_cannot_target_a_same_name_replacement(management, monkeypatch):
@@ -218,7 +218,7 @@ async def test_removal_waits_for_cancelled_prune_writer_before_deleting_files(ma
         with pytest.raises(HTTPException) as conflict:
             await submit_lifecycle('managed', 'start', 1)
         assert conflict.value.status_code == 423
-        status = await server_maintenance('managed', Mock())
+        status = (await get_monitoring()).servers['managed'].maintenance.model_dump()
         assert status['task_id'] == accepted.task_id and status['kind'] == 'server_remove'
     finally:
         release.set()

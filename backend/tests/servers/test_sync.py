@@ -85,7 +85,7 @@ def test_client(temp_server_path, test_db):
         patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
         patch.object(current_runtime().dns_manager, 'update', new_callable=AsyncMock),
         patch(
-            "app.minecraft.docker.manager.ComposeManager.created",
+            "app.minecraft.instance.MCInstance.created",
             new_callable=AsyncMock,
             return_value=False,
         ),

@@ -23,6 +23,8 @@ from sqlalchemy import select
 
 from app.main import api_app
 from app.minecraft import DockerMCManager
+from app.minecraft.docker.reader import ProjectState
+from app.minecraft.status import MCServerStatus
 from app.operations.journal import OperationJournal
 from app.operations.models import OperationJournalEntry
 from app.runtime_resources import current_runtime
@@ -34,8 +36,8 @@ from tests.support.tasks import task_result
 @pytest.fixture(autouse=True)
 def uncreated_containers():
     with patch(
-        "app.minecraft.docker.manager.ComposeManager.created",
-        AsyncMock(return_value=False),
+        "app.minecraft.docker.reader.DockerReader.observe",
+        AsyncMock(return_value=ProjectState(MCServerStatus.EXISTS)),
     ):
         yield
 

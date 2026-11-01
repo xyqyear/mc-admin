@@ -14,7 +14,7 @@
 | 启动后的服务发现 | `system.discovery` | 验证健康与系统接口、已注册的定时任务与自检服务、空业务清单、禁用状态的 DNS 及玩家相关接口。本用例验证可发现性，具体业务效果由对应领域用例验证。 |
 | 动态配置模块与结构 | `system.configuration-catalog` | 检查 `dns`、`snapshots`、`players`、`log_parser`、`mcmap`、`world`、`self_check` 七个模块的目录和 Schema；拒绝不存在的模块。 |
 | 配置持久化与重置 | `system.configuration-persistence`、`system.configuration-roundtrip` | 逐个模块更新和读取配置；代表性非法值及缺少必要捕获组的日志规则被拒绝，且不覆盖原有有效配置；真实重启后保留配置及登录会话；逐个模块恢复注册默认值。已保存日志规则的实际解析还由玩家用例验证，其他运行时刷新由世界、快照、自检及外部 DNS 用例验证。 |
-| 主机指标、静态资源与参数校验 | `system.metrics-static-validation` | 检查 CPU、内存、磁盘指标为有限值、范围合理且相互一致；验证生产 HTML、单页应用路由回退、打包资源和 robots 文件；验证 API 404、结构化参数错误、匿名指标访问被拒绝及公开健康检查。 |
+| 主机指标、静态资源与参数校验 | `system.metrics-static-validation` | 等待统一监控的真实有效样本和采样时间，检查 CPU、内存、负载、磁盘指标范围与一致性；验证生产 HTML、单页应用路由回退、打包资源和 robots 文件；验证 API 404、结构化参数错误、匿名监控访问被拒绝及独立公开健康检查。 |
 | 审计日志 | `system.audit-redaction` | 执行 API 操作后读取测试部署的审计日志；核对操作者、成功与被拒绝的写操作、只读请求不被记录；正常表单登录和用户创建中的密码脱敏；在 DNS 禁用状态下通过真实配置 API 保存并读回测试 ak/sk，检查审计、app.log 和容器标准输出（含 SQL 日志）均不包含本次合成凭据；嵌套额外字段验证中间件递归，同时保留普通任务与状态字段。该配置测试不访问云服务。 |
 | 配置凭据及异常日志 | `system.configuration-credential-logs` | 提交含合成密码的非法/合法 Compose 与文件正文，验证失败任务不泄漏、成功保存内容不变；缺失快照触发的预览与恢复任务失败使用安全消息；审计、app.log、容器标准输出均不含测试凭据，成功操作的正文已脱敏且审计存在。 |
 | 公共事件连接 | `system.events-handshake` | 验证带会话认证的 WebSocket 连接，以及非法回放游标触发的重置协议。实际事件产生与持久化回放由 `players.tracking-events-and-history` 验证。 |

@@ -13,8 +13,8 @@ import { subscribeTaskEvents, taskQueryKeys } from '@/features/tasks/queries'
 
 const resourceRegistrations: ((operation: Operation) => QueryKey[])[] = [configurationOperationResources, filesOperationResources, worldOperationResources, serversOperationResources, healthOperationResources, dnsOperationResources, backupsOperationResources]
 const resetResources: QueryKey[] = [
-  queryKeys.compose.all, queryKeys.templates.all, queryKeys.servers(), queryKeys.system.info(),
-  queryKeys.serverInfos.all, queryKeys.serverRuntimes.all, queryKeys.serverStatuses.all, queryKeys.serverMaintenance.all,
+  queryKeys.compose.all, queryKeys.templates.all, queryKeys.servers(), queryKeys.monitoring.all,
+  queryKeys.serverInfos.all, queryKeys.monitoring.all,
   queryKeys.players.all, queryKeys.cron.all, queryKeys.restartSchedule.all, queryKeys.dns.all,
   queryKeys.files.all, queryKeys.selfCheck.all, queryKeys.archive.all,
   queryKeys.snapshots.all, queryKeys.snapshots.rulesAll(), queryKeys.map.all,

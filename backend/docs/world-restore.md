@@ -91,7 +91,7 @@ output-file resources, so conflicting cache writes wait without holding
 maintenance. Unrelated ordinary online file work remains available.
 Accepted tasks retain target references through finalization and reject server deletion, including while queued.
 
-`LockHolder` records kind, start time, optional user, description and restoration ID. `GET /api/servers/{server_id}/maintenance` exposes the current holder's active flag, kind and description. Shared frontend operation buttons poll this state; the prune page also immediately disables startup while its apply task is active.
+`LockHolder` records kind, start time, optional user, description and restoration ID. `GET /api/monitoring` projects the current holder's active flag, kind and description from its existing owner. Frontend operation buttons subscribe to the shared monitoring query; the prune page also immediately disables startup while its apply task is active.
 
 Global and scheduled backup locking belongs to [snapshot resource ownership](snapshots.md).
 World adapters reuse the accepted parent lease for safety capture.

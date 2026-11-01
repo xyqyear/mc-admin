@@ -1,6 +1,6 @@
 import React from 'react'
 import { Monitor } from 'lucide-react'
-import { useServerStatus } from '@/features/servers/queries';
+import { useServerStatus } from '@/features/monitoring/queries';
 import ServerStateIcon from '@/features/servers/ui/ServerStateIcon'
 
 interface ServerMenuIconProps {

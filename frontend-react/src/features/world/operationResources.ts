@@ -27,7 +27,7 @@ export function worldOperationResources(operation: Operation): QueryKey[] {
   if (!worldInputKinds.has(operation.kind) && operation.kind !== 'chunk_prune_preview') return []
   const keys: QueryKey[] = [taskQueryKeys.all]
   if (operation.resources.some(resource => resource.kind === 'files' && !resource.server_id)) {
-    keys.push(queryKeys.map.all, queryKeys.worldRestore.all, queryKeys.ftbClaims.all, queryKeys.chunkPrune.all, queryKeys.serverMaintenance.all)
+    keys.push(queryKeys.map.all, queryKeys.worldRestore.all, queryKeys.ftbClaims.all, queryKeys.chunkPrune.all, queryKeys.monitoring.all)
   }
   for (const { server_id: id } of operation.resources) {
     if (!id) continue
@@ -36,7 +36,7 @@ export function worldOperationResources(operation: Operation): QueryKey[] {
     keys.push(queryKeys.map.status(id), queryKeys.map.regionsForServer(id),
       queryKeys.worldRestore.layout(id), queryKeys.worldRestore.dimensionLabels(id),
       queryKeys.worldRestore.playerLocations(id), queryKeys.ftbClaims.claims(id),
-      queryKeys.serverMaintenance.detail(id))
+      queryKeys.monitoring.all)
   }
   return keys
 }
