@@ -12,8 +12,9 @@ from app.servers.api_models import (
 
 from ...dependencies import get_current_user
 from ...minecraft import MCInstance, get_docker_mc_manager
+from ...minecraft.docker.commands import RCON_TIMEOUT, ServerMissing, ServerUnavailable
 
-RCON_COMMAND_TIMEOUT = 10.0
+RCON_COMMAND_TIMEOUT = RCON_TIMEOUT
 
 
 router = APIRouter(
@@ -22,39 +23,28 @@ router = APIRouter(
 )
 
 
-async def _get_rcon_ready_instance(server_id: str) -> MCInstance:
-    instance = get_docker_mc_manager().get_instance(server_id)
-
-    if not await instance.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"服务器 '{server_id}' 不存在",
-        )
-
-    if not await instance.healthy():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="服务器当前无法执行命令（未在健康状态）",
-        )
-
-    return instance
-
-
-async def _run_rcon_command(instance: MCInstance, command: str) -> str:
+async def _run_rcon_command(instance: MCInstance, command: str | None) -> str:
     try:
+        if command is None:
+            await asyncio.wait_for(instance.get_command_container(), timeout=RCON_COMMAND_TIMEOUT)
+            return ""
         return await asyncio.wait_for(
             instance.send_command_rcon(command),
             timeout=RCON_COMMAND_TIMEOUT,
         )
+    except ServerMissing as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    except ServerUnavailable as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
     except TimeoutError:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="命令执行超时",
         )
-    except RuntimeError as e:
+    except RuntimeError:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(e),
+            detail="命令执行失败，执行结果可能未知",
         )
 
 
@@ -64,7 +54,7 @@ async def execute_rcon_command(
     request: RconCommandRequest,
     _: UserPublic = Depends(get_current_user),
 ):
-    instance = await _get_rcon_ready_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
     output = await _run_rcon_command(instance, request.command)
     return RconCommandResponse(output=output)
 
@@ -75,12 +65,13 @@ async def send_server_message(
     request: ServerMessageRequest,
     _: UserPublic = Depends(get_current_user),
 ):
-    instance = await _get_rcon_ready_instance(server_id)
+    instance = get_docker_mc_manager().get_instance(server_id)
     target = request.target_player or "@a"
+    lines = [line for line in request.message.splitlines() if line]
+    if not lines:
+        await _run_rcon_command(instance, None)
 
-    for line in request.message.splitlines():
-        if not line:
-            continue
+    for line in lines:
         component = json.dumps(
             {"text": line, "color": request.color},
             ensure_ascii=False,

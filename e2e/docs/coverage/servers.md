@@ -25,3 +25,5 @@
 | Docker 控制台与运行时修改 | `minecraft.console-and-runtime-controls` | 验证 CPU、内存、IO、磁盘计数，控制台历史、尺寸调整、输入和未知消息协议；通过标准输入执行修改，再用 RCON 核对效果；验证格式化消息、运行中填充服务器数据的冲突、停止与启动，以及运行中修改 Compose 内存限制后的重建效果。 |
 | 控制台适配器错误安全输出 | `minecraft.console-safe-adapter-errors` | 在自有运行中 Minecraft 的 Compose 中设置 `logging.driver=none`，使真实 Docker SDK 无法读取历史；验证固定中文历史错误帧，同时 attach/stdin 仍可执行命令；通过 RCON 核对实际白名单变更，正常关闭 WebSocket 后服务器仍健康，普通容器日志不包含适配器原始 HTTP/文本诊断。 |
 | 已停止、缺失与非法请求 | `minecraft.stopped-and-invalid-requests` | 验证已停止服务器的指标、RCON、消息冲突和控制台错误帧；拒绝非法命令、消息长度与字段、非法操作；检查不存在的服务器响应。 |
+
+| 容器命令超时与错误 | `minecraft.command-timeout` | 在独占 Minecraft 中替换 RCON 客户端作为故障边界；真实 API 验证 502 脱敏、504 后命令进程退出且只提交一次、等待期间健康/监控仍可读取，随后真实 RCON 仍可用；清理恢复原二进制，日志不泄露 stderr。 |

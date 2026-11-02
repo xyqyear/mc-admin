@@ -527,6 +527,7 @@ async def test_close_does_not_construct_unvisited_resources(tmp_path, monkeypatc
         "create_snapshot_service", "create_snapshot_previews", "create_chunk_prune_service",
         "create_task_manager", "create_heartbeat_manager", "create_log_monitor",
         "create_player_syncer", "create_cron_manager", "create_server_write_admission",
+        "create_docker_commands",
     ):
         monkeypatch.setattr(runtime_factories, name, unvisited_factory)
     await runtime.close()

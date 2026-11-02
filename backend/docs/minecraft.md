@@ -23,7 +23,36 @@ Per-server façade. Methods fall into three groups:
 - **State queries**: `exists()`, `created()`, `running()`, plus the hierarchical `MCServerStatus` enum: `REMOVED < EXISTS < CREATED < RUNNING < STARTING < HEALTHY`.
 - **File access**: `get_compose_file()`, `get_compose_obj()`, `get_server_properties()`, `get_data_path()`.
 
-Every state-changing method shells out via `ComposeManager.run_compose_command(...)` which wraps `docker compose --project-directory ...`. State queries use the Runtime-owned Docker Engine reader. Structured labels preserve their original values, including equals signs. The reader verifies project, service and directory ownership before using a container.
+Lifecycle methods shell out via `ComposeManager.run_compose_command(...)` which wraps `docker compose --project-directory ...`. State queries use the Runtime-owned Docker Engine reader. Structured labels preserve their original values, including equals signs. The reader verifies project, service and directory ownership before using a container.
+
+## Container commands
+
+`Runtime.docker_commands` executes Query, RCON and messages through the Docker
+SDK, independently of the monitoring reader. Four worker slots bound command
+concurrency; queued cancellation starts no command. Each submitted call owns and
+closes its SDK client/output connection, uses finite communication deadlines,
+and remains tracked through cancellation until its local work finishes. Runtime
+shutdown rejects new calls and drains these workers.
+
+`MCInstance` selects a healthy container through the authoritative reader. Exec
+binds its full ID and start time; a changed instance is rejected instead of
+retargeted. Query fallback retains that same target. A fixed shell selects
+`gnutimeout` when present, otherwise `timeout`, then executes the supplied argv.
+There is no version check, capability cache, automatic installation or retry on
+business failure. RCON text stays a single argument; only the configured Query
+script is evaluated as Bash.
+
+Query retains its saved positive finite timeout, with three extra seconds for
+outer preparation/transport. RCON uses an eight-second execution timeout and a
+ten-second outer budget including state reads/queueing. Both tools receive
+`--kill-after=1s`; preparation/queue time can shorten the available execution
+budget. Standard tool process-group semantics apply, including implementation
+polling delays. Escaped descendants or children left after the main command
+exits are not covered by a custom cleanup guarantee. Cancellation/disconnection
+does not prove remote termination or undo Minecraft effects; no RCON retry is
+performed. Exit codes 124/137 map to timeout/termination, other nonzero codes to
+failure. Partial output and unknown results are not success; diagnostic logs
+contain category, phase, exit code and duration without command text or stderr.
 
 ## Compose file validation
 
@@ -59,7 +88,8 @@ The Runtime-owned monitor samples host and server resources independently of HTT
 - `game_port.py` — game target/properties extraction and scoped initialization validation
 - `properties.py` — `ServerProperties` parser
 - `utils.py` — small async helpers
-- `docker/manager.py` — Compose lifecycle and execution commands
+- `docker/manager.py` — Compose lifecycle commands
+- `docker/commands.py` — bounded Engine exec for Query/RCON and messages
 - `docker/compose_file.py` — generic `ComposeFile` model
 - `docker/reader.py` — owned Engine reads, project identity and Java process discovery
 - `status.py` — shared lifecycle states

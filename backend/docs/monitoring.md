@@ -27,8 +27,9 @@ each selected container once. Project labels, working directory, service and
 configured container identity determine ownership. Explicit Compose names and
 additional services retain their status semantics. Direct command guards use
 fresh Engine observations; cached monitoring never grants permission to mutate
-worlds, files or container state. Compose continues to execute lifecycle and
-RCON/Query commands.
+worlds, files or container state. Compose continues to execute lifecycle commands. Query/RCON use the independent
+[command executor](minecraft.md#container-commands), so slow commands do not occupy
+the monitoring reader.
 
 The UI submits `start` as startup intent. Under the operation lease, the command
 checks live container existence and creates missing containers with Compose up,

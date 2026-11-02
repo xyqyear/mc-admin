@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from .files.types import UploadSession
     from .log_monitor.monitor import LogMonitor
     from .mcmap.manager import MCMapManager
+    from .minecraft.docker.commands import DockerCommands
     from .minecraft.docker.reader import DockerReader
     from .minecraft.manager import DockerMCManager
     from .monitoring.service import RuntimeMonitor
@@ -99,6 +100,7 @@ class Runtime:
         self._app_logger: OwnedLogger | _Uninitialized = UNINITIALIZED
         self._audit_logger: OwnedLogger | None | _Uninitialized = UNINITIALIZED
         self._docker_mc_manager: DockerMCManager | _Uninitialized = UNINITIALIZED
+        self._docker_commands: DockerCommands | _Uninitialized = UNINITIALIZED
         self._docker_reader: DockerReader | _Uninitialized = UNINITIALIZED
         self._monitor: RuntimeMonitor | _Uninitialized = UNINITIALIZED
         self._snapshot_service: SnapshotService | None | _Uninitialized = UNINITIALIZED
@@ -209,6 +211,12 @@ class Runtime:
         if isinstance(self._docker_reader, _Uninitialized):
             self._docker_reader = runtime_factories.create_docker_reader(self)
         return self._docker_reader
+
+    @property
+    def docker_commands(self) -> DockerCommands:
+        if isinstance(self._docker_commands, _Uninitialized):
+            self._docker_commands = runtime_factories.create_docker_commands(self)
+        return self._docker_commands
 
     @property
     def monitor(self) -> RuntimeMonitor:
@@ -530,6 +538,10 @@ class Runtime:
             return
         await resource.close()
 
+    async def _close_docker_commands(self) -> None:
+        if not isinstance(self._docker_commands, _Uninitialized):
+            await self._docker_commands.close()
+
     async def _close_docker_reader(self) -> None:
         if not isinstance(self._docker_reader, _Uninitialized):
             await self._docker_reader.close()
@@ -659,6 +671,7 @@ class Runtime:
                     shutdown.push_async_callback(self._close_audit_logger)
                     shutdown.push_async_callback(self._close_database)
                     shutdown.push_async_callback(self._close_docker_reader)
+                    shutdown.push_async_callback(self._close_docker_commands)
                     shutdown.push_async_callback(self._close_operation_changes)
                     shutdown.push_async_callback(self._close_event_bus)
                     shutdown.push_async_callback(self._close_login_code_manager)

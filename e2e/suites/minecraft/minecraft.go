@@ -12,6 +12,7 @@ import (
 
 func Cases(recipes fixtures.Recipes) []engine.Case {
 	return []engine.Case{
+		{ID: "minecraft.command-timeout", Suite: "minecraft", Tags: []string{"regression", "minecraft"}, Recipe: recipes.Running, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: commandTimeout},
 		{ID: "minecraft.explicit-server-identity", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: 2 * time.Minute, Run: serverIdentityAdoption},
 		{ID: "minecraft.server-path-boundaries", Suite: "minecraft", Tags: []string{"regression"}, Recipe: recipes.Server, Isolation: engine.Fresh, Timeout: time.Minute, Run: serverIdentityPaths},
 		{ID: "minecraft.lifecycle", Suite: "minecraft", Tags: []string{"smoke", "minecraft"}, Recipe: recipes.Lifecycle, Isolation: engine.Fresh, Timeout: 8 * time.Minute, Run: lifecycle},

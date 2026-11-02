@@ -16,9 +16,6 @@ class ComposeManager:
             *args,
         )
 
-    async def exec(self, service_name: str, *args: str) -> str:
-        return await self.run_compose_command("exec", service_name, *args)
-
     async def up_detached(self):
         await self.run_compose_command("up", "-d")
 

@@ -35,14 +35,20 @@ Body: {"command": "whitelist add Notch"}
 200:  {"output": "Added Notch to the whitelist"}
 ```
 
-`app/routers/servers/rcon.py` validates the server exists, checks that it is
-healthy, then wraps `MCInstance.send_command_rcon()` in a router-level timeout.
+`MCInstance.send_command_rcon()` obtains the authoritative healthy container;
+the router maps domain failures to HTTP. Commands execute through the
+[Docker command adapter](minecraft.md#container-commands), with an eight-second
+container timeout, one-second kill grace and ten-second outer budget.
 Responses are:
 
 - `404` when the server has no compose file.
 - `409` when the server is not healthy enough for RCON.
 - `504` when command execution exceeds `RCON_COMMAND_TIMEOUT`.
-- `502` when `rcon-cli` exits unsuccessfully after the health check.
+- `502` when execution fails or Docker communication leaves an unknown result.
+
+Timeout/disconnection does not undo commands already received by Minecraft.
+Neither RCON nor completed message lines are automatically resent; raw adapter
+errors and stderr are excluded from public failures.
 
 The command is passed to `rcon-cli` as one argv element inside the container.
 There is no host shell interpolation and no Minecraft-command allowlist in

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .events.bus import EventBus
     from .log_monitor.monitor import LogMonitor
     from .mcmap.manager import MCMapManager
+    from .minecraft.docker.commands import DockerCommands
     from .minecraft.docker.reader import DockerReader
     from .minecraft.manager import DockerMCManager
     from .monitoring.service import RuntimeMonitor
@@ -90,6 +91,12 @@ def create_docker_reader(runtime: Runtime) -> DockerReader:
     from .minecraft.docker.reader import DockerReader
 
     return DockerReader()
+
+
+def create_docker_commands(runtime: Runtime) -> DockerCommands:
+    from .minecraft.docker.commands import DockerCommands
+
+    return DockerCommands()
 
 
 def create_monitor(runtime: Runtime) -> RuntimeMonitor:

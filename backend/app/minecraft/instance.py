@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,9 +17,15 @@ from ..system.resources import get_disk_info
 from ..utils import async_fs
 from ..utils.exec import exec_command
 from .compose import MCComposeFile, ServerType
+from .docker.commands import (
+    RCON_EXECUTION_TIMEOUT,
+    RCON_TIMEOUT,
+    ServerMissing,
+    ServerUnavailable,
+)
 from .docker.compose_file import ComposeFile
 from .docker.manager import ComposeManager
-from .docker.reader import ProjectState, ProjectTarget
+from .docker.reader import ContainerState, ProjectState, ProjectTarget
 from .paths import (
     confined_server_file,
     find_compose_file,
@@ -256,6 +263,17 @@ class MCInstance:
 
     async def list_players_query(self) -> list[str]:
         """Query the server's UDP query port for the player list."""
+        return await self._query_players(await self.get_command_container())
+
+    async def get_command_container(self) -> ContainerState:
+        state = await self.get_project_state()
+        if state.status == MCServerStatus.REMOVED:
+            raise ServerMissing(f"服务器 '{self._name}' 不存在")
+        if state.status != MCServerStatus.HEALTHY or state.container is None:
+            raise ServerUnavailable("服务器当前无法执行命令（未在健康状态）")
+        return state.container
+
+    async def _query_players(self, container: ContainerState) -> list[str]:
         server_properties = await self.get_server_properties()
 
         if not server_properties.enable_query:
@@ -266,10 +284,11 @@ class MCInstance:
         query_command = get_config().players.query.query_command.replace(
             "25565", str(server_properties.query_port)
         )
-        timeout = str(get_config().players.query.timeout)
+        timeout = get_config().players.query.timeout
 
-        result = await self._compose_manager.exec(
-            "mc", "timeout", timeout, "bash", "-c", query_command
+        result = await current_runtime().docker_commands.execute(
+            container, ["bash", "-c", query_command],
+            execution_timeout=timeout, timeout=timeout + 3.0, kind="query",
         )
         result = result.strip()
         if not result:
@@ -277,8 +296,8 @@ class MCInstance:
 
         return [player.strip() for player in result.split("\n") if player.strip()]
 
-    async def _list_players_rcon(self) -> list[str]:
-        players = await self.send_command_rcon("list")
+    async def _list_players_rcon(self, container: ContainerState) -> list[str]:
+        players = await self._rcon(container, "list")
         if ":" not in players:
             return []
         players_str = players.split(":")[1].strip()
@@ -289,18 +308,28 @@ class MCInstance:
     async def list_players(self) -> list[str]:
         """Try the query protocol first; fall back to RCON ``list``."""
         logger = get_logger()
+        container = await self.get_command_container()
         try:
-            return await self.list_players_query()
-        except Exception as e:
-            logger.debug(f"Query protocol failed for server {self._name}: {e}", exc_info=True)
+            return await self._query_players(container)
+        except ServerUnavailable:
+            raise
+        except (RuntimeError, OSError, ValueError):
+            logger.debug("Query failed for server %s; falling back to RCON", self._name)
 
-        return await self._list_players_rcon()
+        return await self._list_players_rcon(container)
 
     async def send_command_rcon(self, command: str) -> str:
         """Run ``command`` via the container's ``rcon-cli`` (provided by itzg/minecraft-server)."""
-        if not await self.healthy():
-            raise RuntimeError(f"Server {self._name} is not healthy")
-        result = await self._compose_manager.exec("mc", "rcon-cli", command)
+        started = time.monotonic()
+        async with asyncio.timeout(RCON_TIMEOUT):
+            container = await self.get_command_container()
+            return await self._rcon(container, command, timeout=RCON_TIMEOUT - (time.monotonic() - started))
+
+    async def _rcon(self, container: ContainerState, command: str, *, timeout: float = RCON_TIMEOUT) -> str:
+        result = await current_runtime().docker_commands.execute(
+            container, ["rcon-cli", command], execution_timeout=RCON_EXECUTION_TIMEOUT,
+            timeout=timeout, kind="rcon",
+        )
         return ANSI_ESCAPE_PATTERN.sub("", result).strip()
 
     async def get_container_id(self) -> str:

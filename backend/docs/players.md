@@ -12,7 +12,7 @@ explicitly; they do not write identity or session rows themselves.
 - `LogMonitor` parses log lines and calls `discover_identity`,
   `process_player_join`, `process_player_left`, `record_chat_message`,
   `record_achievement` or `close_server_sessions` in line order.
-- `PlayerSyncer` obtains a `HEALTHY` server's RCON `list` result and calls
+- `PlayerSyncer` obtains a `HEALTHY` server's Query result, falling back to RCON `list` and calls
   `reconcile_online`. The service compares it with open sessions, closes false
   online observations, then opens missing sessions. A failed RCON request is an
   unknown observation and makes no session changes.
@@ -56,13 +56,18 @@ Player session, chat and achievement history queries apply an optional server
 filter to every returned row. An unknown server yields an empty list; omitting
 the filter returns that player's history across servers.
 
+Online-player HTTP reads use persisted open sessions; they do not execute game
+queries. Log events update sessions promptly, while the periodic Query/RCON loop
+corrects missed observations. A successful empty list is valid; two failed
+queries leave sessions unchanged.
+
 ## Runtime resources
 
 Each application owns its producers and external clients. Background producers
 are stopped and drained before database and client teardown.
 
 - **`heartbeat_manager`** (`app.players.heartbeat`) — single-row `SystemHeartbeat` table, updated every `heartbeat_interval_seconds`. On startup, if `now - last_heartbeat >= crash_threshold_minutes`, treats it as a crash: calls `PlayerService.recover_crash()` to close open sessions with the "System crash" reason and last-heartbeat timestamp and calls `player_syncer.validate_all_servers()` to resync against RCON.
-- **`player_syncer`** (`app.players.player_syncer`) — periodic loop. For each `HEALTHY` server, runs RCON `list` and passes the observation to `PlayerService.reconcile_online`. The service owns comparison and session changes.
+- **`player_syncer`** (`app.players.player_syncer`) — periodic loop. For each `HEALTHY` server, queries through the [container command adapter](minecraft.md#container-commands), falling back to RCON `list`, and passes the observation to `PlayerService.reconcile_online`. The service owns comparison and session changes.
 - **`skin_fetcher`** (`app.players.skin_fetcher`) — Mojang client. Hits `https://sessionserver.mojang.com/session/minecraft/profile/{uuid}`, decodes the textures property, downloads the SKIN PNG, and crops the 8×8 head into an avatar via `async_fs.extract_skin_avatar` (PIL, run off the loop). Handles 404/429/timeout.
 
 ## Lifecycle wiring

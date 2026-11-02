@@ -4,7 +4,9 @@
 
 ## Owned dependencies
 
-The runtime also owns the Docker Engine reader and shared monitor. The monitor
+The runtime also owns the Docker Engine reader, command executor and shared monitor.
+The command executor has independent bounded workers and drains submitted SDK
+work at shutdown; see [container commands](minecraft.md#container-commands). The monitor
 starts after journal recovery and owns independent host, server and directory
 workers. Shutdown drains these workers before closing its serialized Docker
 client/thread and database. First-sample availability and Docker connectivity
