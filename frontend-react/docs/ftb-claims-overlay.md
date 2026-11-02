@@ -160,12 +160,13 @@ existing selection store.
 ## Performance
 
 A typical modded world has 5–15 teams and a few hundred to ~2k claimed
-chunks. The boundary walk is O(chunks), polygon rendering is one SVG path
-per cluster (Leaflet's default SVG renderer), and the divIcon label
+chunks. The boundary walk is O(chunks), polygon rendering is one path
+per cluster, and the divIcon label
 markers number at most one per cluster — well under what Leaflet copes with
 fluently. Force-loaded overlays (one rect + seven hatch lines per chunk)
 use the canvas renderer to keep the per-chunk shape count cheap.
 
-The overlay is rebuilt only when `teams` or `currentDim` change (not on
-hover). Hover effects mutate polygon styles imperatively, which is why
+`ServerMap` retains the claims layer when its descriptor is unchanged, including
+while player profiles or player visibility update. Team/dimension changes and
+visibility re-enablement rebuild it. Hover effects mutate polygon styles imperatively, which is why
 `useClaimsOverlay` keeps refs to every polygon by cluster id.

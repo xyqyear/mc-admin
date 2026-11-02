@@ -54,6 +54,14 @@ Selection and mode-switch math use these helpers. `mapConfig.ts` owns `blockToLa
   - Escape (with the canvas focused): clear selection
 - Selection paint uses per-region rectangles past 5,000 chunks to bound Leaflet redraw work.
 
+Overlays are reconciled by `id` and descriptor identity. An unchanged descriptor
+keeps its existing Leaflet layer; a changed descriptor with `update` refreshes
+that layer in place. Other changed or removed layers are detached before new
+layers render, preserving cross-dimension pan-before-add ordering. Player
+profile/visibility updates therefore retain claims, popover anchors and other
+unrelated overlays. Map cleanup discards the layer registry, including during
+StrictMode's setup/cleanup/setup cycle.
+
 ## `ServerMapTileLayer`
 
 `features/world/map/ServerMapTileLayer.ts` extends the shared `ServerTileLayer`, a native Leaflet `L.TileLayer` wrapper. The reasons:

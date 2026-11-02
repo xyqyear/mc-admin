@@ -1,9 +1,12 @@
 import L from 'leaflet'
-import { expect, it } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { buildClaimsLayer, type ClaimsLayerRefs } from '@/features/world/layers/claims/ClaimOverlayLayer'
 import { buildPlayerLocationsLayer } from '@/features/world/layers/players/PlayerOverlayLayer'
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
 import { buildPrunePreviewLayer } from '@/features/world/prune/components/PrunePreviewOverlayLayer'
+
+let map: L.Map | undefined
+afterEach(() => { map?.remove(); map = undefined })
 
 it.each([
   ['regions', [
@@ -46,6 +49,9 @@ it('renders a negative claimed chunk at its block boundaries', () => {
 })
 
 it('uses the same normalized online identity and cached label for UUID and id fallback markers', () => {
+  const container = document.createElement('div')
+  Object.defineProperties(container, { clientWidth: { value: 800 }, clientHeight: { value: 600 } })
+  map = L.map(container, { crs: L.CRS.Simple, center: [0, 0], zoom: 0 })
   const uuid = '0123456789abcdef0123456789abcdef'
   const raw = '01234567-89AB-CDEF-0123-456789ABCDEF'
   const base: PlayerLocationEntry = { id: raw, id_kind: 'uuid', uuid: raw, source: 'first.dat', storage: 'playerdata',
@@ -56,7 +62,7 @@ it('uses the same normalized online identity and cached label for UUID and id fa
     currentDimRelpath: 'world/region', profilesByUuid: new Map([[uuid, { uuid, player_db_id: 1,
       current_name: '同一玩家', avatar_base64: null, resolved: true, last_skin_update: null }]]),
     onlinePlayerUuids: new Set([uuid]), onlineOnly: true, onlineStatusAvailable: true,
-  })
+  }).addTo(map)
   const markers = group.getLayers() as L.Marker[]
   expect(markers).toHaveLength(2)
   expect(markers.map(marker => [marker.getLatLng().lat, marker.getLatLng().lng])).toEqual([[33, -17], [-34, -18]])

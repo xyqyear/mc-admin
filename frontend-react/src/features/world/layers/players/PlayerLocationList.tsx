@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { memo, useMemo } from 'react'
 import { RefreshCw } from 'lucide-react'
 
 import { Badge } from '@/shared/ui/badge'
@@ -21,6 +21,8 @@ import {
   playerDisplayName,
   playerLocationKey,
 } from '@/features/world/layers/players/playerLocationDisplay'
+
+const playerNameOrder = new Intl.Collator(undefined, { sensitivity: 'base' })
 
 interface PlayerLocationListProps {
   data: PlayerLocationsResponse | undefined
@@ -69,22 +71,16 @@ export const PlayerLocationList: React.FC<PlayerLocationListProps> = ({
     const visiblePlayers = onlineFilterActive
       ? list.filter((player) => isPlayerOnline(player, onlinePlayerUuids))
       : list
-    visiblePlayers.sort((a, b) => {
-      const aOnline = isPlayerOnline(a, onlinePlayerUuids) ? 0 : 1
-      const bOnline = isPlayerOnline(b, onlinePlayerUuids) ? 0 : 1
-      if (aOnline !== bOnline) return aOnline - bOnline
-      const aCurrent = a.region_dir_relpath === currentDimRelpath ? 0 : 1
-      const bCurrent = b.region_dir_relpath === currentDimRelpath ? 0 : 1
-      if (aCurrent !== bCurrent) return aCurrent - bCurrent
-      const aUuid = normalizedUuidOf(a)
-      const bUuid = normalizedUuidOf(b)
-      const aProfile = aUuid ? profilesByUuid.get(aUuid) : undefined
-      const bProfile = bUuid ? profilesByUuid.get(bUuid) : undefined
-      const aName = playerDisplayName(a, aProfile)
-      const bName = playerDisplayName(b, bProfile)
-      return aName.localeCompare(bName, undefined, { sensitivity: 'base' })
-    })
-    return visiblePlayers
+    return visiblePlayers.map(player => {
+      const uuid = normalizedUuidOf(player)
+      return {
+        player,
+        online: isPlayerOnline(player, onlinePlayerUuids) ? 0 : 1,
+        current: player.region_dir_relpath === currentDimRelpath ? 0 : 1,
+        name: playerDisplayName(player, uuid ? profilesByUuid.get(uuid) : undefined),
+      }
+    }).sort((a, b) => a.online - b.online || a.current - b.current || playerNameOrder.compare(a.name, b.name))
+      .map(entry => entry.player)
   }, [
     data?.players,
     onlineFilterActive,
@@ -235,7 +231,7 @@ interface PlayerRowProps {
   onClick: (player: PlayerLocationEntry) => void
 }
 
-const PlayerRow: React.FC<PlayerRowProps> = ({
+const PlayerRow = memo(function PlayerRow({
   player,
   isCurrentDim,
   isOnline,
@@ -244,7 +240,7 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
   profile,
   profilePending,
   onClick,
-}) => {
+}: PlayerRowProps) {
   const name = playerDisplayName(player, profile)
   const uuid = normalizedUuidOf(player)
   const canNavigate = !!player.region_dir_relpath
@@ -257,6 +253,7 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
     <button
       type="button"
       disabled={!canNavigate}
+      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 65px' }}
       className={cn(
         'flex w-full items-center gap-2 border-b px-2 py-2 text-left last:border-b-0',
         canNavigate && 'cursor-pointer hover:bg-muted/45',
@@ -316,4 +313,4 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
       </div>
     </button>
   )
-}
+})

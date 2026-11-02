@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import L from 'leaflet'
+import type L from 'leaflet'
 
 import type { ServerMapOverlay } from '@/features/world/map/ServerMap'
 import { blockToLatLng } from '@/features/world/map/mapConfig'
 import type { PlayerMapProfileResponse } from '@/features/players/contracts';
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
 
-import { buildPlayerLocationsLayer } from '@/features/world/layers/players/PlayerOverlayLayer'
+import { buildPlayerLocationsLayer, PlayerLocationsLayer } from '@/features/world/layers/players/PlayerOverlayLayer'
 
 import '@/features/world/layers/players/players.css'
 
@@ -46,21 +46,24 @@ export function usePlayersOverlay({
 
   const overlays = useMemo<ServerMapOverlay[] | undefined>(() => {
     if (!enabled) return undefined
+    const settings = {
+      players: visible ? players : [], currentDimRelpath, profilesByUuid,
+      onlinePlayerUuids, onlineOnly, onlineStatusAvailable,
+    }
+    const prepare = (map: L.Map) => {
+      mapRef.current = map
+      onRenderRef.current?.(map, currentDimRelpath)
+    }
     return [
       {
         id: 'player-locations',
         render: (map) => {
-          mapRef.current = map
-          onRenderRef.current?.(map, currentDimRelpath)
-          if (!visible) return L.layerGroup()
-          return buildPlayerLocationsLayer({
-            players,
-            currentDimRelpath,
-            profilesByUuid,
-            onlinePlayerUuids,
-            onlineOnly,
-            onlineStatusAvailable,
-          })
+          prepare(map)
+          return buildPlayerLocationsLayer(settings)
+        },
+        update: (layer, map) => {
+          prepare(map)
+          if (layer instanceof PlayerLocationsLayer) layer.update(settings)
         },
       },
     ]

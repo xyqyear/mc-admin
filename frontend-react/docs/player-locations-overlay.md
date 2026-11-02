@@ -71,6 +71,14 @@ clicking switches the URL `#dim=` and pans after the new map render. Rows whose
 mcmap dimension cannot be resolved to a region directory stay visible as
 unmatched and are not clickable.
 
+Sorting computes identity, online status, dimension priority and display name
+once per location, and reuses an `Intl.Collator` for case-insensitive name
+comparison. Memoized rows retain their render when their own profile and
+presentation inputs are unchanged. Native `content-visibility: auto` skips layout
+and paint for rows outside the scroll viewport, with a 65px intrinsic row size.
+All rows remain in the document for browser search, keyboard navigation and
+cross-dimension positioning.
+
 ## Map Overlay
 
 `usePlayersOverlay.ts` always registers a lightweight overlay while the map is
@@ -78,13 +86,29 @@ initialized, even when the visible player layer is toggled off. That keeps a
 `L.Map` reference available so sidebar row clicks can pan without requiring the
 visible overlay to be on.
 
-`PlayerOverlayLayer.ts` filters to the current `region_dir_relpath` and renders
-one non-interactive `L.divIcon` marker per visible player. The marker contains a
+`PlayerOverlayLayer.ts` filters to the current `region_dir_relpath` and online
+setting, then mounts non-interactive `L.divIcon` markers for locations near the
+viewport. Pixel bounds include the icon dimensions and a pan gutter, so a name
+or avatar remains visible when its coordinate is just outside the map. Movement,
+zoom and resize reconcile visibility at most once per animation frame. There is
+no player cap or clustering: zooming out still displays every eligible location.
+The marker contains a
 small pixelated avatar or placeholder plus a compact name pill. Online/offline
 state is shown with a small dot on the avatar; offline markers are more
 transparent. CSS in `players.css` sets `pointer-events: none` and partial
 opacity so markers do not block map panning, selection, hover frames, or block
 inspection.
+
+The layer updates by `playerLocationKey()`. Unchanged visible players retain
+their marker and avatar DOM; changed profiles, positions and online state update
+only the affected marker. Players leaving the viewport or filter release their
+markers. Removing the layer detaches its map listeners and cancels scheduled
+animation work; reattachment reconciles against the current viewport.
+
+Marker styling uses local text/box shadows instead of per-player backdrop blur
+and filtered subtrees, keeping dense offline-player views out of expensive
+backdrop compositing. Names, avatar placeholders, status dots and transparency
+remain available with the same filtering and navigation behavior.
 
 ## Cross-Dimension Pan
 

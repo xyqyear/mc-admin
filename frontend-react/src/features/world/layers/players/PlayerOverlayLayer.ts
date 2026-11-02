@@ -26,51 +26,122 @@ export interface BuildPlayerLocationsLayerOptions {
   onlineStatusAvailable: boolean
 }
 
-export function buildPlayerLocationsLayer({
-  players,
-  currentDimRelpath,
-  profilesByUuid,
-  onlinePlayerUuids,
-  onlineOnly,
-  onlineStatusAvailable,
-}: BuildPlayerLocationsLayerOptions): L.LayerGroup {
-  const group = L.layerGroup()
-  if (!currentDimRelpath) return group
+interface PlayerMarker {
+  player: PlayerLocationEntry
+  profile: PlayerMapProfileResponse | undefined
+  status: PlayerOnlineStatus
+  marker: L.Marker
+}
 
-  for (const player of players) {
-    if (player.region_dir_relpath !== currentDimRelpath) continue
-    const online = isPlayerOnline(player, onlinePlayerUuids)
-    if (onlineOnly && !online) continue
-    const uuid = normalizedUuidOf(player)
-    const profile = uuid ? profilesByUuid.get(uuid) : undefined
-    const label = playerDisplayName(player, profile)
-    const status: PlayerOnlineStatus = onlineStatusAvailable
-      ? online
-        ? 'online'
-        : 'offline'
-      : 'unknown'
-    const icon = L.divIcon({
-      html: markerHtml(label, profile?.avatar_base64, status),
-      className: 'player-location-icon',
-      iconSize: [MARKER_WIDTH, NAME_HEIGHT + MARKER_GAP + AVATAR_SIZE],
-      iconAnchor: [
-        MARKER_WIDTH / 2,
-        NAME_HEIGHT + MARKER_GAP + AVATAR_SIZE / 2,
-      ],
-    })
-    group.addLayer(
-      L.marker(blockToLatLng(player.pos.x, player.pos.z), {
-        icon,
-        interactive: false,
-        keyboard: false,
-        title: label,
-      }).bindTooltip(tooltipHtml(player, label, status), {
-        direction: 'top',
-        opacity: 0.92,
-      }),
-    )
+export class PlayerLocationsLayer extends L.LayerGroup {
+  private settings: BuildPlayerLocationsLayerOptions
+  private markers = new Map<string, PlayerMarker>()
+  private attachedMap: L.Map | null = null
+  private frame: number | null = null
+
+  constructor(settings: BuildPlayerLocationsLayerOptions) {
+    super()
+    this.settings = settings
   }
-  return group
+
+  update(settings: BuildPlayerLocationsLayerOptions): void {
+    this.settings = settings
+    this.refresh()
+  }
+
+  override onAdd(map: L.Map): this {
+    this.attachedMap = map
+    this.refresh()
+    return super.onAdd(map)
+  }
+
+  override onRemove(map: L.Map): this {
+    if (this.frame !== null) cancelAnimationFrame(this.frame)
+    this.frame = null
+    this.attachedMap = null
+    return super.onRemove(map)
+  }
+
+  getEvents(): Record<string, L.LeafletEventHandlerFn> {
+    return { move: this.scheduleRefresh, zoomend: this.scheduleRefresh, resize: this.scheduleRefresh }
+  }
+
+  private scheduleRefresh = (): void => {
+    if (this.frame !== null) return
+    this.frame = requestAnimationFrame(() => {
+      this.frame = null
+      this.refresh()
+    })
+  }
+
+  private refresh(): void {
+    const map = this.attachedMap
+    if (!map) return
+    const { players, currentDimRelpath, profilesByUuid, onlinePlayerUuids, onlineOnly, onlineStatusAvailable } = this.settings
+    const bounds = map.getPixelBounds()
+    // Include the whole icon and a pan gutter, even when its anchor is offscreen.
+    const padding = L.point(MARKER_WIDTH / 2 + 128, NAME_HEIGHT + AVATAR_SIZE + 128)
+    const visibleBounds = L.bounds(bounds.min!.subtract(padding), bounds.max!.add(padding))
+    const retained = new Set<string>()
+
+    for (const player of players) {
+      if (!currentDimRelpath || player.region_dir_relpath !== currentDimRelpath) continue
+      const online = isPlayerOnline(player, onlinePlayerUuids)
+      if (onlineOnly && !online) continue
+      const position = blockToLatLng(player.pos.x, player.pos.z)
+      if (!visibleBounds.contains(map.project(position))) continue
+      const key = playerLocationKey(player)
+      retained.add(key)
+      const uuid = normalizedUuidOf(player)
+      const profile = uuid ? profilesByUuid.get(uuid) : undefined
+      const status: PlayerOnlineStatus = onlineStatusAvailable
+        ? online
+          ? 'online'
+          : 'offline'
+        : 'unknown'
+      const previous = this.markers.get(key)
+      if (previous?.player === player && previous.profile === profile && previous.status === status) continue
+      const label = playerDisplayName(player, profile)
+      const icon = L.divIcon({
+        html: markerHtml(label, profile?.avatar_base64, status),
+        className: 'player-location-icon',
+        iconSize: [MARKER_WIDTH, NAME_HEIGHT + MARKER_GAP + AVATAR_SIZE],
+        iconAnchor: [
+          MARKER_WIDTH / 2,
+          NAME_HEIGHT + MARKER_GAP + AVATAR_SIZE / 2,
+        ],
+      })
+      if (previous) {
+        previous.marker.setIcon(icon).setLatLng(position)
+        previous.marker.options.title = label
+        const element = previous.marker.getElement()
+        if (element) element.title = label
+        previous.marker.setTooltipContent(tooltipHtml(player, label, status))
+        this.markers.set(key, { player, profile, status, marker: previous.marker })
+      } else {
+        const marker = L.marker(position, {
+          icon,
+          interactive: false,
+          keyboard: false,
+          title: label,
+        }).bindTooltip(tooltipHtml(player, label, status), {
+          direction: 'top',
+          opacity: 0.92,
+        })
+        this.addLayer(marker)
+        this.markers.set(key, { player, profile, status, marker })
+      }
+    }
+    for (const [key, entry] of this.markers) {
+      if (retained.has(key)) continue
+      this.removeLayer(entry.marker)
+      this.markers.delete(key)
+    }
+  }
+}
+
+export function buildPlayerLocationsLayer(settings: BuildPlayerLocationsLayerOptions): PlayerLocationsLayer {
+  return new PlayerLocationsLayer(settings)
 }
 
 function markerHtml(

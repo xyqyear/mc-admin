@@ -39,6 +39,7 @@ export type SelectionTool = 'pan' | 'add' | 'erase'
 export interface ServerMapOverlay {
   id: string
   render: (map: L.Map) => L.Layer
+  update?: (layer: L.Layer, map: L.Map) => void
 }
 
 export interface ServerMapView {
@@ -94,6 +95,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
   const mapRef = useRef<L.Map | null>(null)
   const tileLayerRef = useRef<ServerMapTileLayer | null>(null)
   const overlayLayerRef = useRef<L.LayerGroup | null>(null)
+  const renderedOverlaysRef = useRef(new Map<string, { overlay: ServerMapOverlay; layer: L.Layer }>())
   const selectionLayerRef = useRef<L.LayerGroup | null>(null)
   // Drag-rect selection state in refs so mousemove can update the ghost
   // without re-rendering; hover handler reads `active` to skip during drags.
@@ -167,6 +169,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       preferCanvas: true,
     })
     mapRef.current = map
+    const renderedOverlays = renderedOverlaysRef.current
     overlayLayerRef.current = L.layerGroup().addTo(map)
     selectionLayerRef.current = L.layerGroup().addTo(map)
 
@@ -310,6 +313,7 @@ export const ServerMap: React.FC<ServerMapProps> = ({
       mapRef.current = null
       tileLayerRef.current = null
       overlayLayerRef.current = null
+      renderedOverlays.clear()
       selectionLayerRef.current = null
       hoverRectRef.current = null
       lastHoverKeyRef.current = null
@@ -354,10 +358,27 @@ export const ServerMap: React.FC<ServerMapProps> = ({
     const map = mapRef.current
     const group = overlayLayerRef.current
     if (!map || !group) return
-    group.clearLayers()
-    if (!overlays) return
-    for (const o of overlays) {
-      group.addLayer(o.render(map))
+    const rendered = renderedOverlaysRef.current
+    const next = new Map(overlays?.map(overlay => [overlay.id, overlay]))
+    for (const [id, previous] of rendered) {
+      const overlay = next.get(id)
+      if (!overlay || (overlay !== previous.overlay && !overlay.update)) {
+        group.removeLayer(previous.layer)
+        rendered.delete(id)
+      }
+    }
+    for (const overlay of overlays ?? []) {
+      const previous = rendered.get(overlay.id)
+      if (previous) {
+        if (previous.overlay !== overlay) {
+          overlay.update?.(previous.layer, map)
+          previous.overlay = overlay
+        }
+      } else {
+        const layer = overlay.render(map)
+        group.addLayer(layer)
+        rendered.set(overlay.id, { overlay, layer })
+      }
     }
   }, [overlays])
 
