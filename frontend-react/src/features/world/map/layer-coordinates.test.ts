@@ -1,12 +1,13 @@
 import L from 'leaflet'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { mockCanvas } from '@/test/canvas'
 import { buildClaimsLayer, type ClaimsLayerRefs } from '@/features/world/layers/claims/ClaimOverlayLayer'
 import { buildPlayerLocationsLayer } from '@/features/world/layers/players/PlayerOverlayLayer'
 import type { PlayerLocationEntry } from '@/features/world/layers/players/contracts'
 import { buildPrunePreviewLayer } from '@/features/world/prune/components/PrunePreviewOverlayLayer'
 
 let map: L.Map | undefined
-afterEach(() => { map?.remove(); map = undefined })
+afterEach(() => { map?.remove(); map = undefined; vi.restoreAllMocks() })
 
 it.each([
   ['regions', [
@@ -49,6 +50,7 @@ it('renders a negative claimed chunk at its block boundaries', () => {
 })
 
 it('uses the same normalized online identity and cached label for UUID and id fallback markers', () => {
+  const contextFor = mockCanvas()
   const container = document.createElement('div')
   Object.defineProperties(container, { clientWidth: { value: 800 }, clientHeight: { value: 600 } })
   map = L.map(container, { crs: L.CRS.Simple, center: [0, 0], zoom: 0 })
@@ -63,12 +65,11 @@ it('uses the same normalized online identity and cached label for UUID and id fa
       current_name: '同一玩家', avatar_base64: null, resolved: true, last_skin_update: null }]]),
     onlinePlayerUuids: new Set([uuid]), onlineOnly: true, onlineStatusAvailable: true,
   }).addTo(map)
-  const markers = group.getLayers() as L.Marker[]
-  expect(markers).toHaveLength(2)
-  expect(markers.map(marker => [marker.getLatLng().lat, marker.getLatLng().lng])).toEqual([[33, -17], [-34, -18]])
-  for (const marker of markers) {
-    const icon = marker.options.icon as L.DivIcon
-    expect(icon.options.html).toContain('同一玩家')
-    expect(icon.options.html).toContain('player-location-marker--online')
+  const draws = contextFor(group.getElement()!).draws
+  expect(draws).toHaveLength(2)
+  expect(draws.map(draw => [draw.x, draw.y])).toEqual([[449, 366], [448, 433]])
+  for (const draw of draws) {
+    expect(contextFor(draw.source as HTMLCanvasElement).fillText).toHaveBeenCalledWith('同一玩家', 60, 7)
+    expect(draw.alpha).toBe(0.68)
   }
 })

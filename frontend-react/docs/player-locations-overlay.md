@@ -87,28 +87,44 @@ initialized, even when the visible player layer is toggled off. That keeps a
 visible overlay to be on.
 
 `PlayerOverlayLayer.ts` filters to the current `region_dir_relpath` and online
-setting, then mounts non-interactive `L.divIcon` markers for locations near the
-viewport. Pixel bounds include the icon dimensions and a pan gutter, so a name
-or avatar remains visible when its coordinate is just outside the map. Movement,
-zoom and resize reconcile visibility at most once per animation frame. There is
-no player cap or clustering: zooming out still displays every eligible location.
-The marker contains a
-small pixelated avatar or placeholder plus a compact name pill. Online/offline
-state is shown with a small dot on the avatar; offline markers are more
-transparent. CSS in `players.css` sets `pointer-events: none` and partial
-opacity so markers do not block map panning, selection, hover frames, or block
-inspection.
+setting, then draws visible player markers onto one Canvas in Leaflet's marker
+pane. Each marker retains its name pill, pixelated avatar or placeholder,
+online/offline dot and status-dependent transparency. `playerMarkerSprite.ts`
+rasterizes each marker at the device pixel ratio; unchanged markers reuse that
+bitmap across redraws, including after leaving and re-entering the viewport.
+Avatar images are shared by their base64
+source, with a placeholder until decoding succeeds and after decoding fails.
 
-The layer updates by `playerLocationKey()`. Unchanged visible players retain
-their marker and avatar DOM; changed profiles, positions and online state update
-only the affected marker. Players leaving the viewport or filter release their
-markers. Removing the layer detaches its map listeners and cancels scheduled
-animation work; reattachment reconciles against the current viewport.
+The viewport includes a pan gutter and the full icon footprint, preserving
+partially visible names and avatars. Ordinary dragging translates the cached
+Canvas with the map pane, without repainting each player. Crossing the gutter,
+zooming and resizing schedule one redraw per animation frame. Zoom animations
+transform the Canvas before it redraws fixed-size markers for the final zoom.
+There is no player cap, clustering or name suppression: zooming out still draws
+every eligible location. Marker painting follows vertical map order so lower
+players paint above higher players, matching Leaflet marker stacking.
 
-Marker styling uses local text/box shadows instead of per-player backdrop blur
-and filtered subtrees, keeping dense offline-player views out of expensive
-backdrop compositing. Names, avatar placeholders, status dots and transparency
-remain available with the same filtering and navigation behavior.
+Profile, position and status changes update render entries by
+`playerLocationKey()` and invalidate only the affected marker bitmaps. The
+Canvas exposes the eligible player count as an accessible image label; the
+sidebar retains each player's full text and navigation. `players.css` keeps the
+Canvas non-interactive so panning, selection, hover frames and block inspection
+pass through it.
+
+Bitmaps are created lazily when markers enter the viewport gutter, and retained
+while their render entries remain eligible. Panning and position-only updates
+reuse them; changes to a name, avatar, status or device pixel ratio release the
+affected bitmaps. Filtering, dimension changes and removed locations release
+entries that are no longer eligible. The cache holds at most one bitmap per
+eligible location and grows with visited locations and the square of the device
+pixel ratio; it has no separate byte budget or timer-based eviction.
+
+Hiding the layer releases its pixel buffers and decoded images while retaining
+the map reference for sidebar navigation. Hidden layers do not allocate a new
+buffer when the map moves, zooms or resizes. Removing the layer also detaches map
+listeners, cancels scheduled animation work and clears image callbacks, so late
+avatar loads cannot redraw an unmounted layer. Reattachment rebuilds against
+the current viewport.
 
 ## Cross-Dimension Pan
 

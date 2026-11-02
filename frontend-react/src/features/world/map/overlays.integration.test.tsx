@@ -2,7 +2,8 @@ import { StrictMode, useMemo } from 'react'
 import L from 'leaflet'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, waitFor } from '@testing-library/react'
-import { expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { mockCanvas } from '@/test/canvas'
 import { ServerMap, type ServerMapOverlay } from './ServerMap'
 import { usePlayersOverlay } from '../layers/players/usePlayersOverlay'
 import type { PlayerMapProfileResponse } from '@/features/players/contracts'
@@ -14,8 +15,11 @@ const players: PlayerLocationEntry[] = [{ id: uuid, uuid, id_kind: 'uuid', sourc
 const regions = new Map<string, number>()
 const online = new Set<string>()
 const profile = (name: string): PlayerMapProfileResponse => ({ uuid, player_db_id: 1, current_name: name, avatar_base64: null, resolved: true, last_skin_update: null })
+let contextFor: ReturnType<typeof mockCanvas>
+beforeEach(() => { contextFor = mockCanvas() })
+afterEach(() => vi.restoreAllMocks())
 
-it('retains unrelated overlay DOM and player layers across profile and visibility updates in StrictMode', () => {
+it('retains unrelated overlay DOM and player layers across profile and visibility updates in StrictMode', async () => {
   const renderClaims = vi.fn(() => L.marker([0, 0], { icon: L.divIcon({ html: '<button>领地</button>', className: 'test-claim-label' }) }))
   const claim: ServerMapOverlay = { id: 'claims', render: renderClaims }
   function Screen({ name, visible = true, claims = true }: { name: string; visible?: boolean; claims?: boolean }) {
@@ -29,21 +33,23 @@ it('retains unrelated overlay DOM and player layers across profile and visibilit
   const shell = (name: string, visible = true, claims = true) => <StrictMode><QueryClientProvider client={client}><Screen name={name} visible={visible} claims={claims} /></QueryClientProvider></StrictMode>
   const view = render(shell('原名'))
   const label = view.container.querySelector('.test-claim-label')
-  const marker = view.container.querySelector('.player-location-icon')
+  const marker = view.container.querySelector<HTMLCanvasElement>('.player-locations-canvas')!
   expect(label).toBeTruthy()
-  expect(marker?.textContent).toContain('原名')
+  const nameContext = () => contextFor(contextFor(marker).draws[0].source as HTMLCanvasElement)
+  expect(nameContext().fillText).toHaveBeenCalledWith('原名', 60, 7)
   const initialClaimRenders = renderClaims.mock.calls.length
   view.rerender(shell('新名'))
   expect(view.container.querySelector('.test-claim-label')).toBe(label)
-  expect(view.container.querySelector('.player-location-icon')).toBe(marker)
-  expect(marker?.textContent).toContain('新名')
+  expect(view.container.querySelector('.player-locations-canvas')).toBe(marker)
+  await waitFor(() => expect(nameContext().fillText).toHaveBeenCalledWith('新名', 60, 7))
   expect(renderClaims).toHaveBeenCalledTimes(initialClaimRenders)
   view.rerender(shell('新名', false))
-  expect(view.container.querySelector('.player-location-icon')).toBeNull()
+  expect(marker.hidden).toBe(true)
   expect(view.container.querySelector('.test-claim-label')).toBe(label)
   view.rerender(shell('新名', true, false))
   expect(view.container.querySelector('.test-claim-label')).toBeNull()
-  expect(view.container.querySelector('.player-location-icon')?.textContent).toContain('新名')
+  expect(marker.hidden).toBe(false)
+  expect(nameContext().fillText).toHaveBeenCalledWith('新名', 60, 7)
   view.unmount()
   expect(view.container.querySelector('.leaflet-pane')).toBeNull()
   client.clear()
