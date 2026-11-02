@@ -1,127 +1,104 @@
 ## Context
 
-动机与范围见 [proposal](proposal.md)。设计沿用 [Minecraft adapter](../../../backend/docs/minecraft.md)、[Runtime](../../../backend/docs/runtime.md)、[monitoring](../../../backend/docs/monitoring.md)、[process ownership](../../../backend/docs/operations.md)、[recovery](../../../backend/docs/operation-recovery.md)、[players](../../../backend/docs/players.md) 和 [RCON API](../../../backend/docs/bot-integration-apis.md) 的边界。
+沿用 [Minecraft adapter](../../../backend/docs/minecraft.md)、[Runtime](../../../backend/docs/runtime.md)、[monitoring](../../../backend/docs/monitoring.md)、[players](../../../backend/docs/players.md) 和 [RCON API](../../../backend/docs/bot-integration-apis.md) 的业务边界。目标是优化两处容器内命令调用，不建设通用进程管理框架。
 
-现有部署及 API E2E 使用 `pid: host` / `--pid host`，后端已有 pidfd、启动时刻及进程归属验证。游戏容器已经依赖 Bash 执行 Query。Docker SDK 是现有依赖；状态、top 和网页控制台已经直接调用 Engine，剩余 Compose exec 入口只有 Query 和 RCON。
+2026-11-02 按线上运行容器的实际镜像 ID，使用无网络、只读、无游戏目录挂载的一次性容器验证：
 
-2026-11-02 对 fkm/xlg 的只读诊断提供以下基线；它不是新方案的性能承诺：
+| 原始镜像 | 当前使用它的服务器 | 默认 timeout | 可直接使用的 GNU 工具 |
+| --- | --- | --- | --- |
+| java25，`45dfb63dcd91` | creative、vanilla、gtnh | uutils 0.8.0 | `/usr/bin/gnutimeout`，GNU 9.7 |
+| java21，`5655907b668d` | fkm、xlg | uutils 0.8.0 | `/usr/bin/gnutimeout`，GNU 9.7 |
+| java17，`537610f18403` | htxzq | GNU 8.30 | `/usr/bin/timeout` |
 
-| 从 admin 容器内计时，中位数，每项 10 次 | 空命令 | Query，保留外部 timeout |
-| --- | ---: | ---: |
-| Compose exec | 82 ms | 186.5 ms |
-| Docker CLI exec | 40.5 ms | 138.5 ms |
-| Engine HTTP API，curl create/start/inspect | 38.5 ms | 137 ms |
+这些是镜像自带工具，不依赖容器运行后的人工安装。标签未来可变，能力识别以实际运行实例为准。
 
-Query 脚本的另六次分段测量为 7–9 ms；`timeout true` 约 105 ms。250/500/1000 ms 对照每台各 20 次，只有 xlg 的 250 ms 组出现一次 124 退出。增加限时与替换执行链路是不同问题，本次保留现有配置值，也不声称 API 能修复 UDP 丢包或无响应。
+fkm/xlg 各五次交替测量全部成功：容器内 `timeout true` 为 104–105 ms，`gnutimeout true` 为 3 ms；原 Query 脚本经两者分别为 104–105 ms 和 8–9 ms。该数据不含 Docker 调用开销。另一组 admin 容器内测量，Compose/Engine API 执行同一 Query 的中位数分别为 186.5/137 ms，后者仍使用 Rust timeout。
 
-官方边界依据：[SDK exec](https://github.com/docker/docker-py/blob/main/docker/api/exec_api.py)、[流关闭](https://github.com/docker/docker-py/blob/main/docker/types/daemon.py)、[Engine exec inspect](https://docs.docker.com/reference/api/engine/)、[asyncio timeout](https://docs.python.org/3/library/asyncio-task.html#timeouts)。输出流关闭不等于进程被终止；exec inspect 只描述 exec 根进程，不能证明子进程全部退出。
+依据：[uutils 0.8.0 的 100 ms 轮询](https://github.com/uutils/coreutils/blob/0.8.0/src/uucore/src/lib/features/process.rs#L125-L153)、[GNU timeout 语义](https://www.gnu.org/software/coreutils/manual/html_node/timeout-invocation.html)、[Ubuntu 软件包](https://packages.ubuntu.com/resolute/gnu-coreutils)。
 
 ## Goals / Non-Goals
 
-**Goals:**
+**Goals:** 减少 Compose CLI 启动及 Rust timeout 的轮询延迟，保持现有查询结果、降级、RCON/消息及管理权限；使用镜像已有工具，不增加部署权限。
 
-- 正常完成使用事件唤醒，不支付固定约 100 ms 的等待成本；执行链路不启动 Docker/Compose CLI 或外部 timeout。
-- 将结果、身份、截止时间和必要清理放在一个执行所有者内，使 Query、RCON 不各自实现取消逻辑。
-- 避免慢命令阻塞监控、事件循环和其他服务器；执行容量、缓冲与关闭有界。
-- 命令的容器、进程及输出保持一一对应；故障不误杀 Java、其他命令或重建后的同名实例。
-
-**Non-Goals:**
-
-- 不建设通用远程作业平台、任务队列、容器代理或新的持久化执行表。
-- 不把 RCON 已经交给 Java 的游戏命令解释为可撤销事务。客户端进程结束不能撤销游戏内副作用，也不能保证游戏命令未被接受。
-- 不为省时取消实例验证、输出结束确认或故障清理；不把后台状态缓存用于授权执行。
+**Non-Goals:** 自建门控/看门狗/进程组协议、扫描宿主机进程、扩展 pidfd、回收任意逃逸后台进程、引入持久化任务或修改快照/回档、重写 Minecraft 网络协议、调整保存的查询超时。
 
 ## Decisions
 
-### 1. 三个具体职责，复用现有依赖
+### 1. 一层薄适配器，两个调用入口
 
-| 所有者 | 职责 |
+| 模块 | 职责 |
 | --- | --- |
-| `ComposeManager` | up/down/start/stop/restart 等 Compose 生命周期协调 |
-| `DockerReader` | 容器选择、归属核验、状态和 Java PID 读取 |
-| `DockerExecutor` | 已核验目标上的有限命令、输出、退出码、限时和清理 |
+| `ComposeManager` | 保留 up/down/start/stop/restart 等生命周期命令 |
+| 现有 `DockerReader` | 按项目目录、标签和服务核验目标容器，提供实时状态 |
+| `docker/commands.py` | GNU 工具选择、直接 Engine exec、输出与退出码 |
+| `MCInstance` | Query/RCON 参数与结果解析，玩家降级逻辑 |
 
-执行器由 Runtime 构造和关闭。它拥有自己的 SDK 控制连接、有限控制调用线程及活动执行集合；不占用 DockerReader 的单线程队列。create/start/inspect 等阻塞控制调用在线程中运行且有网络超时，命令输出通过 exec socket 异步读取，不能把整个 `exec_run()` 塞进线程后仅取消 coroutine。
+Runtime 拥有命令适配器及连接资源。采用现有 Docker SDK，不使用 Docker/Compose CLI 执行容器内命令。SDK 阻塞工作在独立、有限并发的执行资源中运行，与 DockerReader 的监控队列隔离；不在 FastAPI 主线程同步等待，不引入任务队列产品或额外配置。
 
-初始限制为全局 4 个活动执行、最多 16 个等待者，常量可供测试注入，不新增用户配置。等待有截止时间；容量不足返回安全的现有执行失败响应，不启动无主工作。取消中的执行保留容量，直到确认停止；清理不依赖另一个执行槽。连接和待执行工作的数量均有界。
+使用 SDK 的 exec create/start/inspect 和输出处理能力，非交互执行关闭 TTY，保留 stdout、stderr 和退出码。连接与输出读取需要有效的 I/O 截止时间；不能假设 SDK 的 client timeout 自动限制整个 exec 流，也不能把取消 `to_thread` 当成线程已退出。这里仅管理本应用的连接/工作线程，不管理远端 PID。
 
-不创建策略注册器、通用插件接口或多套 CLI/API 后端。`DockerExecutor` 的内部结果仅包含退出码、分离的 stdout/stderr、耗时及安全失败类别。输出上限初始为每次合计 8 MiB，超限必须清理并明确失败，不能截断后报告成功。
+### 2. 首次识别，热路径直接使用
 
-### 2. 执行前只解析一次目标，绑定实际实例
+复用实时容器选择规则，绑定完整 container ID 和 StartedAt。首次使用时依次检查：
 
-调用捕获当前 `ServerRef`。获得执行容量后重新验证代次、项目目录、项目标签、服务 `mc`、配置的容器名、完整 container ID 和启动身份，然后在命令放行前确认一致。复用 DockerReader 的选择规则，不按 `mc-<name>` 猜测容器。
+1. `gnutimeout --version` 成功且确认 GNU 实现，选中它。
+2. 否则检查 `timeout --version`，确认是 GNU 实现后选中它。
+3. 都不满足则返回清晰的依赖缺失错误，不安装软件，不静默使用 Rust timeout。
 
-执行 token 在本次调用内复用，合并 RCON 路由和 `MCInstance` 的重复健康检查；它不是跨请求缓存。Query 降级为 RCON 是一次新执行，需要重新验证。容器在解析后删除、同 ID 重启或同名重建时失败，不自动对新实例重试。
+缓存选中的命令及版本，按实际容器 ID + StartedAt 隔离。同一实例并发首次调用共享一次识别；重启、替换、删除或发现工具消失时使缓存失效，失败不永久缓存。每个受管目标只保留当前实例的条目；不缓存健康状态用于执行授权。
 
-命令保持 argv 形式。RCON 文本作为单个参数交给 `rcon-cli`；仅现有受配置控制的 Query 模板交给 Bash。exec 继承运行容器的 user、environment 和 workdir，不重新套用尚未部署的 Compose 修改。
+识别发生在首次实际使用，不阻塞应用启动。热路径不重复运行 `--version`，不在每次调用中执行选择工具的 shell 脚本。业务执行失败后不为探测或切换命令名自动重发 RCON。
 
-### 3. Python 管理正常限时，容器门控保证可清理
+### 3. GNU timeout 管理容器内限时
 
-执行顺序为 `resolve → create → attach/gate → own → release → drain → inspect → settle`。只有归属已建立才允许业务命令启动：
+通过 Engine exec 传入 argv，核心调用为：
 
-1. 用 Engine 创建无 TTY、带受控 stdin 的 exec，运行固定、随应用版本管理的最小 Bash 门控脚本。它通过 `setsid` 建立独立进程组，先等待放行；业务命令不能读取控制 stdin。
-2. 读取门控首帧，取得容器内身份；通过 exec inspect 的 host PID 建立对应关系。如果 `setsid` fork，只允许解析这个仍被门控阻塞的直接子进程，核对 PID namespace、启动时刻、容器归属和组长身份，不扫描整个宿主机寻找相似命令。控制帧与业务输出分别解析，异常或伪造的握手不能放行。
-3. 获取真实命令组长的 pidfd，记录 `ProcessIdentity` 与 container incarnation，并在持有 pidfd 后重新校验。权限、PID 可见性、组隔离或能力检查失败时，关闭未放行门控，不运行命令。已有持久化 operation context 时按原 journal 规则登记；普通玩家读取不创建数据库任务记录。
-4. Python 发送一次放行，异步消费 stdout/stderr，使用单调截止时间。结束后检查退出码和进程清理结果；EOF 或 HTTP 200 本身不是执行成功。
-5. 超时、请求取消和 Runtime 关闭复用进程身份/pidfd 原语收尾：确认本次进程树及组归属，TERM、有限宽限、必要时 KILL，并确认退出、关闭 socket/pidfd 后释放容量。所有信号只能作用于这次 exec，禁止 container kill/stop、按名称重查 PID 或无身份校验的 killpg。
+```text
+Query: [gnu_timeout, --kill-after=1s, 保存的查询秒数, bash, -c, 原查询脚本]
+RCON:  [gnu_timeout, --kill-after=1s, 本次剩余执行秒数, rcon-cli, 原命令]
+```
 
-现有 `processes.py` 绑定 `asyncio.subprocess.Process` 的封装不直接套给远端 exec。只提取所需的身份捕获、拥有的句柄、停止与确认能力；本地子进程继续使用原封装和 journal 规则。正常结果优先走退出通知和已确认空组的快路径，不为每次查询枚举整棵 `/proc`；取消路径的额外枚举不影响正常延迟。
+Query 保留现有模板和 `players.query.timeout`，当前 0.25 秒不会自动改为 0.5 秒。RCON 沿用 10 秒预算，排队和准备消耗应扣除；服内消息仍按非空行逐行调用。`-k 1s` 是固定终止宽限，不是正常返回等待，成功时立即返回。
 
-门控还有一个独立于 Python 存活的失联保护：固定 Bash 脚本利用阻塞的内建 `read -t` 等待控制连接关闭或硬截止，命令正常结束时立即回收等待者，不周期 sleep。等待者与本次命令处于已核验的独立组；失联后只终止自己的组，并有 TERM→KILL 的有限升级。硬截止覆盖命令预算加清理余量，不能无限等待 admin 重启。这样不需要游戏容器内 Python、外部 timeout、常驻进程、临时存档文件或新镜像挂载。
+动态配置在使用时读取；零、负数或非有限超时不允许变成无限执行。命令继承运行容器的 user/environment/workdir，不应用尚未部署的 Compose 修改。RCON 文本是一个 argv 元素；只有原 Query 模板使用 Bash。
 
-这部分必须先在隔离 Docker 环境做可行性验收，包括 Bash/setsid 行为、user/rootless 权限、setsid fork、stdin EOF、忽略 TERM 和强杀 admin。门控与失联等待者不能遗留进程；没有证明这点之前，不接入真实调用方。若既有支持环境需要新权限或安装程序才能成立，应修订设计，不增加不透明回退路径。
+正常结果以 exec 真实终态与退出码为准。0 为成功，124 表示 timeout 到期，137 按终止失败/超时处理；137 本身不能唯一证明是 timeout 强杀，不编造原因。其他退出码按命令失败处理。Query 按既有语义降级，RCON 保留 502/504 错误分类，诊断不回传原始 stderr 或敏感命令。
 
-仅 `wait_for(to_thread(exec_run))`、关闭 socket、杀 Docker CLI 都不满足这个设计。直接重写 Query/RCON 网络协议虽能消除 exec，涉及网络可达性与凭据处理，本次不采用。
+### 4. 采用标准工具的边界
 
-### 4. 明确三种时间预算
+GNU timeout 默认向命令及其进程组发 TERM；指定 `-k` 后，如果被监控的主命令仍未退出，再发 KILL。普通 Bash Query 管道继承该组，沿用这个范围，不使用 `--foreground`。
 
-| 预算 | 规则 |
-| --- | --- |
-| 排队/目标解析/门控建立 | 每个阶段有界；Query 准备阶段最多 5 秒，RCON 共享现有总预算 |
-| 业务执行 | Query 在放行时使用当前保存的 `players.query.timeout`，不擅自把 0.25 改为 0.5；RCON 保留请求内 10 秒执行限时并扣除排队/准备时间 |
-| 清理 | 独立有限预算，初始 2 秒 TERM 宽限和 2 秒 KILL/确认预算；不得因业务时间耗尽而跳过 |
+它不承诺任意后代回收：主动建立其他进程组的后代可能不被覆盖；主命令已退出时，不继续扫描后台后代，`-k` 也不保证补杀这些后代。本方案明确接受该标准行为，不新增后台进程扫描或监督脚本。
 
-容器硬截止使用放行时的剩余命令预算加清理余量，门控放行前同样有有限等待。对外超时响应可能晚于业务截止，以完成必要清理；响应不得声称 RCON 游戏副作用已撤销。动态配置在每次执行时读取；超时值必须是有限正数，持久化的不可用值明确失败，不能退化为无限等待。
+排队期间取消不启动命令。命令开始后取消 Python 等待，不等于容器命令立即终止；已经启动的 GNU timeout 继续按自己的期限运行。正常关闭停止接受新调用并排空已有本地工作，再关闭 SDK 资源；网络故障按有限 I/O 等待返回结果未知，不假装已经杀死远端进程。应用崩溃后依赖已经启动的 GNU timeout，不增加自建失联机制。
 
-不自动重试业务命令。特别是 start 的响应丢失时，命令可能已经执行，必须按 exec ID 收尾而非重新发送 RCON。
+RCON 可能已把命令交给 Java；终止客户端不能撤销游戏副作用。不自动重试 RCON，不用 container stop/kill 处理查询超时，不改动现有持久化操作和恢复框架。
 
-### 5. 调用方保留业务语义
+### 5. 保持调用方语义
 
-- Query 成功后返回相同玩家列表，包括真实空列表。禁用、配置缺失、非零退出或超时按既有规则降级；已启动 Query 必须完成清理后才降级。请求取消、应用关闭、实例更换及清理不确定不能触发第二次命令。
-- RCON 保留 stdout/ANSI 处理和返回格式。认证拒绝不创建 exec；不存在、不健康、执行失败和超时分别保留 404/409/502/504。异常输出不可直接拼入公开错误。
-- 服内消息仍按非空行串行发送，不并行或合并；一行失败后不重发已发送行。
-- 玩家同步保持原周期及结果写入规则。Query 和 RCON 都失败时是未知观测，不批量标记玩家离线。
-- 日志只记录服务器、命令类别、阶段、耗时、退出码及是否完成清理；不记录 argv、Query 模板、凭据、原始异常值。成功降级用一条简短 DEBUG 记录，全局 logger 重复输出另案处理。
+Query 成功空列表仍是有效观测；Query 与 RCON 都失败时不批量标记玩家离线。因请求取消或实例改变而中止时不对新实例启动降级。RCON 保留现有认证、404/409/502/504 和输出处理，多行消息不重发已完成行。
 
-### 6. Runtime 关闭和不确定清理
+同一调用可合并路由和实例方法的重复健康检查，但执行前仍核验实际容器。结果不确定时不重新按名字寻找新容器重发命令。错误日志仅记录服务器、命令类别、阶段、退出码和耗时；预期 Query 降级采用简短诊断。本次不重构全局 logger。
 
-关闭先停止玩家生产者并拒绝新执行，再取消/排空等待者和活动执行，最后关闭控制连接、线程及日志/数据库依赖。重复取消不能打断已开始的清理。一个执行器关闭失败不跳过其他 Runtime 清理。
+## Validation
 
-不能确认停止时，不宣称成功、已取消或允许同一目标无限增加新命令。执行器保留该 incarnation 的清理记录和容量限制，报告安全失败；只有明确停止或确认旧容器已结束才释放。关联现有持久化操作的执行仍遵循原 journal/recovery 阻塞，不能由本适配器清除。无关服务器及监控保持可用。容器失联保护负责 admin 被 SIGKILL 时的最终停止，不把每分钟的读取变成持久化任务。
+- **镜像与选择**：GNU 命令名的两种布局；工具缺失、非 GNU、缓存失效及并发首次探测；真实 root/非 root 命令均不要求额外权限。
+- **真实执行**：正常结果、非零退出、中文和特殊参数；普通查询管道超时、主命令忽略 TERM 时的 `-k` 行为；另外明确验证主动脱组/主命令提前退出的标准边界，不把边界测试写成全后代清理保证。
+- **业务/API**：Query 成功、空列表、降级和双失败；RCON/消息权限、错误分类、顺序及不重复提交；取消、断线、容器替换与 Runtime 关闭。真实容器测试不能只用 SDK mock 替代。
+- **资源与性能**：慢命令期间监控、健康接口仍可用，SDK 工作不遗留在已关闭资源上。交替比较完整旧/新路径的冷启动与热路径，Query/RCON 各至少 100 次，记录 p50/p95、失败率及 CPU，不删除慢样本。
+- **定向回归与静态检查**：选择受影响调用路径及必要的快照/回档保护节点；运行 Pyright、Ruff 和受影响 Go 包检查，不运行本地全量套件。更新 API E2E 覆盖。
+
+目标为健康 Query 热路径 p50 至少降低 50%、p95 不回退；确认约 100 ms 的等待台阶消失。该目标需要测量完整实现，不能把容器内 8–9 ms 当成端到端耗时。故障和负载测试在隔离环境执行。
 
 ## Risks / Trade-offs
 
-- **Engine 没有可直接替代完整进程树清理的 exec 取消语义** → 门控前建立真实进程所有权，复用 pidfd；把隔离容器可行性验证放在第一步。
-- **宿主机 PID 可见不等于具有信号或 `/proc` 读取权限** → 在实际受支持 user/镜像/部署中验证；不新增 privileged 或扩大权限以掩盖问题。
-- **远端启动返回不确定、容器重启、PID 复用** → 绑定 generation/container/start identity、受控门控和 pidfd；禁止自动重发 RCON。
-- **失联保护增加少量 shell 工作** → 使用阻塞等待和完成通知，成功后立即清理；不允许固定轮询或每次部署 helper 文件。性能验收包含这部分，不能只比较裸 exec。
-- **RCON 断线后 Java 可能继续执行已经接受的命令** → 不声称回滚，保留错误语义，不重试；清理范围仅是本次客户端进程。
-- **精确截止比 uutils 的检查周期更严格** → 保留配置值并单独统计超时率；若 250 ms 的真实失败率不可接受，另行根据实测决定阈值，不在重构中暗改。
-- **身份原语调整可能影响快照子进程** → 仅提取共享机制，原接口继续使用；必须回归真实 Restic/回档取消、迟发子进程及 journal 清理不变量。
-
-## Validation and performance acceptance
-
-1. **协议与结果**：真实容器内的成功/失败、stdout/stderr 分帧与截断、空结果、大输出、中文及特殊参数、退出码、非 TTY；进程成功后的副作用用独立文件/状态断言验证，不能只断言 SDK 调用次数。
-2. **生存期**：放行前、启动响应未知、输出等待、截止同时完成、用户取消、Runtime 关闭、SDK 失败及 admin SIGKILL；包含阻塞读取、子孙进程、忽略 TERM、重复取消、PID 复用和同名重建，确认无遗留且 Java/旁路哨兵不受信号影响。
-3. **业务/API**：Query 成功与失败后 RCON、双失败不篡改在线状态、RCON 一次执行、服内消息行序和失败边界、未授权零副作用、现有 HTTP 响应；部署 API E2E 增补对应场景和覆盖清单。
-4. **隔离性**：慢命令、容量耗尽与大输出期间，独立监控继续刷新、健康接口可读、取消可进行；状态判断不受旧监控样本授权。
-5. **已有关键路径**：定向执行实际进程清理、Restic/世界恢复取消与生命周期相关测试，确认无快照或停服保护回归。Pyright、Ruff 及受影响 Go 包检查按组件规则执行。
-6. **性能**：同一隔离机器/镜像/负载，交替运行旧路径、裸 API 参考和完整新执行器；包含配置/身份检查、门控、限时、收尾，记录冷/热路径、p50/p95、错误率及 CPU。Query/RCON 各至少 100 次正常观测，故障注入另列，不能剔除慢样本后宣称收益。
-
-发布前目标：健康 Query 的完整新路径 p50 至少比旧路径减少 50%，p95 不回退；正常结束无固定约 100 ms 的等待台阶，新增 CLI/timeout 调用为零，故障/清理断言全部满足。几十毫秒是待测预期，不是已实现结果；未达目标先解释并调整设计，不删除保护以达标。生产仅可在后续明确授权下做少量只读验证，故障和负载测试都在隔离环境。
+- **镜像标签与工具名称变化** → 按运行实例探测，覆盖已用 GNU 8.30/9.7 的两种布局，缺少依赖明确失败。
+- **GNU 比原 100 ms 轮询更精确** → 保留超时配置并记录失败率；是否调整阈值由独立实测决定。
+- **原生工具不提供通用进程树回收** → 接受其公开边界，限定为现有 Query/RCON 命令，不把任意后台任务纳入这个适配器。
+- **客户端取消或 Docker 故障不等于远端停止** → GNU 负责已启动命令的时间限制，Python 负责本地资源与错误报告；结果不确定时不重试写命令。
 
 ## Migration Plan
 
-先完成门控/身份/失联清理的隔离验收，再实现执行器，最后统一接入 Query/RCON 并删除 ComposeManager.exec。没有并存的旧执行后端、数据库迁移或用户开关。正式接入时同步更新 backend 的 Minecraft、Runtime、monitoring、players、bot-integration-apis 文档以及 E2E 覆盖入口；进程所有权原语的变化更新 operations/recovery 的唯一说明。只有指令或阅读路由改变才修改 AGENTS.md；当前仓库未发现 CLAUDE.md，不新增重复文档。
+先实现工具选择与薄适配层，再接入两处命令入口并删除 Compose exec。保留 Compose 生命周期、快照、Restic、pidfd 和操作 journal 的代码不变；不修改线上镜像或安装包。没有数据库迁移或配置迁移，回滚应用镜像即可恢复原路径。
 
-本地只跑明确节点/文件/用例限定的相关测试。提交推送后使用最新 SHA 的 push qualification，不重复手动触发，核对完整执行或合法内容复用凭据。实现、发布与部署是后续独立步骤，本提案不自动发布。回滚前先正常排空容器命令；旧镜像继续读取相同数据库、配置和游戏文件。
+实现时同步 Minecraft、Runtime、monitoring、players、bot-integration-apis 文档及 E2E 覆盖；不将计划提前写入当前实现说明，不新增重复的 CLAUDE/AGENTS 文档。完成本地定向验证后 commit/push，等待最新 SHA 的自动 qualification，不重复手动触发。方案交付、研发、发布和线上部署分开进行。

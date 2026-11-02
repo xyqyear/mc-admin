@@ -1,33 +1,32 @@
 ## Why
 
-玩家查询和 RCON 仍通过 `docker compose exec` 执行，容器里的 `uutils timeout` 又增加了约 100 ms 的正常返回等待。线上只读对照中，Query 经 Compose 的中位耗时为 186.5 ms，改走 Engine API、保留 timeout 后为 137 ms，而查询脚本本身仅需约 7–9 ms；应同时消除重复 CLI 启动和固定等待，并保留真实的超时清理。
+玩家 Query 和 RCON 仍经 `docker compose exec` 调用，且部分镜像默认的 uutils timeout 0.8.0 每 100 ms 检查一次结束状态。线上原始镜像已自带 GNU timeout：保持查询逻辑，改走 Docker API 并选择该工具即可减少开销，无需自建进程管理框架。
 
 ## What Changes
 
-- Query、RCON 和服内消息统一通过 Runtime 拥有的容器命令执行器调用 Docker Engine API；ComposeManager 只保留服务器生命周期操作。
-- Python 异步等待实际完成并管理截止时间，移除正常执行路径上的外部 `timeout`。超时、取消和关闭必须处理真实容器进程，不能仅取消客户端等待。
-- 复用现有容器归属、服务器代次和 Linux 进程身份机制；在执行命令前建立所有权，命令完成、取消或异常后的清理由同一个执行器负责。
-- 保留容器侧有限的失联保护，防止 admin 被强制终止后遗留无限等待的查询。它不得引入固定轮询延迟、安装包、常驻代理或游戏存档文件。
-- 合并同一次执行中的重复健康检查，保持执行时的权威校验、Query → RCON 降级、玩家会话语义、消息顺序与现有 HTTP 契约。
-- 用安全的阶段、耗时和退出码记录诊断信息；预期 Query 降级不输出原始命令及完整异常值。
+- Query、RCON 和服内消息通过一个薄的 Docker 命令适配器执行；服务器创建、启停和重建继续使用 Compose。
+- 每个运行实例首次使用时识别 GNU timeout：优先 `gnutimeout`，其次验证 GNU 版 `timeout`；缓存结果，容器替换或重启后重新识别。
+- 超时及信号处理交给容器里的 GNU timeout，使用现有业务限时及固定 `--kill-after=1s` 兜底。Python 负责异步调用、连接限时、退出码和结果，不主动管理容器进程组。
+- 保持 Query → RCON 降级、玩家在线状态、RCON 参数、消息顺序、权限及 HTTP 响应契约；日志提供安全的退出码与耗时。
+- 明确采用 GNU timeout 的标准进程组边界，不承诺回收主动脱离进程组或主命令退出后留下的任意后台后代。
 
-非目标：改写 Compose 启停/创建/重建、直接实现 Minecraft 网络协议、调整玩家同步周期或已保存的 Query 超时、重做监控/控制台、改变快照/回档流程、修复全局日志重复输出。本次提案不修改或部署线上系统。
+非目标：新增门控协议、pidfd、宿主机进程扫描、看门狗、任务持久化、用户配置项，或者修改游戏镜像、系统默认命令、快照/回档及 Compose 生命周期实现。保存的 Query 超时不自动调整。
 
 ## Capabilities
 
 ### New Capabilities
 
-- `container-command-execution`：容器命令的完成、限时执行、取消与失联清理、实例隔离及现有玩家/RCON 结果的行为保证。
+- `container-command-execution`：正确选择容器自带的 GNU 限时工具，通过直接容器执行提供查询和命令结果，保留现有失败与权限边界。
 
 ### Modified Capabilities
 
-无。现有监控、操作恢复及快照规范继续适用，不改写它们的业务规则。
+无。现有监控、快照和持久化操作规范继续适用。
 
 ## Impact
 
-- **Backend**：`app/minecraft/docker/`、`MCInstance`、Runtime 构造与关闭、RCON 路由和玩家同步调用路径；按需提取 `app/operations/processes.py` 中可复用的身份/清理原语，保留原有调用方。
-- **Frontend / API**：没有新增页面、端点或响应字段；保留认证规则及 RCON 的 404/409/502/504、成功输出和消息逐行语义。错误文本使用安全的中文说明。
-- **Persistence / configuration**：不引入数据库迁移、每次查询的持久化任务记录或配置开关；保留 `players.query.query_command`、`players.query.timeout` 和既有 RCON 限时。持久化操作上下文存在时继续遵守原 journal 所有权。
-- **Docker**：复用部署已有的本地 Engine socket、宿主机 PID 可见性及 Linux pidfd 支持。可行性验证必须先确认权限和受支持镜像的最小门控脚本；不得以增加 privileged、挂载游戏文件或静默退回旧执行链路来绕过。
-- **Validation / docs**：增加真实 Docker 与定向 API E2E 的结果、取消、并发和清理覆盖，保存可复核的前后性能数据；同步 Minecraft、Runtime、监控、玩家、集成 API 及 E2E 覆盖文档。
-- **Breaking changes**：没有计划中的 API、数据库或保存配置破坏性变更。无法安全建立进程所有权的环境必须在业务命令开始前明确失败；支持范围变化须在接入调用方前重新评审。
+- **Backend**：Docker 命令适配器、Runtime 资源管理、`MCInstance` 及 RCON 路由；移除 Compose 的容器内 exec 入口，沿用现有 Docker SDK 与容器选择规则。
+- **Frontend / API**：不新增页面、端点和字段；保留成功输出及 404/409/502/504 分类。
+- **Persistence / configuration**：不新增迁移或配置；Query 模板、限时和玩家同步周期保留，RCON 沿用现有 10 秒预算。
+- **Docker**：当前 java21/java25 原始镜像有 GNU 9.7 的 `gnutimeout`；java17 原始镜像的 `timeout` 是 GNU 8.30。无需安装包或额外权限；未来镜像缺少依赖时明确报告，不自动安装或静默使用 Rust 实现。
+- **Validation / docs**：覆盖两种命令名、冷/热缓存、真实超时、降级、RCON/消息、取消与关闭；更新相关后端文档和 API E2E 覆盖。性能报告比较完整调用路径。
+- **Breaking changes**：没有端点、数据库或保存配置的破坏性变更；受支持镜像需要提供 GNU timeout。采用其标准终止语义，不把它扩大为任意后台进程回收保证。
