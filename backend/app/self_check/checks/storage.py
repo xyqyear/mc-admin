@@ -37,7 +37,7 @@ async def check_backup_repository_usage(
             )
         ]
 
-    percent = usage_percent(disk.used, disk.total)
+    percent = usage_percent(max(disk.used, disk.total - disk.available), disk.total) if disk.total else 100.0
     evidence = {
         "path": str(repository_path),
         "used_bytes": int(disk.used),
@@ -81,7 +81,7 @@ async def check_server_directory_usage(
             )
         ]
 
-    percent = usage_percent(disk.used, disk.total)
+    percent = usage_percent(max(disk.used, disk.total - disk.available), disk.total) if disk.total else 100.0
     evidence = {
         "path": str(context.dependencies.settings.server_path),
         "used_bytes": int(disk.used),

@@ -59,8 +59,8 @@ in memory; no database migration, history table or backfill is required.
 | Host `cpu_percent` | Busy/total CPU counter delta, excluding duplicate guest time and idle/iowait from busy time; 0–100% |
 | Server `memory_bytes` | Existing cgroup `anon + file`, not JVM heap or Docker CLI cache-adjusted memory |
 | `disk_io` / `network_io` | Cumulative read/write or receive/send bytes for the observed running instance |
-| Server `disk` | `du -sb` apparent directory bytes plus filesystem capacity and available bytes |
-| Host `memory`, `load`, `disk` | Host memory bytes, three load averages and filesystem byte counts |
+| Server `disk` | `du -sb` apparent directory bytes plus effective storage capacity and available bytes |
+| Host `memory`, `load`, `disk` | Host memory bytes, three load averages and effective storage byte counts |
 
 The first CPU counter establishes a baseline and remains pending. An invalid
 interval or a changed process resets that baseline. Java discovery uses the
@@ -73,10 +73,38 @@ server batch. It is current at the HTTP read and does not wait for a terminal
 operation notification. Task acceptance and observation are still distinct from
 settlement; [operation recovery](operation-recovery.md) owns writer guarantees.
 
+## Storage capacity and Btrfs quotas
+
+`app.system.resources.get_disk_info` reads filesystem capacity with
+`shutil.disk_usage`. Available space uses the operating system's available-byte
+count, not total minus used. Backup repository usage and storage self-checks use
+this same reader; server directory size remains a separate apparent-size metric.
+
+On Linux Btrfs mounts, the reader identifies the containing mount and subvolume
+from the mount table, then matches the mounted device to its filesystem under
+`/sys/fs/btrfs`. It reads the kernel's qgroup counters without administrative
+ioctls or additional container capabilities. With a referenced or exclusive
+limit, total and used describe the limiting quota; available is the smaller of
+filesystem availability and quota headroom after data and metadata reservations.
+An exhausted or lowered quota has zero available bytes. Unrestricted filesystems
+retain their filesystem statistics. API field names and units remain unchanged.
+Storage self-checks use the greater of actual usage and unavailable capacity,
+so low filesystem headroom or reservations can warn before the quota fills.
+
+The reader rejects ambiguous filesystem identity, unmounted nested subvolumes,
+unreadable counters and inconsistent accounting. Sysfs does not expose qgroup
+parent relationships, so the reader also rejects filesystems with limited
+higher-level groups instead of guessing their applicability. These failures
+follow existing HTTP errors, monitoring sample quality and self-check warnings;
+they never silently report the whole disk as available quota. Reported headroom
+is an observation, not a reservation or a guarantee about future logical file
+sizes after compression and concurrent writes.
+
 ## Verification
 
-Targeted coverage lives in `test_docker_reader.py`, `test_runtime_monitoring.py`,
-`test_process_resources.py`, the owned Docker `test_monitoring.py`, and affected
-Runtime/lifecycle tests. Public API scenarios include
-`system.metrics-static-validation` and `minecraft.shared-monitoring`; the
+Targeted coverage lives in `test_storage_resources.py`, `test_docker_reader.py`,
+`test_runtime_monitoring.py`, `test_process_resources.py`, the owned Docker
+`test_monitoring.py`, and affected Runtime/lifecycle tests. Public API scenarios
+include `snapshots.repository-and-selection`, `system.metrics-static-validation`
+and `minecraft.shared-monitoring`; the
 [coverage inventory](../../e2e/docs/coverage.md) records their assertions.

@@ -2,6 +2,7 @@ package snapshots
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -49,6 +50,21 @@ func repository(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	id := fixtures.ServerOf(t.Env).ID
+	readFilesystem := func() ([2]int64, error) {
+		var space [2]int64
+		backend := fixtures.BackendOf(t.Env)
+		output, err := backend.Docker.Run(ctx, "exec", backend.Name, "python", "-c",
+			"import json, os; s=os.statvfs('/data/restic'); print(json.dumps([s.f_blocks*s.f_frsize, s.f_bavail*s.f_frsize]))")
+		if err != nil {
+			return space, err
+		}
+		err = json.Unmarshal([]byte(output), &space)
+		return space, err
+	}
+	before, err := readFilesystem()
+	if err != nil {
+		return err
+	}
 	var usage struct {
 		Used      float64 `json:"backupUsedGB"`
 		Total     float64 `json:"backupTotalGB"`
@@ -59,6 +75,20 @@ func repository(ctx context.Context, t *engine.Scope) error {
 	}
 	if usage.Total <= 0 || usage.Used < 0 || usage.Available <= 0 || usage.Available > usage.Total {
 		return fmt.Errorf("invalid repository filesystem usage: %+v", usage)
+	}
+	after, err := readFilesystem()
+	if err != nil {
+		return err
+	}
+	const gib = 1024 * 1024 * 1024
+	// Other owned environments can allocate space between these observations.
+	const tolerance = 64.0 / 1024
+	if usage.Available > float64(max(before[1], after[1]))/gib+tolerance {
+		return fmt.Errorf("repository available space includes unavailable filesystem blocks: %+v", usage)
+	}
+	if usage.Total == float64(before[0])/gib && usage.Total == float64(after[0])/gib &&
+		usage.Available < float64(min(before[1], after[1]))/gib-tolerance {
+		return fmt.Errorf("repository available space differs from filesystem availability: %+v", usage)
 	}
 	var locks struct {
 		Locks string `json:"locks"`

@@ -344,7 +344,7 @@ async def get_backup_repository_usage(_: UserPublic = Depends(get_current_user))
     return BackupRepositoryUsage(
         backupUsedGB=disk_info.used / 1024**3,
         backupTotalGB=disk_info.total / 1024**3,
-        backupAvailableGB=(disk_info.total - disk_info.used) / 1024**3,
+        backupAvailableGB=disk_info.available / 1024**3,
     )
 
 
