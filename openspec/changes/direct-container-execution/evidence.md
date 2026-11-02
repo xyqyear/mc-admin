@@ -66,4 +66,22 @@ image restores Compose exec. Production release and deployment require a separat
 
 ## Qualification
 
-Pending latest implementation SHA qualification; local tests are not a substitute.
+Full qualification passed for implementation SHA
+`1a8b02d2b7cb1c4bc61ebc62ed09b0c746c7248a`:
+https://github.com/xyqyear/mc-admin/actions/runs/41390967623
+
+Candidate/Go, static/frontend, all 15 backend shards, all 6 API shards and all 3
+browser shards passed, including complete selection, coverage and resource/cloud
+cleanup audits. No release promotion ran. Receipt validated against committed
+source with `scripts.release.reuse.validate_receipt`; full execution gates are
+candidate/static/backend/api/browser, all success. Verified at
+`2026-11-02T05:05:34.088057+00:00`.
+
+Verification identity:
+`3e214f96ae65ad7833b25ec1277e028c4750cfff310e9d4546cdb1b865d50a33`.
+OCI manifest:
+`sha256:9cba5e2af703baf29da61581fa5cdb7744acbaf4abf65de6fcda976ad907752a`.
+
+This evidence-only follow-up changes no verification inputs. Its push still
+requires a successful latest-SHA receipt binding any equivalent reuse; the
+implementation run alone does not qualify a later commit.
