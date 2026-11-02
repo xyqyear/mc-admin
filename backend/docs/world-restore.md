@@ -137,8 +137,9 @@ to PNGs; `entities/` and `poi/` sidecars are skipped. Missing tiles count as
 invalidated, but other deletion failures propagate and persist cache degradation.
 
 [Application operation refresh](../../frontend-react/docs/operation-refresh.md)
-owns cross-page query invalidation and tile URL revisions, including MCC-only
-changes and unchanged MCA mtimes.
+owns cross-page query invalidation and map metadata refresh. Browser image reuse
+follows the [timestamp-only map cache policy](../../frontend-react/docs/server-map.md#tile-caching)
+and its accepted same-timestamp limitations.
 
 ## Cancellation and crash recovery
 

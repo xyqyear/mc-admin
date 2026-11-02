@@ -143,5 +143,7 @@ skip notice. Creation composes `SnapshotCreateDialog`; recovery retains its
 closing guard and task-center entry.
 
 [Application operation refresh](operation-refresh.md) handles off-page completion
-and tile URL revisions, including MCC-only changes and unchanged MCA mtimes.
-Backend cache invalidation remains scoped to affected derived PNGs.
+and rereads map metadata. Browser tiles use the
+[timestamp-only cache policy](server-map.md#tile-caching), including its accepted
+same-timestamp limitations. Backend cache invalidation remains scoped to affected
+derived PNGs.

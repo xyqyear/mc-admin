@@ -99,5 +99,7 @@ World rollback uses the full retained selection without exclusion records.
 The backups resource registry refreshes snapshots/history after terminal outcomes,
 including partial failures and off-page completion. File/world registries handle
 their own affected resources. [Operation refresh](operation-refresh.md) owns the
-common observer and browser map revisions. Generic task dismissal does not
+common observer and map metadata refresh. The
+[map cache policy](server-map.md#tile-caching) defines browser image reuse.
+Generic task dismissal does not
 destroy feature-owned prune preview metadata or retained recovery results.

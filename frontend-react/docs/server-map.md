@@ -68,11 +68,21 @@ StrictMode's setup/cleanup/setup cycle.
 
 - **Cookie-backed image requests.** Tile URLs are normal same-origin `/api/...png` image URLs, so the browser sends the HttpOnly session cookie and can use its native image cache.
 - **Sparse-world short-circuit.** `GET /map/regions?region=...` returns the set of `[x, z]` pairs that actually exist on disk. The layer turns that into a `Set<"x,z">` and returns a blank data URL for anything outside the set, skipping a round trip.
-- **Cache-stable URLs.** The layer includes MCA mtime and the newest relevant server/global operation revision in tile URLs. Browser cache entries survive panning and zooming, while recovery refreshes them even when only an MCC changed or the restored MCA has the same mtime. Read-only previews and backups do not advance the revision.
+- **Cache-stable URLs.** The layer includes the region path and MCA modification time in whole epoch seconds (`mt`). Unchanged timestamps produce the same tile URL across panning, zooming, page reloads and operation-feed resets. A changed timestamp produces a different URL, including when a restore moves the timestamp backwards.
 
 ## Tile caching
 
 Leaflet creates normal `<img>` elements. When panning or zooming removes a tile, Leaflet drops the DOM node and the browser owns memory/cache eviction. Previously visible tiles can be reused from the HTTP image cache when the URL is unchanged.
+
+为简化代码和缓存模型，浏览器瓦片缓存只依据 MCA 的整秒修改时间，
+不维护独立图片版本，也不把操作 ID、通知游标、当前时间或随机数拼入 URL。
+操作完成、通知重置和“刷新地图”仍会重新读取区域清单；文件时间未变时，
+瓦片 URL 保持不变，允许浏览器继续复用缓存。
+
+这是明确的正确性取舍：时间戳相同但内容不同（包括只修改 MCC、恢复文件时
+保留相同时间戳，以及同一秒内的修改）不保证自动刷新浏览器中的旧瓦片，
+也不作为浏览器缓存正确性的验证场景。服务端删除或重新生成 PNG 并不能
+主动清除浏览器已有的缓存。服务端恢复流程对派生 PNG 的清理仍按原有范围执行。
 
 ## Init dialog
 

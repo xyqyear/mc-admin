@@ -4,7 +4,7 @@ import { queryKeys } from '@/shared/http/api'
 import { isTerminalOperation, type Operation, type OperationChanges } from '@/shared/operations/contracts'
 import { configurationOperationResources } from '@/features/configuration/operationResources'
 import { filesOperationResources } from '@/features/files/operationResources'
-import { worldOperationResources, resetMapRevision, updateMapRevision } from '@/features/world/operationResources'
+import { worldOperationResources } from '@/features/world/operationResources'
 import { serversOperationResources } from '@/features/servers/operationResources'
 import { healthOperationResources } from '@/features/health/operationResources'
 import { dnsOperationResources } from '@/features/dns/operationResources'
@@ -27,12 +27,10 @@ async function processChanges(client: QueryClient, sessionId: string, data: Oper
     signal.throwIfAborted()
     const keys = new Map<string, QueryKey>()
     if (data.reset_required) {
-      resetMapRevision(client, data.next_cursor)
       for (const key of resetResources) keys.set(JSON.stringify(key), key)
     } else {
       for (const operation of data.items) {
         if (!isTerminalOperation(operation)) continue
-        updateMapRevision(client, operation, operation.sequence)
         for (const registration of resourceRegistrations) {
           for (const key of registration(operation)) keys.set(JSON.stringify(key), key)
         }

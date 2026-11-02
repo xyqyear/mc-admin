@@ -53,7 +53,7 @@ Single-resource writes invalidate their detail key; list/aggregate changes inval
 Feature commands wake durable-operation discovery; application-level observation
 refreshes business resources across pages and after partial failures. See
 [operation refresh](operation-refresh.md) for cursors, checkpoints, batching,
-logout/reset behavior and tile revisions. Versioned existing-server editors
+logout/reset behavior and map metadata refresh. Versioned existing-server editors
 are described in [configuration](configuration.md).
 
 ## `queryKeys` factory

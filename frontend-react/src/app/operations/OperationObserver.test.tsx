@@ -125,7 +125,8 @@ it('deduplicates acknowledged changes across StrictMode replay and remount', asy
 it('resets business caches after restart and retains changes committed during reset refresh', async () => {
   render(<Shell />)
   await screen.findByText('配置：old'); await drained()
-  const previousMapToken = client.getQueryData(queryKeys.map.resetRevision())
+  const mapKey = queryKeys.map.regions('alpha', 'world/region')
+  client.setQueryData(mapKey, [])
   let refreshed = false
   server.use(http.get('*/api/servers/alpha/compose', () => {
     if (!refreshed) { refreshed = true; feed.publish(operation('during-reset', 'failed')) }
@@ -134,7 +135,7 @@ it('resets business caches after restart and retains changes committed during re
   compose = 'resynchronized'; feed.restart()
   await drained()
   await screen.findByText('配置：resynchronized')
-  expect(client.getQueryData(queryKeys.map.resetRevision())).not.toBe(previousMapToken)
+  expect(client.getQueryState(mapKey)?.isInvalidated).toBe(true)
   expect(client.getQueryData(queryKeys.operations.checkpoint('owner'))).toEqual({ cursor: '2:1', active_count: 1 })
 })
 

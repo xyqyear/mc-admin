@@ -13,11 +13,11 @@ Feature commands wake operation discovery when background work is accepted and w
 
 `app/operations/OperationObserver.tsx` is mounted once within the authenticated layout. It subscribes to `operation_changes` frames on the shared task event connection. Batches contain up to 200 lightweight notifications from the runtime-owned bounded memory feed; no periodic `/operations/changes` request runs. Instance-scoped opaque cursors recover across navigation and network reconnect; historical operation list/detail reads remain independent. Cron keeps its own observation behavior, while its existing operation effects still refresh through this shared feed.
 
-Features register affected keys through `operationResources.ts`; configuration, servers, files/archives, world, backups/history, health and DNS declare their own operations. Each received terminal change updates map revisions and merges the affected query keys for one invalidation per batch. Success, failure, cancellation, interruption and skipped outcomes synchronize the corresponding business resources even after the initiating page or progress dialog closes. A later effective change of the same operation can invalidate again; operation IDs do not suppress newer notifications.
+Features register affected keys through `operationResources.ts`; configuration, servers, files/archives, world, backups/history, health and DNS declare their own operations. Each received terminal change merges the affected query keys for one invalidation per batch. Success, failure, cancellation, interruption and skipped outcomes synchronize the corresponding business resources even after the initiating page or progress dialog closes. A later effective change of the same operation can invalidate again; operation IDs do not suppress newer notifications.
 
 The observer cancels affected in-flight reads, marks their resources stale and processes each batch before advancing a session-scoped Query checkpoint. The transport awaits this callback before consuming another batch and reconnects with the last acknowledged cursor. Cancellation includes initial requests without cached data, so an old response cannot overwrite the reset or terminal refresh. Business reads do not need to succeed before the checkpoint advances. Errors and aborted batches preserve the last processed position; an AbortSignal check rejects late work after cache clear or session unmount. Query cache retains only the cursor and active count, without a growing operation history or ID set. Checkpoints do not expire while logged in and clear with the authentication cache.
 
-First entry, changed backend instance and unavailable notification history return an explicit reset and a fixed new starting cursor. Reset invalidates the operation-related feature prefixes and changes a global map image token; notifications committed during business refresh remain available after the reset cursor. Local authored editor state stays in its existing edit session. Task progress, completion messages and retained results continue through their feature/task interfaces. `RebuildProgressDialog`, populate/compression/ownership presentation and world restore/prune views delegate business completion to the observer.
+First entry, changed backend instance and unavailable notification history return an explicit reset and a fixed new starting cursor. Reset invalidates the operation-related feature prefixes; notifications committed during business refresh remain available after the reset cursor. Local authored editor state stays in its existing edit session. Task progress, completion messages and retained results continue through their feature/task interfaces. `RebuildProgressDialog`, populate/compression/ownership presentation and world restore/prune views delegate business completion to the observer.
 
 ## Resource ownership
 
@@ -36,9 +36,13 @@ Map initialization terminal outcomes refresh the server's map status and region
 queries even after navigation. Individual `map_render` operations do not
 invalidate map queries, which would trigger another render cycle.
 
-## Browser tile revisions
+## Browser tile caching
 
-`features/world/map/revision.ts` stores the newest relevant notification sequence and operation ID for each server and global scope in Query cache. Feed sequence determines arrival order independently of server time; later effective changes of one terminal operation still change the tile URL. A separate global reset token changes on bootstrap or lost history, resets sequence comparison baselines and remains independent of server/global timestamps. Tile URLs combine these tokens with MCA mtime, so MCC-only changes, same-mtime replacements and lost-notification recovery refresh browser images. Read-only previews and snapshots leave the input revision unchanged.
+The observer refreshes region manifests through the ordinary world query keys.
+Tile URLs depend only on the region path and MCA modification time, so bootstrap,
+reconnect, reset and repeated operation notifications do not themselves change
+browser image URLs. The [map cache policy](server-map.md#tile-caching) owns the
+deliberate timestamp-only simplification and its same-timestamp limitations.
 
 ## Verification
 
