@@ -12,6 +12,7 @@ export type UploadTask = UploadInput & {
   started: boolean
   progress: number
   fileCount: number
+  fileNames: string[]
   totalSize: number
   message: string
   detail?: string
@@ -34,7 +35,7 @@ function createUpload(input: UploadInput) {
   const id = `upload-${++uploadSequence}`
   const task: UploadTask = {
     ...input, files: [...input.files], id, title: input.files[0]?.name || '选择上传文件', status: 'select', started: false,
-    progress: 0, message: '等待开始', fileCount: input.files.length,
+    progress: 0, message: '等待开始', fileCount: input.files.length, fileNames: input.files.map(file => file.name),
     totalSize: input.files.reduce((total, file) => total + file.size, 0), startTime: Date.now(),
   }
   useTaskCenterStore.getState().setOpen(false)
@@ -50,7 +51,7 @@ export function openArchiveUpload(files: File[] = []) {
   return createUpload({ kind: 'archive', basePath: '/', files })
 }
 
-export function updateUpload(id: string, summary: Partial<Pick<UploadTask, 'title' | 'status' | 'progress' | 'message' | 'detail' | 'fileCount' | 'totalSize'>>) {
+export function updateUpload(id: string, summary: Partial<Pick<UploadTask, 'title' | 'status' | 'progress' | 'message' | 'detail' | 'fileCount' | 'fileNames' | 'totalSize'>>) {
   useUploadStore.setState(state => ({ tasks: state.tasks.map(task => task.id === id
     ? { ...task, ...summary, started: task.started || (summary.status !== undefined && summary.status !== 'select') }
     : task) }))

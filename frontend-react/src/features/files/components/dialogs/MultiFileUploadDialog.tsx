@@ -52,7 +52,7 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
     const status = uploadState.cancelled ? 'cancelled' : uploadState.error || failed ? 'error' : uploadState.step
     const messages = { select: '等待开始', checking: '检查冲突中', conflicts: '等待确认覆盖方式', uploading: '正在上传', complete: '上传完成', error: '上传失败', cancelled: '已取消' }
     updateUpload(taskId, {
-      status, title: uploadState.files[0]?.name || '选择上传文件', fileCount: uploadState.files.length,
+      status, title: uploadState.files[0]?.name || '选择上传文件', fileCount: uploadState.files.length, fileNames: uploadState.files.map(file => file.name),
       totalSize, progress: uploadState.uploadProgress?.totalProgress || 0,
       message: messages[status], detail: uploadState.error || (failed ? `${failed} 个文件失败，请查看上传结果` : undefined),
     })
@@ -314,7 +314,7 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleHide()}>
-      <DialogContent ref={contentRef} className="sm:max-w-200" showCloseButton={false} finalFocus={() => document.querySelector<HTMLElement>('[data-task-center-launcher]')}>
+      <DialogContent ref={contentRef} className="sm:max-w-200" style={{ display: open ? undefined : 'none' }} showCloseButton={false} finalFocus={() => document.querySelector<HTMLElement>('[data-task-center-launcher]')}>
         <DialogHeader>
           <DialogTitle className="pr-12">上传文件和文件夹</DialogTitle>
           <Button className="absolute top-2 right-2" variant="ghost" size="sm" onClick={handleHide} aria-label="收起上传窗口">收起</Button>

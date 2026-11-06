@@ -5,9 +5,9 @@ Closing the file upload dialog currently aborts transfer, while archive uploads 
 ## What Changes
 
 - Keep file and archive upload workflows alive across dialog dismissal and application navigation within the authenticated browser session.
-- Add an upload tab with progress, pending decisions, results and an action to reopen the same workflow.
+- Add an upload tab with one clickable progress heading per entry, pending decisions and retained results; the heading reopens the same workflow.
 - Separate hiding from explicit cancellation and preserve each protocol's completion and partial-write guarantees.
-- Animate dismissed upload dialogs towards the movable task-center launcher, respecting reduced motion.
+- Animate dismissed upload dialogs towards the movable task-center launcher, with the original immediately hidden and reduced motion respected.
 - Non-goals: changing upload APIs, adding ordinary-file resumability, transferring bytes after browser shutdown, or persisting browser File objects.
 
 ## Capabilities

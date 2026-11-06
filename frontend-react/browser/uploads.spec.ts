@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { test, expect, login } from './fixtures'
 import { withCleanup } from './cleanup'
 
-for (const kind of ['files', 'archive'] as const) {
-  test(`${kind} upload survives dismissal and navigation and reopens its real result`, { annotation: { type: 'shard_isolation', description: 'independent' } }, async ({ page, api, owned }) => {
+for (const [kind, reducedMotion] of [['files', false], ['archive', false], ['archive', true]] as const) {
+  test(`${kind} upload survives dismissal and navigation and reopens its real result${reducedMotion ? ' with reduced motion' : ''}`, { annotation: { type: 'shard_isolation', description: 'independent' } }, async ({ page, api, owned }) => {
     const name = `browser-upload-${kind}-${Date.now().toString(36)}.${kind === 'files' ? 'txt' : 'zip'}`
     const bytes = kind === 'files' ? Buffer.from('independent uploaded file bytes\n') : Buffer.from('504b0506000000000000000000000000000000000000', 'hex')
     let release!: () => void
@@ -15,7 +15,7 @@ for (const kind of ['files', 'archive'] as const) {
     const responseDelivered = new Promise<void>(resolve => { delivered = resolve })
     let publicationId = ''
     const pattern = kind === 'files' ? '**/api/servers/*/files/upload/multiple*' : '**/api/archive/upload/*/verify'
-    await page.emulateMedia({ reducedMotion: kind === 'archive' ? 'reduce' : 'no-preference' })
+    await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
     await page.route(pattern, async route => {
       submissions++
       const response = await route.fetch()
@@ -54,15 +54,26 @@ for (const kind of ['files', 'archive'] as const) {
       await dialog.getByRole('button', { name: kind === 'files' ? '检查冲突并上传' : '开始上传', exact: true }).click()
       await responseHeld
       await page.evaluate(() => {
+        const source = document.querySelector<HTMLElement>('[role="dialog"]')
+        if (!source) throw new Error('Upload dialog must be visible before minimization')
         const observer = new MutationObserver(() => {
           const copy = document.querySelector<HTMLElement>('[data-upload-minimize]')
           if (!copy) return
           const frames = (copy.getAnimations()[0]?.effect as KeyframeEffect | null)?.getKeyframes()
           const matrix = new DOMMatrix(frames?.at(-1)?.transform as string)
-          document.documentElement.dataset.uploadAnimation = JSON.stringify({
+          const geometry = {
             hidden: copy.getAttribute('aria-hidden'), inert: copy.inert,
             end: { x: parseFloat(copy.style.left) + matrix.e, y: parseFloat(copy.style.top) + matrix.f,
               width: parseFloat(copy.style.width) * matrix.a, height: parseFloat(copy.style.height) * matrix.d },
+          }
+          requestAnimationFrame(() => {
+            const originalStyle = getComputedStyle(source)
+            const copyStyle = getComputedStyle(copy)
+            document.documentElement.dataset.uploadAnimation = JSON.stringify({
+              ...geometry,
+              originalVisible: source.isConnected && originalStyle.visibility !== 'hidden' && originalStyle.display !== 'none' && Number(originalStyle.opacity) > 0,
+              copyVisible: copy.isConnected && copyStyle.visibility !== 'hidden' && copyStyle.display !== 'none' && Number(copyStyle.opacity) > 0,
+            })
           })
           observer.disconnect()
         })
@@ -74,12 +85,15 @@ for (const kind of ['files', 'archive'] as const) {
       await expect(dialog).toBeHidden()
       await expect(launcher).toBeFocused()
       await expect(page.getByText('上传窗口已收起，可在任务中心查看', { exact: true })).toBeVisible()
-      if (kind === 'files') {
+      if (!reducedMotion) {
+        await expect(page.locator('html')).toHaveAttribute('data-upload-animation', /.+/)
         const evidence = JSON.parse((await page.locator('html').getAttribute('data-upload-animation')) || '{}')
         const landing = await launcher.boundingBox()
         if (!landing) throw new Error('Minimized upload must have a visible destination')
         expect(evidence.hidden).toBe('true')
         expect(evidence.inert).toBe(true)
+        expect(evidence.originalVisible).toBe(false)
+        expect(evidence.copyVisible).toBe(true)
         expect(evidence.end.x).toBeCloseTo(landing.x, 1)
         expect(evidence.end.y).toBeCloseTo(landing.y, 1)
         expect(evidence.end.width).toBeCloseTo(landing.width, 1)
@@ -92,7 +106,14 @@ for (const kind of ['files', 'archive'] as const) {
       await expect(page).toHaveURL(/\/overview$/)
       await launcher.click()
       await expect(page.getByRole('tab', { name: /^上传/ })).toHaveAttribute('aria-selected', 'true')
-      await page.getByRole('button', { name: `查看上传：${name}`, exact: true }).click()
+      const uploads = page.getByRole('tabpanel', { name: /^上传/ })
+      const heading = uploads.getByRole('button', { name: `查看上传：${name}`, exact: true })
+      await expect(heading).toContainText(name)
+      expect((await heading.innerText()).split(name)).toHaveLength(2)
+      await expect(uploads.getByText(name, { exact: true })).toHaveCount(0)
+      await expect(uploads.getByText('压缩包管理', { exact: true })).toHaveCount(0)
+      if (kind === 'archive' && !reducedMotion) await uploads.screenshot({ path: test.info().outputPath('upload-task-center.png') })
+      await heading.click()
       await expect(dialog).toBeVisible()
       expect(submissions).toBe(1)
       await dialog.getByRole('button', { name: '收起上传窗口', exact: true }).click()

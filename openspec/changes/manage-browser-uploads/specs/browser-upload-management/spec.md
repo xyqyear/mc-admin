@@ -20,6 +20,12 @@ The application SHALL preserve each started file or archive upload when its dial
 
 The task center SHALL provide an upload tab showing active stages, paused or retrying work, pending decisions and retained terminal results. Explicit cancellation SHALL remain distinct from hiding. Partial ordinary-file results SHALL be retained; transmitted bytes or accepted archive hashing/publication SHALL NOT by themselves represent success.
 
+Each upload entry SHALL use one progress heading with the upload icon, current stage and filename, and progress percentage. The heading SHALL reopen the same workflow. It SHALL retain a filename for terminal stages without separate duplicate filename or origin rows.
+
+#### Scenario: Reopen from the progress heading
+- **WHEN** an administrator clicks a running or completed upload's filename in the progress heading
+- **THEN** the same upload workflow opens and its entry shows no duplicate filename or origin rows
+
 #### Scenario: Archive waits for publication
 - **WHEN** archive bytes are fully transmitted but verification or publication is unsettled
 - **THEN** the upload remains active until the real publication result is available
@@ -31,6 +37,10 @@ The task center SHALL provide an upload tab showing active stages, paused or ret
 ### Requirement: Minimizing communicates the task destination
 
 Closing an active upload dialog SHALL animate a shrinking representation towards the current task-center launcher position and make the upload tab discoverable. The feedback SHALL respect reduced-motion preferences and SHALL NOT block hiding or upload execution when animation is unavailable.
+
+#### Scenario: Only the moving representation remains visible
+- **WHEN** a file or archive upload starts its minimizing animation
+- **THEN** the original dialog is invisible from the first animation frame while only the shrinking representation remains visible
 
 #### Scenario: Launcher has moved
 - **WHEN** the user dismisses an upload after dragging the launcher

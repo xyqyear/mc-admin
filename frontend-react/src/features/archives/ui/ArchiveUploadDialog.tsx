@@ -29,7 +29,7 @@ const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({ open, taskId,
   useEffect(() => {
     updateUpload(taskId, {
       status: phase === 'idle' ? 'select' : phase, progress, message: statusText || '等待开始', detail: detailText,
-      title: uploadFiles[0]?.name || '选择压缩包文件', fileCount: uploadFiles.length,
+      title: uploadFiles[0]?.name || '选择压缩包文件', fileCount: uploadFiles.length, fileNames: uploadFiles.map(file => file.name),
       totalSize: uploadFiles.reduce((total, file) => total + file.size, 0),
     })
   }, [taskId, phase, progress, statusText, detailText, uploadFiles])
@@ -43,7 +43,7 @@ const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({ open, taskId,
       open={open}
       onOpenChange={(o) => !o && handleHide()}
     >
-      <DialogContent ref={contentRef} className="sm:max-w-md" showCloseButton={false} finalFocus={() => document.querySelector<HTMLElement>('[data-task-center-launcher]')}>
+      <DialogContent ref={contentRef} className="sm:max-w-md" style={{ display: open ? undefined : 'none' }} showCloseButton={false} finalFocus={() => document.querySelector<HTMLElement>('[data-task-center-launcher]')}>
         <DialogHeader>
           <DialogTitle className="pr-12">上传压缩包</DialogTitle>
           <Button className="absolute top-2 right-2" variant="ghost" size="sm" onClick={handleHide} aria-label="收起上传窗口">收起</Button>
