@@ -7,6 +7,7 @@ import (
 )
 
 type providerConfig struct {
+	provider         string
 	Domain           string `json:"domain"`
 	ID               string `json:"id,omitempty"`
 	Key              string `json:"key,omitempty"`
@@ -55,6 +56,7 @@ func loadConfig(path, provider string) (providerConfig, error) {
 	if result.TTL == 0 {
 		result.TTL = 600
 	}
+	result.provider = provider
 	return result, nil
 }
 

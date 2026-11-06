@@ -58,7 +58,7 @@ func TestExternalConfigUsesEnvironmentNamesAndOptionalParent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if config.Domain != test.config.Domain || config.ManagedSubDomain != test.config.ManagedSubDomain || config.TTL != test.ttl || config.Region != "cn-south-1" {
+			if config.provider != test.provider || config.Domain != test.config.Domain || config.ManagedSubDomain != test.config.ManagedSubDomain || config.TTL != test.ttl || config.Region != "cn-south-1" {
 				t.Fatalf("unexpected provider configuration: %+v", config)
 			}
 			if actual := config.scope("012345abcdef"); actual != test.scope {
