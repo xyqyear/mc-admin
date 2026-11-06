@@ -72,6 +72,41 @@ the defaults with absolute Linux paths. The PowerShell entry forwards these
 variables to WSL. Do not share one virtual environment between separate
 checkouts with different dependency locks.
 
+### Local development login
+
+This checkout uses a fixed account in its separate local development database:
+
+| Field | Value |
+| --- | --- |
+| Login page | `http://127.0.0.1:3000/login` |
+| Username | `dev` |
+| Password | `mc-admin-dev` |
+| Role | `owner` |
+
+Use these credentials when asked for the dev login in another conversation.
+If the development database is cleared, recreate the same account with the same
+password. Development startup initializes the database schema but does not
+automatically create this account.
+
+With the backend running, create a missing account from a Windows PowerShell 7
+terminal using the local development master token:
+
+```powershell
+$configPath = '\\wsl.localhost\Debian\root\.config\mc-admin-dev\config.toml'
+$devToken = (Select-String -LiteralPath $configPath -Pattern '^master_token\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+$devBody = @{
+    username = 'dev'
+    password = 'mc-admin-dev'
+    role = 'owner'
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri 'http://127.0.0.1:5678/api/admin/users' -Method Post -NoProxy -Headers @{ Authorization = "Bearer $devToken" } -ContentType 'application/json' -Body $devBody
+```
+
+The path above is for this workstation's default Debian root user. Adjust it
+when overriding the development configuration directory or WSL distribution.
+An existing account should be reused; this command does not reset its password.
+
 ### Start, debug and stop
 
 ```powershell

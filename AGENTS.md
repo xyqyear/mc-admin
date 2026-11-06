@@ -26,6 +26,9 @@ Environment setup and binary prerequisites belong to [development](docs/developm
 - Select explicit backend test files/nodes, API case IDs and frontend test
   files/titles. Windows browser tests retain the WSL runner's owned fixture and
   cleanup. See [development](docs/development.md) for commands and overrides.
+- Before using or recreating the local dev account, read
+  [development login](docs/development.md#local-development-login). Reuse its
+  recorded credentials when the development database is cleared.
 
 ## 设计原则
 
