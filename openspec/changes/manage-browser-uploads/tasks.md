@@ -12,5 +12,4 @@
 
 - [x] 3.1 Update owning frontend documentation and public import policy; verify boundary checks and coherent lifecycle descriptions.
 - [x] 3.2 Run selected upload/task-center tests, frontend lint, type checking and bundling; add browser coverage for hidden running workflows and real completion.
-- [x] 3.3 Add the approved 30-second initial cloud DNS publication wait without consuming the two-minute polling budget; verify cancellation, retained retries and terminal timeout with targeted fake-clock tests.
-- [ ] 3.4 Commit and push the implementation, wait for latest-SHA automatic qualification, and record its successful receipt and Actions URL.
+- [ ] 3.3 Commit and push the implementation, wait for latest-SHA automatic qualification, and record its successful receipt and Actions URL.

@@ -24,6 +24,4 @@ Preserve existing protocol controllers and business invariants while separating 
 
 ## Migration Plan
 
-Cloud DNS qualification waits 30 seconds before each publication check's first authoritative query, then retains its full two-minute polling budget. Cancellation interrupts the initial wait. This approved validation policy addresses early propagation observations without changing application DNS records, transport, success assertions or cleanup; it does not guarantee recovery from provider TCP or prolonged replica faults.
-
 No persisted data or API migration is required. Deploy the frontend and backend together as usual. Rollback restores the previous dialog behavior without data conversion; active browser transfers require keeping the current page alive.
