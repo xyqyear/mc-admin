@@ -2,14 +2,68 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"net"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	wire "github.com/miekg/dns"
+
+	"mc-admin/e2e/internal/api"
 )
+
+func TestCloudDNSDelaysInitialQueryAndRetainsPolling(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		started := time.Now()
+		var attempts []time.Duration
+		err := checkAfterDNSPropagation(t.Context(), func(ctx context.Context) error {
+			deadline, ok := ctx.Deadline()
+			if !ok || deadline.Sub(time.Now()) != 2*time.Minute {
+				t.Fatal("propagation delay consumed the publication polling budget")
+			}
+			return api.Wait(ctx, 2*time.Second, "authoritative publication", func(context.Context) (bool, error) {
+				attempts = append(attempts, time.Since(started))
+				if len(attempts) < 3 {
+					return false, errors.New("NXDOMAIN")
+				}
+				return true, nil
+			})
+		})
+		if err != nil || len(attempts) != 3 || attempts[0] != 30*time.Second || attempts[2] != 34*time.Second {
+			t.Fatalf("publication attempts=%v error=%v", attempts, err)
+		}
+	})
+}
+
+func TestCloudDNSInitialDelayHonorsCancellation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() { time.Sleep(5 * time.Second); cancel() }()
+		started := time.Now()
+		called := false
+		err := checkAfterDNSPropagation(ctx, func(context.Context) error { called = true; return nil })
+		if !errors.Is(err, context.Canceled) || called || time.Since(started) != 5*time.Second {
+			t.Fatalf("cancelled publication: called=%v elapsed=%s error=%v", called, time.Since(started), err)
+		}
+	})
+}
+
+func TestCloudDNSPublicationStillFailsAfterFullPollingBudget(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		started := time.Now()
+		err := checkAfterDNSPropagation(t.Context(), func(ctx context.Context) error {
+			return api.Wait(ctx, 2*time.Second, "authoritative publication", func(context.Context) (bool, error) {
+				return false, errors.New("NXDOMAIN")
+			})
+		})
+		if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) != 150*time.Second {
+			t.Fatalf("publication deadline: elapsed=%s error=%v", time.Since(started), err)
+		}
+	})
+}
 
 func TestDNSProbeRejectsNonAuthoritativeAndNegativeResponses(t *testing.T) {
 	for _, mode := range []string{"authoritative", "recursive", "nxdomain", "servfail", "truncated"} {

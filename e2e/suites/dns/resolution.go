@@ -72,36 +72,52 @@ func authoritativeServers(ctx context.Context, domain string) ([]string, error) 
 	return addresses, nil
 }
 
-func checkAuthoritative(ctx context.Context, t *engine.Scope, config providerConfig, expected map[string]string) error {
+func checkAfterDNSPropagation(ctx context.Context, check func(context.Context) error) error {
+	timer := time.NewTimer(30 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	deadline, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	servers, err := authoritativeServers(deadline, config.Domain)
-	if err != nil {
-		return fmt.Errorf("public zone delegation: %w", err)
-	}
-	names := make([]string, 0, len(expected))
-	for key := range expected {
-		names = append(names, key)
-	}
-	sort.Strings(names)
-	return api.Wait(deadline, 2*time.Second, "authoritative DNS publication", func(probe context.Context) (bool, error) {
-		for _, server := range servers {
-			for _, key := range names {
-				parts := strings.SplitN(key, "|", 2)
-				host := strings.Replace(parts[0], "*.", fixtures.ServerOf(t.Env).ID+".", 1) + "." + config.Domain
-				kind := wire.StringToType[parts[1]]
-				answer, err := dnsQuery(probe, server, host, kind, true)
-				if err != nil {
-					return false, err
-				}
-				values := answerValues(answer, host, kind)
-				if len(values) != 1 || values[0] != expected[key] {
-					return false, fmt.Errorf("DNS %s %s returned %v; expected %s", host, parts[1], values, expected[key])
+	return check(deadline)
+}
+
+func checkAuthoritative(ctx context.Context, t *engine.Scope, config providerConfig, expected map[string]string) error {
+	return checkAfterDNSPropagation(ctx, func(deadline context.Context) error {
+		servers, err := authoritativeServers(deadline, config.Domain)
+		if err != nil {
+			return fmt.Errorf("public zone delegation: %w", err)
+		}
+		names := make([]string, 0, len(expected))
+		for key := range expected {
+			names = append(names, key)
+		}
+		sort.Strings(names)
+		return api.Wait(deadline, 2*time.Second, "authoritative DNS publication", func(probe context.Context) (bool, error) {
+			for _, server := range servers {
+				for _, key := range names {
+					parts := strings.SplitN(key, "|", 2)
+					host := strings.Replace(parts[0], "*.", fixtures.ServerOf(t.Env).ID+".", 1) + "." + config.Domain
+					kind := wire.StringToType[parts[1]]
+					answer, err := dnsQuery(probe, server, host, kind, true)
+					if err != nil {
+						return false, err
+					}
+					values := answerValues(answer, host, kind)
+					if len(values) != 1 || values[0] != expected[key] {
+						return false, fmt.Errorf("DNS %s %s returned %v; expected %s", host, parts[1], values, expected[key])
+					}
 				}
 			}
-		}
-		t.Recorder.Event("authoritative_dns", map[string]any{"nameservers": servers, "records": expected})
-		return true, nil
+			t.Recorder.Event("authoritative_dns", map[string]any{"nameservers": servers, "records": expected})
+			return true, nil
+		})
 	})
 }
 
