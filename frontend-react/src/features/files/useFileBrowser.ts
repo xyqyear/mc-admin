@@ -18,6 +18,7 @@ import { useFileNavigation } from '@/features/files/useFileNavigation'
 import { usePageDragUpload } from '@/shared/hooks/usePageDragUpload'
 import { useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/shared/http/api'
+import { openFileUpload } from '@/features/tasks/uploads'
 
 export function useFileBrowser(id: string | undefined) {
   const queryClient = useQueryClient()
@@ -62,10 +63,8 @@ export function useFileBrowser(id: string | undefined) {
   const createArchiveMutation = useCreateArchive()
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isMultiFileUploadDialogOpen, setIsMultiFileUploadDialogOpen] = useState(false)
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [renamingFile, setRenamingFile] = useState<FileItem | null>(null)
-  const [selectedUploadFiles, setSelectedUploadFiles] = useState<File[]>([])
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -90,8 +89,7 @@ export function useFileBrowser(id: string | undefined) {
 
   const { isDragging, isScanning } = usePageDragUpload({
     onFileDrop: (files) => {
-      setSelectedUploadFiles(files)
-      setIsMultiFileUploadDialogOpen(true)
+      if (id) openFileUpload(id, currentPath, files)
       toast.info(`已选择 ${files.length} 个文件，请确认上传`)
     },
     onError: (errorMessage) => {
@@ -196,11 +194,6 @@ export function useFileBrowser(id: string | undefined) {
       path: currentPath
     })
     setIsCreateDialogOpen(false)
-  }
-
-  const handleMultiFileUploadComplete = () => {
-    setSelectedUploadFiles([])
-    setIsMultiFileUploadDialogOpen(false)
   }
 
   const handleRefresh = async () => {
@@ -332,7 +325,7 @@ export function useFileBrowser(id: string | undefined) {
     ownershipTask,
     handleNavigateToParent,
     handleRefresh,
-    setIsMultiFileUploadDialogOpen,
+    handleUpload: () => { if (id) openFileUpload(id, currentPath) },
     setIsCreateDialogOpen,
     handleBatchDeleted,
     directoryDownloadRequest,
@@ -364,10 +357,6 @@ export function useFileBrowser(id: string | undefined) {
     handleFileRename,
     handleFolderOpen,
     handleCompress,
-    isMultiFileUploadDialogOpen,
-    setSelectedUploadFiles,
-    handleMultiFileUploadComplete,
-    selectedUploadFiles,
     isCreateDialogOpen,
     handleCreateFile,
     createFileMutation,

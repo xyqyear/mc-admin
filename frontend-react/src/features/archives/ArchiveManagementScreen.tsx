@@ -29,7 +29,7 @@ import { DataTable } from '@/shared/components/DataTable'
 import { SortableHeader } from '@/shared/components/SortableHeader'
 import { RefreshButton } from '@/shared/components/RefreshButton'
 import DragDropOverlay from '@/shared/components/DragDropOverlay'
-import ArchiveUploadDialog from '@/features/archives/ui/ArchiveUploadDialog'
+import { openArchiveUpload } from '@/features/tasks/uploads'
 import ArchiveRenameDialog from '@/features/archives/ui/ArchiveRenameDialog'
 import { useConfirm } from '@/shared/hooks/useConfirm'
 import { useArchiveFileList } from '@/features/archives/queries';
@@ -48,8 +48,6 @@ const ArchiveManagement: React.FC = () => {
   const deleteItemMutation = useDeleteItem()
 
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
-  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
-  const [dragDropFiles, setDragDropFiles] = useState<File[] | undefined>(undefined)
   const [renamingFile, setRenamingFile] = useState<ArchiveFileItem | null>(null)
 
   const [sorting, setSorting] = useState<SortingState>([
@@ -60,8 +58,7 @@ const ArchiveManagement: React.FC = () => {
   const { isDragging, isScanning } = usePageDragUpload({
     accept: '.zip,.7z',
     onFileDrop: (files) => {
-      setDragDropFiles(files)
-      setIsUploadDialogOpen(true)
+      openArchiveUpload(files)
       toast.info(`已选择 ${files.length} 个压缩包文件，请确认上传`)
     },
     onError: (errorMessage) => {
@@ -246,7 +243,7 @@ const ArchiveManagement: React.FC = () => {
           <>
             <Button
               variant="outline"
-              onClick={() => { setDragDropFiles(undefined); setIsUploadDialogOpen(true) }}
+              onClick={() => openArchiveUpload()}
             >
               <Upload className="mr-2 h-4 w-4" />
               上传文件
@@ -283,12 +280,6 @@ const ArchiveManagement: React.FC = () => {
           您可以上传、下载、重命名和删除压缩包。上传完成后会自动进行 SHA256 完整性校验。
         </AlertDescription>
       </Alert>
-
-      <ArchiveUploadDialog
-        open={isUploadDialogOpen}
-        onClose={() => { setIsUploadDialogOpen(false); setDragDropFiles(undefined) }}
-        initialFiles={dragDropFiles}
-      />
 
       <ArchiveRenameDialog
         open={!!renamingFile}

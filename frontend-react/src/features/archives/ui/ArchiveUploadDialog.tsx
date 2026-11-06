@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { CheckCircle2, FileArchive, Pause, Play, RefreshCcw, Trash2, Upload, XCircle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/shared/ui/alert'
@@ -7,23 +7,32 @@ import { Switch } from '@/shared/ui/switch'
 import { Progress } from '@/shared/ui/progress'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/shared/ui/dialog'
 import { useArchiveUpload } from '@/features/archives/uploads/useArchiveUpload'
+import { hideUpload, updateUpload } from '@/features/tasks/uploads'
 
 interface ArchiveUploadDialogProps {
   open: boolean
-  onClose: () => void
+  taskId: string
   initialFiles?: File[]
 }
 
-const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({ open, onClose, initialFiles }) => {
+const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({ open, taskId, initialFiles }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const {
     uploadFiles, allowOverwrite, setAllowOverwrite, phase, progress, speed,
     statusText, detailText, retryState, hasValidFiles, isWorking, canResume,
-    canDismissByOutside, canEditFiles, addFiles, removeFile,
+    canEditFiles, addFiles, removeFile,
     start: handleStartUpload, pause: handlePause, resume: handleResume,
-    retryNow: handleRetryNow, close,
-  } = useArchiveUpload(open, initialFiles)
-  const cleanup = () => { close(); onClose() }
+    retryNow: handleRetryNow, cancel,
+  } = useArchiveUpload(true, initialFiles)
+  const handleHide = () => hideUpload(taskId, contentRef.current)
+  useEffect(() => {
+    updateUpload(taskId, {
+      status: phase === 'idle' ? 'select' : phase, progress, message: statusText || '等待开始', detail: detailText,
+      title: uploadFiles[0]?.name || '选择压缩包文件', fileCount: uploadFiles.length,
+      totalSize: uploadFiles.reduce((total, file) => total + file.size, 0),
+    })
+  }, [taskId, phase, progress, statusText, detailText, uploadFiles])
   const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     addFiles(Array.from(event.target.files || []))
     event.target.value = ''
@@ -32,20 +41,14 @@ const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({ open, onClose
   return (
     <Dialog
       open={open}
-      disablePointerDismissal={!canDismissByOutside}
-      onOpenChange={(o, eventDetails) => {
-        if (o) return
-        if (!canDismissByOutside) {
-          eventDetails.cancel()
-          return
-        }
-        cleanup()
-      }}
+      onOpenChange={(o) => !o && handleHide()}
     >
-      <DialogContent className="sm:max-w-md" showCloseButton={canDismissByOutside}>
+      <DialogContent ref={contentRef} className="sm:max-w-md" showCloseButton={false} finalFocus={() => document.querySelector<HTMLElement>('[data-task-center-launcher]')}>
         <DialogHeader>
-          <DialogTitle>上传文件</DialogTitle>
+          <DialogTitle className="pr-12">上传压缩包</DialogTitle>
+          <Button className="absolute top-2 right-2" variant="ghost" size="sm" onClick={handleHide} aria-label="收起上传窗口">收起</Button>
         </DialogHeader>
+        <p className="text-xs text-muted-foreground">关闭窗口后上传继续，可在任务中心重新打开。</p>
         <div className="flex flex-col gap-4">
           <div>
             <input
@@ -139,9 +142,10 @@ const ArchiveUploadDialog: React.FC<ArchiveUploadDialogProps> = ({ open, onClose
           </label>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={cleanup} disabled={isWorking}>
-            关闭
+          <Button variant="outline" onClick={handleHide}>
+            {isWorking || canResume ? '收起到任务中心' : '关闭'}
           </Button>
+          {(phase === 'uploading' || phase === 'retrying' || phase === 'paused') && <Button variant="destructive" onClick={cancel}>取消上传</Button>}
           {(phase === 'uploading' || phase === 'retrying') && (
             <Button variant="outline" onClick={handlePause}>
               <Pause data-icon="inline-start" />

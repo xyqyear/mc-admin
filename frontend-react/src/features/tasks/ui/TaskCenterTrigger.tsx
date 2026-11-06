@@ -10,6 +10,7 @@ import {
 import { useTaskCenterStore } from '@/features/tasks/panelStore'
 import { useActiveTasks } from '@/features/tasks/queries';
 import { useDownloadTasks } from '@/features/tasks/downloadStore'
+import { isUploadActive, useUploadStore } from '../uploads'
 import {
   clampTaskCenterTriggerPosition,
   type TaskCenterTriggerPosition,
@@ -31,6 +32,7 @@ const TaskCenterTrigger: React.FC = () => {
     useTaskCenterStore()
   const { data: activeTasks } = useActiveTasks()
   const downloadTasks = useDownloadTasks()
+  const uploadTasks = useUploadStore(state => state.tasks)
   const [displayPosition, setDisplayPosition] = useState(triggerPosition)
   const [isDragging, setIsDragging] = useState(false)
   const dragStateRef = useRef<DragState | null>(null)
@@ -58,7 +60,7 @@ const TaskCenterTrigger: React.FC = () => {
   const activeDownloadCount = downloadTasks.filter(
     (t) => t.status === 'downloading'
   ).length
-  const totalActiveCount = activeBackgroundCount + activeDownloadCount
+  const totalActiveCount = activeBackgroundCount + activeDownloadCount + uploadTasks.filter(isUploadActive).length
 
   const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) {
@@ -155,6 +157,7 @@ const TaskCenterTrigger: React.FC = () => {
         isDragging ? 'cursor-grabbing' : 'cursor-grab'
       }`}
       aria-label="任务中心"
+      data-task-center-launcher=""
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

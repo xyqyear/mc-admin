@@ -21,6 +21,7 @@ interface UploadState {
   }
   results?: MultiFileUploadResult['results']
   error?: string
+  cancelled?: boolean
 }
 interface PreparedUpload {
   files: File[]
@@ -95,10 +96,11 @@ export function useMultiFileUpload(open: boolean, serverId: string, basePath: st
     }
     const totalSize = files.reduce((total, file) => total + file.size, 0)
     let wrote = false
+    const results: MultiFileUploadResult['results'] = {}
     try {
       let policy = uploadState.overwritePolicy
       if (checking) {
-        update({ step: 'checking', error: undefined, conflicts: [], overwritePolicy: undefined })
+        update({ step: 'checking', error: undefined, cancelled: false, results: undefined, conflicts: [], overwritePolicy: undefined })
         const response = await fileApi.checkUploadConflicts(serverId, basePath, { files: buildFileStructure(files) }, signal)
         ensureCurrent()
         prepared.current = { files, sessionId: response.session_id }
@@ -112,7 +114,6 @@ export function useMultiFileUpload(open: boolean, serverId: string, basePath: st
       update({ step: 'uploading', uploadProgress: { totalProgress: 0, uploadedFiles: 0, totalFiles: files.length, totalSize, uploadedSize: 0 } })
       await fileApi.setUploadPolicy(serverId, sessionId, policy!, files.length > FILES_PER_BATCH, signal)
       ensureCurrent()
-      const results: MultiFileUploadResult['results'] = {}
       let completedBytes = 0
       for (let offset = 0; offset < files.length; offset += FILES_PER_BATCH) {
         ensureCurrent()
@@ -133,12 +134,14 @@ export function useMultiFileUpload(open: boolean, serverId: string, basePath: st
       }
       prepared.current = null
       update({ step: 'complete', results })
-      toast.success(`上传完成！成功: ${Object.values(results).filter(result => result.status === 'success').length}/${files.length}`)
+      const failed = Object.values(results).filter(result => result.status === 'failed').length
+      if (failed) toast.error(`上传结束，${failed} 个文件失败，请查看上传结果`)
+      else toast.success(`上传完成！成功: ${Object.values(results).filter(result => result.status === 'success').length}/${files.length}`)
     } catch (error) {
       if (!current()) return
       prepared.current = null
       const message = signal.aborted ? '上传已取消，已写入的文件会保留' : (error as Error).message || '上传失败'
-      setUploadState(prev => ({ ...initialState(prev.files), error: message }))
+      setUploadState(prev => ({ ...initialState(prev.files), results, error: message, cancelled: signal.aborted }))
       if (signal.aborted) toast.info(message)
       else toast.error(message)
     } finally {
@@ -156,7 +159,11 @@ export function useMultiFileUpload(open: boolean, serverId: string, basePath: st
     check: () => execute(true),
     start: () => execute(false),
     setPolicy: (overwritePolicy: OverwritePolicy) => setUploadState(prev => ({ ...prev, overwritePolicy })),
-    cancel: () => running.current?.abort(),
+    cancel: () => {
+      if (running.current) { running.current.abort(); return }
+      prepared.current = null
+      setUploadState(prev => ({ ...initialState(prev.files), results: prev.results, cancelled: true, error: '上传已取消，已写入的文件会保留' }))
+    },
     close,
     back: () => {
       if (running.current) return

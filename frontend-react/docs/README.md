@@ -33,7 +33,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [task-center.md](task-center.md) | 后端任务与浏览器下载面板 |
+| [task-center.md](task-center.md) | 后端任务与浏览器上传、下载面板 |
 | [server-lifecycle.md](server-lifecycle.md) | 服务器创建、删除与登记同步 |
 | [templates.md](templates.md) | 全局模板与默认变量编辑 |
 | [cron-management.md](cron-management.md) | 计划状态、表达式与参数表单 |

@@ -96,6 +96,7 @@ it('keeps per-file overwrite policy and refreshes earlier writes when a later up
   expect(policy).toEqual({ mode: 'per_file', decisions: [{ path: '0.txt', overwrite: true }] })
   expect(reusable).toBe('true')
   expect(batches).toBe(2)
+  expect(result.current.uploadState.results).toEqual({ '0.txt': { status: 'success' }, '1.txt': { status: 'skipped', reason: 'no_decision' } })
   expect(result.current.uploadState.error).toContain('已写入的文件会保留')
   expect(client.getQueryState(queryKeys.files.list('alpha', '/data'))?.isInvalidated).toBe(true)
   unmount()
@@ -115,7 +116,7 @@ it.each([false, true])('applies a directory overwrite decision to every descenda
     http.post('*/api/servers/alpha/files/upload/policy', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ message: 'ok' }) }),
     http.post('*/api/servers/alpha/files/upload/multiple', () => HttpResponse.json({ message: 'ok', results: {} })),
   )
-  render(<TestProviders client={client}><MultiFileUploadDialog open onCancel={() => {}} onComplete={() => {}} serverId="alpha" basePath="/data" initialFiles={files} /></TestProviders>)
+  render(<TestProviders client={client}><MultiFileUploadDialog open taskId="test-upload" serverId="alpha" basePath="/data" initialFiles={files} /></TestProviders>)
   fireEvent.click(screen.getByRole('button', { name: '检查冲突并上传' }))
   fireEvent.click(await screen.findByRole('radio', { name: '为每个文件单独选择' }))
   const directory = within(screen.getByText('dir-a').parentElement!).getByRole('checkbox')

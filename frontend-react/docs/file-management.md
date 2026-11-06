@@ -59,7 +59,7 @@ The dialog waits for successfully loaded content before enabling edits or save. 
 
 ## Multi-file upload
 
-Folder drag-drop generates many files at once with potential conflicts. `MultiFileUploadDialog.tsx` displays `features/files/useMultiFileUpload.ts`, which owns the session-based flow:
+Folder drag-drop generates many files at once with potential conflicts. `MultiFileUploadDialog.tsx` displays `features/files/useMultiFileUpload.ts`, which owns the session-based flow. The authenticated upload host mounts the workflow independently of the original file page and its dialog visibility:
 
 1. **Manifest** — frontend collects `{path, size}` for every dropped item, builds `FileUploadTree.tsx`.
 2. **Conflict check** — POST manifest → backend returns `session_id` + conflict list.
@@ -77,6 +77,8 @@ that directory. Expansion does not change overwrite policy.
 The intermediate `FileUploadTree` mirrors the resolved decisions so the user can see exactly what's about to happen before the bytes go up. File trees and upload progress use the shared byte formatter with `0 B` and one decimal place; the search tree supports TB, while table/download defaults retain their separate zero label and precision.
 
 `shared/hooks/usePageDragUpload.ts` is the page-level drop-zone hook — collects dropped files and nested directory entries, then passes them to the dialog flow.
+
+Page drops and the toolbar submit captured server/path/files to the public browser-upload command. Hiding the dialog or navigating to another server preserves transfer and per-file overwrite decisions. The task center reopens the same workflow, including terminal per-file results; partial failures do not show full success. Explicit cancellation stops further requests and preserves confirmed earlier-batch results and already written files. Browser requests remain abortable when the authenticated session ends. See [browser uploads](task-center.md#browser-uploads) for presentation, animation and record cleanup.
 
 ## Deep search
 

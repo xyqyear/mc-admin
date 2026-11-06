@@ -1,5 +1,5 @@
 import { formatFileSize } from '@/shared/utils/formatUtils'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle, Loader2 } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
@@ -22,11 +22,11 @@ import type { OverwritePolicy } from '@/features/files/contracts'
 import { useMultiFileUpload, FILES_PER_BATCH } from '@/features/files/useMultiFileUpload'
 import FileUploadTree from '@/features/files/components/dialogs/FileUploadTree'
 import ConflictTree from '@/features/files/components/dialogs/ConflictTree'
+import { hideUpload, updateUpload } from '@/features/tasks/uploads'
 
 interface MultiFileUploadDialogProps {
   open: boolean
-  onCancel: () => void
-  onComplete: () => void
+  taskId: string
   serverId: string
   basePath: string
   initialFiles?: File[]
@@ -34,18 +34,29 @@ interface MultiFileUploadDialogProps {
 
 const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
   open,
-  onCancel,
-  onComplete,
+  taskId,
   serverId,
   basePath,
   initialFiles
 }) => {
   const {
     uploadState, totalSize, check, start: handleStartUpload,
-    setPolicy: handleOverwritePolicy, cancel: handleCancelUpload, close,
+    setPolicy: handleOverwritePolicy, cancel: handleCancelUpload,
     back: backToSelection,
-  } = useMultiFileUpload(open, serverId, basePath, initialFiles)
+  } = useMultiFileUpload(true, serverId, basePath, initialFiles)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [conflictDecisions, setConflictDecisions] = useState<Record<string, boolean>>({})
+  const handleHide = () => hideUpload(taskId, contentRef.current)
+  useEffect(() => {
+    const failed = Object.values(uploadState.results || {}).filter(result => result.status === 'failed').length
+    const status = uploadState.cancelled ? 'cancelled' : uploadState.error || failed ? 'error' : uploadState.step
+    const messages = { select: '等待开始', checking: '检查冲突中', conflicts: '等待确认覆盖方式', uploading: '正在上传', complete: '上传完成', error: '上传失败', cancelled: '已取消' }
+    updateUpload(taskId, {
+      status, title: uploadState.files[0]?.name || '选择上传文件', fileCount: uploadState.files.length,
+      totalSize, progress: uploadState.uploadProgress?.totalProgress || 0,
+      message: messages[status], detail: uploadState.error || (failed ? `${failed} 个文件失败，请查看上传结果` : undefined),
+    })
+  }, [taskId, uploadState, totalSize])
   const handleCheckConflicts = () => {
     setConflictDecisions({})
     void check()
@@ -216,8 +227,9 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
         return (
           <div className="space-y-4">
             <div className="text-center space-y-2">
-              <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
-              <h4 className="text-lg font-semibold text-green-600">上传完成！</h4>
+              {Object.values(uploadState.results || {}).some(result => result.status === 'failed')
+                ? <><AlertTriangle className="mx-auto h-12 w-12 text-destructive" /><h4 className="text-lg font-semibold text-destructive">部分文件上传失败</h4></>
+                : <><CheckCircle className="mx-auto h-12 w-12 text-green-500" /><h4 className="text-lg font-semibold text-green-600">上传完成！</h4></>}
             </div>
 
             <Card>
@@ -256,7 +268,8 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
       case 'select':
         return (
           <>
-            <Button variant="outline" onClick={handleDialogCancel}>取消</Button>
+            <Button variant="outline" onClick={handleHide}>关闭</Button>
+            {(uploadState.step === 'checking' || uploadState.files.length > 0) && <Button variant="destructive" onClick={handleCancelUpload}>取消上传</Button>}
             <Button
               disabled={uploadState.files.length === 0 || uploadState.step === 'checking'}
               onClick={handleCheckConflicts}
@@ -269,6 +282,7 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
       case 'conflicts':
         return (
           <>
+            <Button variant="destructive" onClick={handleCancelUpload}>取消上传</Button>
             <Button variant="outline" onClick={() => { setConflictDecisions({}); backToSelection() }}>
               返回
             </Button>
@@ -282,16 +296,14 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
         )
       case 'uploading':
         return (
-          <Button variant="destructive" onClick={handleCancelUpload}>
-            取消上传
-          </Button>
+          <>
+            <Button variant="outline" onClick={handleHide}>收起到任务中心</Button>
+            <Button variant="destructive" onClick={handleCancelUpload}>取消上传</Button>
+          </>
         )
       case 'complete':
         return (
-          <Button onClick={() => {
-            handleDialogCancel()
-            onComplete()
-          }}>
+          <Button onClick={handleHide}>
             关闭
           </Button>
         )
@@ -300,18 +312,16 @@ const MultiFileUploadDialog: React.FC<MultiFileUploadDialogProps> = ({
     }
   }
 
-  const handleDialogCancel = () => {
-    close()
-    setConflictDecisions({})
-    onCancel()
-  }
-
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && handleDialogCancel()}>
-      <DialogContent className="sm:max-w-200">
+    <Dialog open={open} onOpenChange={(o) => !o && handleHide()}>
+      <DialogContent ref={contentRef} className="sm:max-w-200" showCloseButton={false} finalFocus={() => document.querySelector<HTMLElement>('[data-task-center-launcher]')}>
         <DialogHeader>
-          <DialogTitle>上传文件和文件夹</DialogTitle>
+          <DialogTitle className="pr-12">上传文件和文件夹</DialogTitle>
+          <Button className="absolute top-2 right-2" variant="ghost" size="sm" onClick={handleHide} aria-label="收起上传窗口">收起</Button>
         </DialogHeader>
+        <p className="text-xs text-muted-foreground">目标：{serverId} · {basePath}。关闭窗口后可在任务中心继续查看。</p>
+        {uploadState.error && <Alert variant="destructive"><AlertDescription>{uploadState.error}</AlertDescription></Alert>}
+        {uploadState.error && Object.keys(uploadState.results || {}).length > 0 && <div className="max-h-40 overflow-y-auto text-sm"><p className="font-medium">已确认的上传结果</p>{Object.entries(uploadState.results || {}).map(([path, result]) => <p key={path}>{path}：{result.status === 'success' ? '成功' : result.status === 'skipped' ? '跳过' : '失败'}</p>)}</div>}
         {renderContent()}
         <DialogFooter>
           {renderFooter()}

@@ -1,22 +1,22 @@
 # Archive Upload Dialog
 
-`ArchiveUploadDialog` renders the local `features/archives/uploads/useArchiveUpload.ts` flow: selecting `.zip` / `.7z` files, sending resumable chunks, pausing/resuming the active upload, and verifying SHA256 after upload.
+`ArchiveUploadDialog` renders `features/archives/uploads/useArchiveUpload.ts`: selecting `.zip` / `.7z` files, sending resumable chunks, pausing/resuming the active upload, and verifying SHA256 after upload. The authenticated application's upload host mounts one workflow per browser upload record; dialog visibility is independent of its lifetime. See [task-center upload ownership](task-center.md#browser-uploads).
 
 ## Upload Flow
 
-The flow hook calls the raw archive API layer directly because upload progress belongs to the dialog lifetime. It owns the fixed file queue, active session, current request, and retry timers. Files and chunks run sequentially; additional page drops cannot replace an active or paused queue. Pause aborts the current request; resume waits for its settlement before reading the authoritative server offset. Closing aborts local observation and cancels an unfinished upload when cancellation is allowed. Unmounting clears timers and browser transfer, but keeps already accepted hash/publication tasks and their input alive. Late callbacks cannot update or resume a replacement run. Browser refresh does not persist upload state.
+The flow hook calls the raw archive API layer directly. It owns the fixed file queue, active session, current request, and retry timers. Files and chunks run sequentially; additional page drops create independent workflows rather than replacing an active or paused queue. Pause aborts the current request; resume waits for its settlement before reading the authoritative server offset. Closing only hides the dialog, including during hashing/publication. Explicit cancellation is available during transfer, retry and pause. Removing a settled record or ending the authenticated session unmounts its controller, clears timers and browser transfer, and keeps already accepted hash/publication tasks and their input alive. Late callbacks cannot update or resume a replacement run. Browser refresh does not persist upload state.
 
 1. `initArchiveUpload` creates a backend upload session.
 2. `uploadArchiveChunk` sends 8 MiB `Blob` slices with the current `Upload-Offset`.
 3. `getArchiveUploadStatus` reads the server offset when resuming or recovering from a `409` offset mismatch.
 4. `verifyArchiveUpload` accepts a publication task after SHA256 comparison; the flow waits for its terminal result.
-5. `cancelArchiveUpload` coordinates explicit cancellation; unmount only cancels browser-owned uploads that have not submitted background work.
+5. `cancelArchiveUpload` coordinates explicit cancellation; authenticated-host teardown only cancels browser-owned uploads that have not submitted background work.
 
 The backend's offset is authoritative. Retryable upload requests use exponential backoff starting at 1 second and capped at 10 seconds, then keep retrying until the request succeeds, the user pauses, or the backend reports that the upload session no longer exists. The retry state shows a countdown and an immediate retry action.
 
 If a retry eventually reaches the backend after the short-lived upload session has expired, the dialog moves into an error state, discards the active session, and lets the user choose an archive again, start a fresh upload, or close the dialog.
 
-Clicking outside the dialog only closes it before an upload starts. Uploading, retrying, paused, failed, verifying, and completed states require an explicit button action.
+Outside clicks, Escape and the shrink button hide started workflows in the task center; unstarted dismissed drafts are discarded. Reopening preserves selected files, overwrite policy and progress without resubmitting. Completed and failed results remain available until cleared.
 
 ## Verification Flow
 

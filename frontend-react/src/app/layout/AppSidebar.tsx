@@ -59,6 +59,7 @@ import { useServers } from '@/features/servers/queries';
 import { useCurrentUser } from '@/features/users/queries'
 import { useSelfCheckHealth } from '@/features/health/useSelfCheckHealth'
 import { authApi } from '@/features/users/auth'
+import { clearBrowserUploads } from '@/features/tasks/uploads'
 import { UserRole } from '@/features/users/contracts'
 import ServerMenuIcon from '@/app/layout/ServerMenuIcon'
 import DebugTool from '@/app/debug/DebugTool'
@@ -89,6 +90,7 @@ const AppSidebar: React.FC = () => {
   }, [location.pathname, updateForNavigation])
 
   const handleLogout = async () => {
+    clearBrowserUploads()
     await authApi.logout().catch(() => undefined)
     queryClient.clear()
     navigate('/login')

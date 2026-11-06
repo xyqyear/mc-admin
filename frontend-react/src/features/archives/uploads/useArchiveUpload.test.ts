@@ -42,6 +42,23 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('archive upload lifecycle', () => {
+  it('explicitly cancels paused transfer and ignores its late completion while retaining the selected files', async () => {
+    const chunk = deferred<{ offset: number; complete: boolean }>()
+    mocks.uploadArchiveChunk.mockReturnValueOnce(chunk.promise)
+    const files = [archive('cancel.zip')]
+    const { result } = renderHook(() => useArchiveUpload(true, files))
+    act(() => result.current.start())
+    await waitFor(() => expect(mocks.uploadArchiveChunk).toHaveBeenCalledTimes(1))
+    act(() => { result.current.pause(); result.current.cancel() })
+    expect(result.current.phase).toBe('cancelled')
+    expect(result.current.uploadFiles).toEqual(files)
+    expect(mocks.cancelArchiveUpload).toHaveBeenCalledWith('cancel.zip')
+    await act(async () => chunk.resolve({ offset: 3, complete: true }))
+    expect(result.current.phase).toBe('cancelled')
+    expect(mocks.hashArchiveUpload).not.toHaveBeenCalled()
+    expect(mocks.verifyArchiveUpload).not.toHaveBeenCalled()
+  })
+
   it('owns one serial queue and keeps new drops out of an active run', async () => {
     const chunk = deferred<{ offset: number; complete: boolean }>()
     mocks.uploadArchiveChunk.mockImplementationOnce(() => chunk.promise)

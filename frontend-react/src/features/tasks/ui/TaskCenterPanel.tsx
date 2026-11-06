@@ -1,16 +1,18 @@
 import React from 'react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/shared/ui/dialog'
-import { X, CloudUpload, Download } from 'lucide-react'
+import { X, CloudUpload, Download, Upload } from 'lucide-react'
 
 import { Card, CardHeader, CardContent, CardTitle } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
-import { useTaskCenterStore } from '@/features/tasks/panelStore'
+import { useTaskCenterStore, type TaskCenterTab } from '@/features/tasks/panelStore'
 import { useActiveTasks } from '@/features/tasks/queries';
 import { useDownloadTasks } from '@/features/tasks/downloadStore'
 import BackgroundTaskList from '@/features/tasks/ui/BackgroundTaskList'
 import DownloadTaskList from '@/features/tasks/ui/DownloadTaskList'
 import { getTaskCenterPanelStyle } from '@/features/tasks/layout'
+import UploadTaskList from './UploadTaskList'
+import { isUploadActive, useUploadStore } from '../uploads'
 
 const TaskCenterPanel: React.FC = () => {
   const {
@@ -23,6 +25,8 @@ const TaskCenterPanel: React.FC = () => {
   } = useTaskCenterStore()
   const { data: activeTasks } = useActiveTasks()
   const downloadTasks = useDownloadTasks()
+  const uploadTasks = useUploadStore(state => state.tasks)
+  const activeUploadCount = uploadTasks.filter(isUploadActive).length
   const [viewportSize, setViewportSize] = React.useState(() => ({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -75,7 +79,7 @@ const TaskCenterPanel: React.FC = () => {
         <CardContent className="p-0">
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as 'background' | 'download')}
+            onValueChange={(v) => setActiveTab(v as TaskCenterTab)}
           >
             <TabsList className="w-full justify-start rounded-none border-b bg-transparent px-3 h-9">
               <TabsTrigger value="background" className="data-[state=active]:shadow-none">
@@ -86,6 +90,10 @@ const TaskCenterPanel: React.FC = () => {
                     {activeBackgroundCount}
                   </span>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="upload" className="data-[state=active]:shadow-none">
+                <Upload className="mr-1 h-3.5 w-3.5" />上传
+                {activeUploadCount > 0 && <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] text-white">{activeUploadCount}</span>}
               </TabsTrigger>
               <TabsTrigger value="download" className="data-[state=active]:shadow-none">
                 <Download className="mr-1 h-3.5 w-3.5" />
@@ -103,6 +111,7 @@ const TaskCenterPanel: React.FC = () => {
             <TabsContent value="download" className="mt-0">
               <DownloadTaskList />
             </TabsContent>
+            <TabsContent value="upload" className="mt-0"><UploadTaskList /></TabsContent>
           </Tabs>
         </CardContent>
       </Card>

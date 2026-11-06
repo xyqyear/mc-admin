@@ -15,6 +15,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert'
 import { Button } from '@/shared/ui/button'
 import { OperationObserver } from '@/app/operations/OperationObserver'
 import { MonitoringObserver } from '@/features/monitoring/ui/MonitoringObserver'
+import { UploadHost } from '@/app/uploads/UploadHost'
+import { clearBrowserUploads } from '@/features/tasks/uploads'
 
 const Login = React.lazy(() => import('@/features/users/LoginScreen'))
 const SelfCheck = React.lazy(() => import('@/features/health/SelfCheckScreen'))
@@ -59,6 +61,7 @@ function ProtectedRoutes() {
     <MainLayout>
       <OperationObserver key={currentUserQuery.data.id} sessionId={String(currentUserQuery.data.id)} />
       <MonitoringObserver key={`monitor-${currentUserQuery.data.id}`} userId={currentUserQuery.data.id} />
+      <UploadHost key={`uploads-${currentUserQuery.data.id}`} />
       <Suspense fallback={<LoadingSpinner />}>
         <Outlet />
       </Suspense>
@@ -99,6 +102,7 @@ function App() {
 
   useEffect(() => {
     const handleAuthExpired = () => {
+      clearBrowserUploads()
       queryClient.clear()
       navigate('/login', { replace: true })
     }

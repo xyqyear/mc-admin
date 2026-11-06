@@ -1,6 +1,6 @@
 # Task Center
 
-The globally mounted task center displays backend tasks and browser downloads across page navigation. `features/tasks/` owns task DTOs, transport, observation, commands, downloads and UI. `app/layout/MainLayout.tsx` mounts its public trigger/panel.
+The globally mounted task center displays backend tasks, browser uploads and browser downloads across page navigation. `features/tasks/` owns task DTOs, transport, observation, commands, browser-transfer records and UI. `app/layout/MainLayout.tsx` mounts its public trigger/panel; authenticated routes mount the upload host.
 
 ## Backend task state
 
@@ -68,7 +68,7 @@ and cache clearing close the old connection and reject late cache writes. Task
 acceptance, cancellation acceptance and 100% progress alone never unblock a
 workflow.
 
-Server controls show the maintenance reason and a task link when available. Creation, map initialization, self-check, DNS and synchronization also discover active work when reopened. Map initialization retains its non-dismissible progress dialog; existing file/upload forms retain their original busy state and terminal behavior. Browser File objects are not persisted by the task center. `openTaskCenter` opens the background tab without giving feature components ownership of panel state. From inside a modal dialog it opens a separate accessible modal task center, with focus and pointer interaction managed by Base UI; closing it returns to the original workflow. Ordinary page launches retain the floating panel so navigation and downloads can continue.
+Server controls show the maintenance reason and a task link when available. Creation, map initialization, self-check, DNS and synchronization also discover active work when reopened. Map initialization retains its non-dismissible progress dialog. Browser upload dialogs can hide independently of execution as described below. Browser File objects are not persisted by the task center. `openTaskCenter` opens the background tab without giving feature components ownership of panel state. From inside a modal dialog it opens a separate accessible modal task center, with focus and pointer interaction managed by Base UI; closing it returns to the original workflow. Ordinary page launches retain the floating panel so navigation and downloads can continue.
 
 ## Completion ownership
 
@@ -82,6 +82,7 @@ closing guards, active discovery and history observation.
 ## Client state
 
 - `panelStore.ts`: panel open state, modal launch mode, active tab and drag position. Only the launcher position persists.
+- `uploads.ts`: transient upload identities, immutable server/path/input, visible workflow and list summaries. Protocol execution remains in file/archive controllers mounted by `app/uploads/UploadHost.tsx`.
 - `downloadStore.ts`: browser download records and live AbortControllers. Directory batches retain fixed byte/file totals after scanning, received bytes, saved/failed file counts, destination and bounded failure/name-mapping details. Persisted in-flight records become cancelled on reload because an HTTP download cannot resume from a serialized controller.
 - `downloads.ts`: public download command adapter; archives and ordinary files supply the HTTP operation and progress callback. Browser-owned directory export supplies a streaming executor and aggregate progress through `executeManagedDownload`.
 
@@ -91,3 +92,11 @@ scanning/transfer state, fixed totals, saved/failed counts and name-mapping
 feedback. It does not own the picker, manifest or file-writing algorithm.
 
 `ui/TaskCenterTrigger.tsx`, `TaskCenterPanel.tsx`, `BackgroundTaskList.tsx`, `BackgroundTaskItem.tsx`, `DownloadTaskList.tsx` and `DownloadTaskItem.tsx` present these states. The public `ui/index.ts` entry is used by the app shell.
+
+## Browser uploads
+
+The public `uploads.ts` commands open file/archive workflows in the authenticated application's stable upload host. One mounted controller owns each record; changing the visible identity does not unmount it. Concurrent workflows capture independent targets and retain their native File objects, overwrite decisions, requests and retry state. The registry stores browser-workflow summaries, not copies of backend task results.
+
+The upload tab and launcher count include running, checking, waiting-for-decision, retrying, paused and verifying workflows. Settled records retain their detailed feature view until individually removed or cleared; clearing never removes active work. Newly dismissed unstarted drafts are discarded. Results and File references remain in memory only until record removal or session teardown. Logout, authentication expiry and authenticated-host unmount clear the registry and abort browser-owned work; accepted server hashing/publication keep their server-owned lifetimes. Reload does not restore browser transfers.
+
+Outside clicks, Escape and explicit shrink controls hide a started upload, select the upload tab and announce its task-center destination. `minimize.ts` animates an inert, accessibility-hidden copy from the dialog's rectangle to the launcher's current rectangle for 360 ms, then removes it. Reduced motion, missing geometry or unavailable animation skips the movement; textual feedback and hiding still work. Focus returns to the launcher. Session teardown also removes animation copies. The file and archive owners document their distinct cancellation and completion guarantees.

@@ -16,6 +16,7 @@ type UploadPhase =
   | 'verifying'
   | 'complete'
   | 'error'
+  | 'cancelled'
 
 interface ActiveUpload {
   uploadId: string
@@ -356,6 +357,10 @@ export function useArchiveUpload(open: boolean, initialFiles?: File[]) {
     runner.current?.abort()
     setView(prev => ({ ...prev, phase: 'paused', retryState: null, statusText: '已暂停' }))
   }
+  const cancel = () => {
+    dispose(true)
+    setView(prev => ({ ...prev, phase: 'cancelled', statusText: '上传已取消', detailText: '已发布的压缩包会保留', retryState: null }))
+  }
   const resume = async () => {
     const ticket = ++action.current
     setView(prev => ({ ...prev, phase: 'uploading', retryState: null }))
@@ -363,13 +368,13 @@ export function useArchiveUpload(open: boolean, initialFiles?: File[]) {
     if (!mounted.current || action.current !== ticket || !queue.current.length) return
     pending.current = runQueue()
   }
-  const canEditFiles = view.phase === 'idle' || view.phase === 'complete' || view.phase === 'error'
+  const canEditFiles = view.phase === 'idle' || view.phase === 'complete' || view.phase === 'error' || view.phase === 'cancelled'
   const addFiles = (files: File[]) => {
     if (runner.current || queue.current.length) return
     const valid = files.filter(isArchive)
     if (valid.length !== files.length) toast.error('只支持 .zip 和 .7z 格式的压缩包')
     if (!valid.length) return
-    setUploadFiles(prev => view.phase === 'complete' || view.phase === 'error' ? valid : [...prev, ...valid])
+    setUploadFiles(prev => view.phase === 'complete' || view.phase === 'error' || view.phase === 'cancelled' ? valid : [...prev, ...valid])
     setView(emptyView())
   }
   const removeFile = (fileIndex: number) => {
@@ -380,7 +385,7 @@ export function useArchiveUpload(open: boolean, initialFiles?: File[]) {
     ...view, uploadFiles, allowOverwrite, setAllowOverwrite, addFiles, removeFile,
     hasValidFiles: uploadFiles.length > 0,
     isWorking: view.phase === 'uploading' || view.phase === 'retrying' || view.phase === 'verifying',
-    canResume: view.phase === 'paused', canDismissByOutside: view.phase === 'idle', canEditFiles,
-    start, pause, resume, close, retryNow: () => retryAction.current?.(),
+    canResume: view.phase === 'paused', canEditFiles,
+    start, pause, resume, cancel, close, retryNow: () => retryAction.current?.(),
   }
 }

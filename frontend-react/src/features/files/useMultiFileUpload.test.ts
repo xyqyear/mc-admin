@@ -28,6 +28,21 @@ beforeEach(() => {
 })
 
 describe('ordinary file upload lifecycle', () => {
+  it('can explicitly cancel pending overwrite decisions without submitting files', async () => {
+    mocks.checkUploadConflicts.mockResolvedValueOnce({ session_id: 'conflict', conflicts: [{ path: 'same.txt', type: 'file' }] })
+    const files = [new File(['replacement'], 'same.txt')]
+    const { result } = renderHook(() => useMultiFileUpload(true, 'server', '/', files))
+    await act(async () => { await result.current.check() })
+    expect(result.current.uploadState.step).toBe('conflicts')
+    act(() => result.current.cancel())
+    expect(result.current.uploadState.cancelled).toBe(true)
+    expect(result.current.uploadState.files).toEqual(files)
+    expect(mocks.uploadFileBatch).not.toHaveBeenCalled()
+    act(() => result.current.setPolicy({ mode: 'always_overwrite' }))
+    await act(async () => { await result.current.start() })
+    expect(mocks.uploadFileBatch).not.toHaveBeenCalled()
+  })
+
   it('treats conflict checking as busy and ignores the result after close', async () => {
     const check = deferred<{ session_id: string; conflicts: never[] }>()
     mocks.checkUploadConflicts.mockImplementationOnce(() => check.promise)

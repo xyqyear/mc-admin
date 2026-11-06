@@ -12,7 +12,6 @@ import ArchiveSelectionDialog from '@/features/archives/ui/ArchiveSelectionDialo
 import PopulateProgressDialog from '@/features/archives/ui/PopulateProgressDialog'
 import DragDropOverlay from '@/shared/components/DragDropOverlay'
 import {
-  MultiFileUploadDialog,
   CreateDialog,
   RenameDialog,
   FileEditDialog,
@@ -49,7 +48,7 @@ const ServerFiles: React.FC = () => {
     ownershipTask,
     handleNavigateToParent,
     handleRefresh,
-    setIsMultiFileUploadDialogOpen,
+    handleUpload,
     setIsCreateDialogOpen,
     handleBatchDeleted,
     directoryDownloadRequest,
@@ -80,10 +79,6 @@ const ServerFiles: React.FC = () => {
     handleFileRename,
     handleFolderOpen,
     handleCompress,
-    isMultiFileUploadDialogOpen,
-    setSelectedUploadFiles,
-    handleMultiFileUploadComplete,
-    selectedUploadFiles,
     isCreateDialogOpen,
     handleCreateFile,
     createFileMutation,
@@ -168,7 +163,7 @@ const ServerFiles: React.FC = () => {
             }}
             onNavigateToParent={handleNavigateToParent}
             onRefresh={handleRefresh}
-            onUpload={() => setIsMultiFileUploadDialogOpen(true)}
+            onUpload={handleUpload}
             onCreateFile={() => setIsCreateDialogOpen(true)}
             onCompressServer={handleCompressServer}
             onReplaceServerFiles={handleReplaceServerFiles}
@@ -239,18 +234,6 @@ const ServerFiles: React.FC = () => {
           </div>
         </CardContent>
       </Card>
-
-      <MultiFileUploadDialog
-        open={isMultiFileUploadDialogOpen}
-        onCancel={() => {
-          setIsMultiFileUploadDialogOpen(false)
-          setSelectedUploadFiles([])
-        }}
-        onComplete={handleMultiFileUploadComplete}
-        serverId={id || ''}
-        basePath={currentPath}
-        initialFiles={selectedUploadFiles}
-      />
 
       <CreateDialog
         open={isCreateDialogOpen}

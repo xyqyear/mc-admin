@@ -67,6 +67,8 @@ The wrapper writes a private `MC_ADMIN_BROWSER_FIXTURE` JSON containing the owne
 
 ## Journey coverage
 
+`uploads.spec.ts` verifies real ordinary-file and archive uploads continue through outside/Escape dismissal, application navigation and task-center reopening without duplicate submission. Delayed transport delivery keeps the frontend active until its real response/result arrives. The ordinary-file case measures the shrinking animation against a dragged launcher; the archive case uses reduced motion. Both verify downloaded bytes independently and await real terminal cleanup.
+
 `monitoring.spec.ts` verifies one periodic monitoring source while sidebar and
 overview are displayed, navigation to details, visible stale values during a
 transport failure, and real stop/start with unavailable then renewed samples.

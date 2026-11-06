@@ -4,7 +4,7 @@ const entryFiles = new Set(['api', 'auth', 'authCommands', 'contracts', 'lifecyc
 const featureEntries = {
   health: ['useSelfCheckHealth'],
   servers: ['presentation'],
-  tasks: ['downloads'],
+  tasks: ['downloads', 'uploads'],
   players: ['identity'],
 }
 const screenEntries = new Set([

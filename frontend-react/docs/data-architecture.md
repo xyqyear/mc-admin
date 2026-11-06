@@ -130,6 +130,7 @@ before an explicit terminal event. See [backend authentication](../../backend/do
 | `features/users/loginPreferenceStore.ts` | Preferred login method |
 | `features/tasks/panelStore.ts` | Panel/tab/drag state; launcher position persists |
 | `features/tasks/downloadStore.ts` | Browser-owned downloads; reload cancels in-flight records |
+| `features/tasks/uploads.ts` | In-memory browser upload records; authenticated host owns controller lifetime across navigation |
 | `features/world/restore/selectionStore.ts` | Transient per-server world selection |
 
 Backend tasks and player profiles remain Query data, not mirrored stores.

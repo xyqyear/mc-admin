@@ -6,7 +6,7 @@ import {
   type TaskCenterTriggerPosition,
 } from '@/features/tasks/layout'
 
-export type TaskCenterTab = 'background' | 'download'
+export type TaskCenterTab = 'background' | 'download' | 'upload'
 
 interface TaskCenterState {
   modal: boolean
