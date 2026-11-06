@@ -112,6 +112,8 @@ selections during new-tab navigation and clear them during ordinary navigation.
 File-tree geometry and Monaco journeys retain their existing action
 assertions while querying navigation entries as links.
 
+The player-card journey establishes its synthetic log session until the real online-player API observes it, so a concurrent Query/RCON reconciliation cannot erase a one-shot fixture before observation. It then independently waits for real reconciliation to remove that session, injects the UI session within the known validation interval, and verifies keyboard opening plus dialog retention after the logout log event. The original player configuration, cache and owned identity are restored during cleanup.
+
 Browser journeys cover file read/save failure with exact-byte retry and deliberately empty saves; real Compose version conflicts and background completion after navigation; session retry/logout and actual console commands after reconnection; disconnected world-task observation with retained blocking, successful backend completion and a later edit that rollback must overwrite from the safety snapshot; and server-enforced prune expiry with unchanged region hashes. Transport faults occur in Playwright routing or an owned HTTP proxy. Version changes, task states, restore history and expiry remain real backend decisions. Each case sets its required lifecycle state and restores it in fixture teardown; file/configuration edits have explicit cleanup. Failure does not skip later cases. `BROWSER_REVERSE_ORDER=1` reverses journey registration to verify independence in a second fresh deployment; local runs retain their explicit related-case selection.
 
 ### Editor behavior

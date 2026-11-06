@@ -20,8 +20,11 @@ test('overview player cards open details by keyboard and retain the dialog after
     }).toBe(200)
     await login(page, owned)
     await page.goto(`/server/${owned.server_id}`)
-    await appendFile(logPath, `[12:00:01] [Server thread/INFO]: ${name}[/127.0.0.1:42] logged in with entity id 2\n`)
-    await expect.poll(async () => (await api.json<Array<{ uuid: string }>>(api.server('/online-players'))).some(player => player.uuid === uuid.replaceAll('-', ''))).toBe(true)
+    // Query/RCON may close the synthetic session before its first HTTP observation.
+    await expect.poll(async () => {
+      await appendFile(logPath, `\n[12:00:01] [Server thread/INFO]: ${name}[/127.0.0.1:42] logged in with entity id 2\n`)
+      return (await api.json<Array<{ uuid: string }>>(api.server('/online-players'))).some(player => player.uuid === uuid.replaceAll('-', ''))
+    }).toBe(true)
     // Observing reconciliation gives the injected session a stable RCON interval for UI assertions.
     await api.json('/api/config/modules/players', 'PUT', { config_data: { ...config.config_data, rcon_validation: { ...(config.config_data.rcon_validation as Record<string, unknown>), validation_interval_seconds: 3600 } } })
     await expect.poll(async () => (await api.json<Array<{ uuid: string }>>(api.server('/online-players'))).some(player => player.uuid === uuid.replaceAll('-', '')), { timeout: 90_000 }).toBe(false)
