@@ -47,5 +47,18 @@ normal run used the rebuilt runner (`e2e-aec070276907`).
 
 ## Delivery qualification
 
-Latest-commit qualification is recorded after the push-triggered workflow
-finishes and its receipt is verified.
+Full qualification passed for implementation commit
+`ce3d82853df1a3e15b30ddf8b79176be9387a930` in
+[run 42497284057](https://github.com/xyqyear/mc-admin/actions/runs/42497284057).
+The downloaded receipt passed `scripts.release.reuse.validate_receipt` and
+declares executed gates `candidate`, `static`, `backend`, `api` and `browser`,
+all successful. Candidate construction includes Go tests; all 15 backend shards,
+six API shards and three browser shards passed. Backend collection/coverage,
+API catalog/cloud-cleanup and browser coverage/cleanup audits passed.
+
+- Verification identity: `65f3fcbb672b7e0bd5be57c6a491a4b5d55f0069ceb1d2ebb37487e3193510c9`
+- Candidate manifest: `sha256:23481aa5ceee827072a7e69c917be5f8f6302b8ee43c5e88c96b316dba568568`
+- Original verification time: `2026-11-08T16:08:52.639094+00:00`
+
+Documentation-only delivery revisions retain this verification identity and
+receive a new SHA-bound receipt through the automatic qualification coordinator.

@@ -14,4 +14,4 @@
 
 - [x] 3.1 Update API E2E callers/scenarios, browser journeys and coverage inventories; verify selected deployed cases and browser scenarios.
 - [x] 3.2 Update current documentation and synchronized-edit instructions; verify indexes, links and OpenSpec validation.
-- [ ] 3.3 Run affected static/build checks and selected tests, commit and push, then obtain successful latest-SHA qualification evidence.
+- [x] 3.3 Run affected static/build checks and selected tests, commit and push, then obtain successful latest-SHA qualification evidence.
