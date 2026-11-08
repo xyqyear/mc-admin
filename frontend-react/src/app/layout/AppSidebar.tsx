@@ -66,6 +66,13 @@ import DebugTool from '@/app/debug/DebugTool'
 
 const SERVER_GROUP_KEY = '服务器管理'
 const ADMIN_GROUP_KEY = '超管'
+const SETTINGS_GROUP_KEY = '系统设置'
+const settingsLinks = [
+  ['DNS 设置', '/settings/dns'], ['快照设置', '/settings/snapshots'],
+  ['日志解析', '/settings/log-parser'], ['玩家设置', '/settings/players'],
+  ['地图渲染', '/settings/mcmap'], ['世界设置', '/settings/world'],
+  ['自检设置', '/settings/self-check'],
+]
 
 const AppSidebar: React.FC = () => {
   const navigate = useNavigate()
@@ -357,16 +364,19 @@ const AppSidebar: React.FC = () => {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isActive('/config')}
-                  render={<Link to="/config" />}
-                  tooltip="动态配置"
-                >
-                  <Settings />
-                  <span>动态配置</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              <Collapsible open={isKeyOpen(SETTINGS_GROUP_KEY)} onOpenChange={() => toggleKey(SETTINGS_GROUP_KEY)}>
+                <SidebarMenuItem>
+                  <SidebarMenuButton onClick={() => toggleKey(SETTINGS_GROUP_KEY)} tooltip="系统设置" isActive={location.pathname.startsWith('/settings/')}>
+                    <Settings /><span>系统设置</span>
+                    <ChevronRight className={cn('ml-auto transition-transform', isKeyOpen(SETTINGS_GROUP_KEY) && 'rotate-90')} />
+                  </SidebarMenuButton>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>{settingsLinks.map(([label, path]) => <SidebarMenuSubItem key={path}>
+                      <SidebarMenuSubButton isActive={isActive(path)} render={<Link to={path} />}><span>{label}</span></SidebarMenuSubButton>
+                    </SidebarMenuSubItem>)}</SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
 
               <SidebarMenuItem>
                 <SidebarMenuButton

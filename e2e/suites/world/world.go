@@ -69,14 +69,12 @@ func (s *scenario) snapshot(ctx context.Context, selection map[string]any) (stri
 }
 
 func (s *scenario) config(ctx context.Context, module string, mutate func(map[string]any)) error {
-	var response struct {
-		Data map[string]any `json:"config_data"`
-	}
-	if err := s.client.JSON(ctx, "GET", "/api/config/modules/"+module, nil, &response, 200); err != nil {
+	var response map[string]any
+	if err := s.client.JSON(ctx, "GET", "/api/settings/"+module, nil, &response, 200); err != nil {
 		return err
 	}
-	mutate(response.Data)
-	return s.client.JSON(ctx, "PUT", "/api/config/modules/"+module, map[string]any{"config_data": response.Data}, nil, 200)
+	mutate(response)
+	return s.client.JSON(ctx, "PUT", "/api/settings/"+module, response, nil, 200)
 }
 
 func (s *scenario) previewRequest(snapshot string, selection map[string]any) map[string]any {

@@ -268,11 +268,11 @@ class TestDeleteTemplate:
         assert test_client.get(f"/api/templates/{template_id}", headers=auth_headers()).status_code == 404
 
 
-class TestTemplateSchema:
-    """Test JSON Schema generation endpoint."""
+class TestTemplateDefinitions:
+    """Test template variable definitions returned to editors."""
 
-    def test_get_json_schema(self, test_client):
-        """Test getting JSON Schema for template."""
+    def test_get_variable_definitions(self, test_client):
+        """Read the constraints authored in the template."""
         create_resp = test_client.post(
             "/api/templates/",
             json={
@@ -292,11 +292,12 @@ class TestTemplateSchema:
         template_id = create_resp.json()["id"]
 
         response = test_client.get(
-            f"/api/templates/{template_id}/schema", headers=auth_headers()
+            f"/api/templates/{template_id}", headers=auth_headers()
         )
         assert response.status_code == 200
-        schema = response.json()["json_schema"]
-        assert schema["properties"]["port"]["type"] == "integer"
+        variable = response.json()["variable_definitions"][0]
+        assert variable["type"] == "int"
+        assert variable["min_value"] == 1024
 
 
 class TestTemplatePreview:

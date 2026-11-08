@@ -120,6 +120,15 @@ Browser journeys cover file read/save failure with exact-byte retry and delibera
 
 The Monaco journey uses the built server Compose and new-template editors without replacing Monaco, workers or schema responses. Real clipboard pastes retain multiline YAML indentation; visible target text must appear before keyboard navigation changes the selection and can cancel asynchronous paste. Invalid YAML produces error decorations, keyboard navigation opens diagnostic hover, valid Compose restores clean diagnostics, and schema hover and `MEMORY` completion exercise the loaded Minecraft schema. Navigating between editors and reopening both verifies worker availability after disposal and remount; worker-related console errors and uncaught exceptions fail the case. Drafts are never submitted, and API reads verify that server configuration and the template list remain unchanged.
 
+### Application settings and typed parameters
+
+The settings journeys exercise dedicated sidebar links, real settings saves,
+parser textareas and the player command editor. Checkbox geometry is verified in
+the deployed page. Template input checks cover typed zero/false, invalid numeric
+values and the actual preview request. The scheduled-job journey verifies that
+Enter in a parameter waits for explicit saving. Each journey restores its settings
+or deletes its created template/schedule through the real API.
+
 ### Directory upload
 
 The directory upload journey selects an owned directory through a native browser `webkitdirectory` input, retaining its real `File` objects, relative paths and bytes. The test driver delivers those files through the document drop handler's files fallback because synthetic drops cannot supply operating-system directory entries. No upload hook, dialog, policy request or multipart request is replaced. Unchecking a directory must submit false decisions for both its immediate and nested descendants while the outside directory stays selected; three files with the same basename retain distinct paths. The final API reads and owned host files prove that unchecked content remains intact and the selected file receives its original upload bytes.

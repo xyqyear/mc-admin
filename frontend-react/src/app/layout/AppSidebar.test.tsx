@@ -76,10 +76,13 @@ it('exposes every navigation destination as a link and preserves exact active ma
   fireEvent.click(await screen.findByRole('button', { name: '超管' }))
   await screen.findByRole('link', { name: '用户管理' })
 
+  fireEvent.click(screen.getByRole('button', { name: '系统设置' }))
   const destinations = [
     ['系统自检', '/'], ['服务器总览', '/overview'], ['服务器模板', '/templates'],
     ['玩家管理', '/players'], ['快照管理', '/snapshots'], ['压缩包管理', '/archives'],
-    ['动态配置', '/config'], ['DNS管理', '/dns'], ['任务管理', '/cron'],
+    ['DNS 设置', '/settings/dns'], ['快照设置', '/settings/snapshots'],
+    ['日志解析', '/settings/log-parser'], ['玩家设置', '/settings/players'],
+    ['地图渲染', '/settings/mcmap'], ['世界设置', '/settings/world'], ['自检设置', '/settings/self-check'], ['DNS管理', '/dns'], ['任务管理', '/cron'],
     ['概览', '/server/alpha'], ['设置', '/server/alpha/compose'],
     ['文件', '/server/alpha/files'], ['控制台', '/server/alpha/console'],
     ['地图回档', '/server/alpha/world-restore'], ['区块清理', '/server/alpha/chunk-prune'],

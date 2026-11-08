@@ -1,61 +1,17 @@
-"""
-Dynamic configuration schemas with support for nested models and deprecated fields.
-"""
+"""Typed runtime configuration with persisted structure versions."""
 
 import hashlib
 import json
-import types
-from typing import Union, get_args, get_origin
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
 
 class BaseConfigSchema(BaseModel):
-    """
-    Base class for all dynamic configuration schemas.
-
-    Provides version management, field metadata extraction, and deprecated field handling.
-    """
+    """Configuration validation and persisted structure-version identity."""
 
     def validate_update(self) -> None:
         """Validate newly submitted settings without changing legacy loading rules."""
-
-    @model_validator(mode="before")
-    @classmethod
-    def _validate_union_fields(cls, values):
-        """Validate that Union fields follow discriminated union conventions."""
-        for field_name, field_info in cls.model_fields.items():
-            origin = get_origin(field_info.annotation)
-
-            # Check if this field is a Union
-            if origin in (Union, types.UnionType):
-                args = get_args(field_info.annotation)
-                non_none_args = [arg for arg in args if arg is not type(None)]
-
-                # Skip optional fields (Union[Type, None])
-                if len(non_none_args) <= 1:
-                    continue
-
-                # Check if all args are BaseConfigSchema subclasses
-                if (
-                    cls._all_base_config_schemas(non_none_args)
-                    and not field_info.discriminator
-                ):
-                    raise ValueError(
-                        f"Union field '{field_name}' with BaseConfigSchema types "
-                        f"must have a discriminator field specified."
-                    )
-
-        return values
-
-    @staticmethod
-    def _all_base_config_schemas(types_list) -> bool:
-        """Check if all types in the list are BaseConfigSchema subclasses."""
-        return all(
-            hasattr(arg, "__bases__") and issubclass(arg, BaseConfigSchema)
-            for arg in types_list
-        )
 
     @classmethod
     def get_schema_version(cls) -> str:

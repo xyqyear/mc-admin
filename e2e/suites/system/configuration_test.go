@@ -15,18 +15,18 @@ func TestConfigurationOracleRejectsBadPersistenceWithoutChangingBaseline(t *test
 		name, get string
 		invalid   bool
 	}{
-		{"invalid update persisted", `{"config_data":{"dns_ttl":90}}`, true},
-		{"missing acknowledged field", `{"config_data":{}}`, false},
-		{"valid persistence", `{"config_data":{"dns_ttl":45}}`, false},
-		{"invalid update rejected", `{"config_data":{"dns_ttl":45}}`, true},
+		{"invalid update persisted", `{"dns_ttl":90}`, true},
+		{"missing acknowledged field", `{}`, false},
+		{"valid persistence", `{"dns_ttl":45}`, false},
+		{"invalid update rejected", `{"dns_ttl":45}`, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/api/config/modules/dns" {
+				if r.URL.Path != "/api/settings/dns" {
 					t.Errorf("unexpected request %s", r.URL)
 				}
 				if r.Method == "PUT" {
-					w.WriteHeader(400)
+					w.WriteHeader(422)
 					_, _ = w.Write([]byte(`{"detail":"invalid"}`))
 					return
 				}

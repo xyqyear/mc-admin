@@ -134,12 +134,6 @@ class TemplateListItem(BaseModel):
     created_at: datetime
 
 
-class TemplateSchemaResponse(BaseModel):
-    template_id: int
-    template_name: str
-    json_schema: dict
-
-
 class AvailablePortsResponse(BaseModel):
     suggested_game_port: int
     suggested_rcon_port: int

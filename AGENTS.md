@@ -49,6 +49,7 @@ Environment setup and binary prerequisites belong to [development](docs/developm
 ## Cross-component rules
 
 - User-facing application text is Chinese, including backend errors, names and descriptions.
+- 修改可编辑的运行时配置时，同步维护后端数据契约、默认值与保存校验、前端契约与配置页面及行为测试；新增设置页面时同步维护导航。
 - Use `uv` for Python and `pnpm` for Node. Use Context7 to resolve and query current library/API documentation; use IDE diagnostics for code issues when that tool is available.
 - Observable backend behavior changes require API E2E coverage in `e2e/suites/` and an update to [the coverage inventory](e2e/docs/coverage.md), including its affected domain page, in the same change.
 - Keep frontend generated shadcn sources under official CLI management. Do not hand-edit, move, delete or reformat them; the [frontend rules](frontend-react/AGENTS.md#generated-ui) define protected paths and commands. These sources are excluded from repository-wide cleanup.

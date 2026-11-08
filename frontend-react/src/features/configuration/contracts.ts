@@ -10,7 +10,6 @@ export interface TemplateConfigResponse {
   yaml_template: string;
   variable_definitions: VariableDefinition[];
   variable_values: Record<string, unknown>;
-  json_schema: Record<string, unknown>;
   snapshot_time: string;
   has_template_update: boolean;
   template_deleted: boolean;
@@ -33,7 +32,6 @@ export interface ExtractVariablesResponse {
   version: string;
   extracted_values: Record<string, unknown>;
   warnings: string[];
-  json_schema: Record<string, unknown>;
   variable_definitions: VariableDefinition[];
   current_compose: string;
   rendered_compose: string;

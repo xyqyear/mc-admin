@@ -23,7 +23,6 @@ class TemplateConfigResponse(BaseModel):
     yaml_template: str
     variable_definitions: list[VariableDefinition]
     variable_values: dict[str, Any]
-    json_schema: dict
     snapshot_time: str
     has_template_update: bool = False
     template_deleted: bool = False
@@ -71,7 +70,6 @@ class ExtractVariablesResponse(BaseModel):
 
     extracted_values: dict[str, Any]
     warnings: list[str]
-    json_schema: dict
     variable_definitions: list[VariableDefinition]
     current_compose: str
     rendered_compose: str

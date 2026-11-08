@@ -141,7 +141,7 @@ func routerTraffic(ctx context.Context, t *engine.Scope) error {
 	port := environment.Get[[]int](t.Env, "ports")[4]
 	host := fixtures.ServerOf(t.Env).ID + ".primary.mc.e2e.invalid"
 	configuration := map[string]any{"enabled": true, "dns": map[string]any{"type": "huawei", "domain": "e2e.invalid", "ak": "synthetic-ak", "sk": "synthetic-sk", "region": "e2e-invalid-region"}, "managed_sub_domain": "mc", "mc_router_base_url": routerEndpoint(t), "addresses": []any{map[string]any{"type": "manual", "name": "primary", "record_type": "A", "value": "127.0.0.1", "port": port}}}
-	if err = client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": configuration}, nil, 200); err != nil {
+	if err = client.JSON(ctx, "PUT", "/api/settings/dns", configuration, nil, 200); err != nil {
 		return err
 	}
 	return t.Step("unavailable cloud does not prevent real Minecraft routing and drift repair", func() error {

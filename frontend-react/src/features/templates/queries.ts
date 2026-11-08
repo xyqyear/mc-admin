@@ -21,17 +21,6 @@ export const useTemplate = (id: number | null) => {
   });
 };
 
-export const useTemplateSchema = (id: number | null) => {
-  return useQuery({
-    queryKey: queryKeys.templates.schema(id!),
-    queryFn: () => templateApi.getTemplateSchema(id!),
-    enabled: id !== null,
-    // Schemas rarely change.
-    staleTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-};
-
 export const useAvailablePorts = (enabled: boolean = true) => {
   return useQuery({
     queryKey: queryKeys.templates.availablePorts(),

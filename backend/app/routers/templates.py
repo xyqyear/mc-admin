@@ -25,7 +25,6 @@ from ..templates import (
     TemplatePreviewRequest,
     TemplatePreviewResponse,
     TemplateResponse,
-    TemplateSchemaResponse,
     TemplateUpdateRequest,
     check_name_exists,
     deserialize_variable_definitions_json,
@@ -294,30 +293,6 @@ async def delete_template(
         raise HTTPException(status_code=404, detail="模板不存在")
 
     await delete_template_crud(db, template)
-
-
-@router.get("/{template_id}/schema", response_model=TemplateSchemaResponse)
-async def get_template_schema(
-    template_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: UserPublic = Depends(get_current_user),
-):
-    """Get JSON Schema for template variables (for rjsf form rendering)."""
-    template = await get_template_by_id(db, template_id)
-
-    if not template:
-        raise HTTPException(status_code=404, detail="模板不存在")
-
-    user_variables = deserialize_variable_definitions_json(
-        template.variable_definitions_json
-    )
-    json_schema = TemplateManager.generate_json_schema(user_variables)
-
-    return TemplateSchemaResponse(
-        template_id=template.id,
-        template_name=template.name,
-        json_schema=json_schema,
-    )
 
 
 @router.post("/{template_id}/preview", response_model=TemplatePreviewResponse)

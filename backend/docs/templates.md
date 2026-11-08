@@ -27,7 +27,6 @@ Pure functions, no state:
 - `extract_variables_from_yaml(yaml)` → `set[str]` — finds every `{name}` placeholder.
 - `validate_template(yaml, variables)` → `list[str]` errors. Every YAML placeholder must have a definition, every definition must appear in the YAML, and names cannot repeat. Once those checks pass, validate game-port initialization through `app.minecraft.game_port`.
 - `render_yaml(yaml, values)` → `str`. Substitutes `{var}`; raises on missing.
-- `generate_json_schema(variables)` → dict. rjsf-compatible JSON Schema; the frontend's `SchemaForm` renders the variable form from this.
 - `validate_variable_values(variables, values)` → `list[str]` errors.
 - `get_default_values(variables)` → `dict`.
 - `extract_variables_from_compose(yaml_template, compose_yaml, variables)` → `(values, warnings)`. Reverse-extraction: line-by-line regex match against the template to infer what a hand-edited compose's variable values would be. Used by the direct-→-template mode conversion.

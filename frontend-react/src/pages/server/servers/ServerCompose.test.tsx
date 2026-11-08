@@ -14,9 +14,6 @@ vi.mock('@/shared/editors/index', () => ({
   MonacoDiffEditor: ({ original, modified }: { original: string; modified: string }) =>
     <div aria-label="比较结果">{original} → {modified}</div>,
 }))
-vi.mock('@/shared/forms/rjsfTheme', () => ({ default: ({ formData, onChange }: {
-  formData: Record<string, string>; onChange: (event: { formData: Record<string, string> }) => void
-}) => <input aria-label="模板参数" value={formData.memory ?? ''} onChange={event => onChange({ formData: { memory: event.target.value } })} /> }))
 vi.mock('@/features/configuration/components/RebuildProgressDialog', () => ({ default: () => null }))
 vi.mock('@/features/configuration/components/ConvertModeDialog', () => ({ default: () => null }))
 vi.mock('@/shared/editors/DockerComposeHelpDialog', () => ({ default: () => null }))
@@ -32,7 +29,7 @@ beforeEach(() => {
   adapter.mockImplementation(async config => {
     if (config.url.endsWith('/compose')) return httpResponse(config, { yaml_content: remote, version: remote || "empty" })
     if (config.url.endsWith('/template-config/preview')) return httpResponse(config, { is_template_based: templateMode })
-    if (config.url.endsWith('/template-config')) return httpResponse(config, { version: remote || "empty", template_id: 1, variable_values: { memory: remote }, json_schema: {}, template_name: 'template' })
+    if (config.url.endsWith('/template-config')) return httpResponse(config, { version: remote || "empty", template_id: 1, variable_values: { memory: remote }, variable_definitions: [{ type: 'string', name: 'memory', display_name: '模板参数' }], template_name: 'template' })
     return httpResponse(config, { serverType: 'vanilla', name: 'server' })
   })
 })

@@ -176,46 +176,6 @@
         "session_or_master"
       ],
       "method": "GET",
-      "path": "/api/config/modules"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/config/modules/{module_name}"
-    },
-    {
-      "cookie_csrf": true,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "PUT",
-      "path": "/api/config/modules/{module_name}"
-    },
-    {
-      "cookie_csrf": true,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "POST",
-      "path": "/api/config/modules/{module_name}/reset"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/config/modules/{module_name}/schema"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
       "path": "/api/cron/"
     },
     {
@@ -955,6 +915,174 @@
         "session_or_master"
       ],
       "method": "GET",
+      "path": "/api/settings/dns"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "PUT",
+      "path": "/api/settings/dns"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/settings/dns/reset"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/settings/log-parser"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "PUT",
+      "path": "/api/settings/log-parser"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/settings/log-parser/reset"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/settings/mcmap"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "PUT",
+      "path": "/api/settings/mcmap"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/settings/mcmap/reset"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/settings/players"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "PUT",
+      "path": "/api/settings/players"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/settings/players/reset"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/settings/self-check"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "PUT",
+      "path": "/api/settings/self-check"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/settings/self-check/reset"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/settings/snapshots"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "PUT",
+      "path": "/api/settings/snapshots"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/settings/snapshots/reset"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
+      "path": "/api/settings/world"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "PUT",
+      "path": "/api/settings/world"
+    },
+    {
+      "cookie_csrf": true,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "POST",
+      "path": "/api/settings/world/reset"
+    },
+    {
+      "cookie_csrf": false,
+      "declared_authorization": [
+        "session_or_master"
+      ],
+      "method": "GET",
       "path": "/api/snapshots"
     },
     {
@@ -1242,14 +1370,6 @@
       ],
       "method": "POST",
       "path": "/api/templates/{template_id}/preview"
-    },
-    {
-      "cookie_csrf": false,
-      "declared_authorization": [
-        "session_or_master"
-      ],
-      "method": "GET",
-      "path": "/api/templates/{template_id}/schema"
     },
     {
       "cookie_csrf": false,
@@ -2614,6 +2734,216 @@
           "title": "BackgroundTaskSummaryResponse",
           "type": "object"
         },
+        "BackupCronJobInput": {
+          "properties": {
+            "cron": {
+              "title": "Cron",
+              "type": "string"
+            },
+            "cronjob_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cronjob Id"
+            },
+            "identifier": {
+              "const": "backup",
+              "title": "Identifier",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "params": {
+              "$ref": "#/components/schemas/BackupJobParams"
+            },
+            "second": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Second"
+            }
+          },
+          "required": [
+            "cron",
+            "identifier",
+            "params"
+          ],
+          "title": "BackupCronJobInput",
+          "type": "object"
+        },
+        "BackupJobParams": {
+          "description": "备份定时任务参数。",
+          "properties": {
+            "enable_forget": {
+              "default": true,
+              "description": "是否在备份后运行 restic forget。",
+              "title": "运行 forget",
+              "type": "boolean"
+            },
+            "keep_daily": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "在最近 n 天内每天保留一次。",
+              "title": "每天保留"
+            },
+            "keep_hourly": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "在最近 n 小时内每小时保留一次。",
+              "title": "每小时保留"
+            },
+            "keep_last": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "保留最近的 n 个快照。",
+              "title": "保留最近快照数"
+            },
+            "keep_monthly": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "在最近 n 月内每月保留一次。",
+              "title": "每月保留"
+            },
+            "keep_tag": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "保留带有这些标签的所有快照。",
+              "title": "保留标签"
+            },
+            "keep_weekly": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "在最近 n 周内每周保留一次。",
+              "title": "每周保留"
+            },
+            "keep_within": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "在指定时长内保留所有快照，例如 \"4d\" 或 \"2y5m7d3h\"。",
+              "title": "按时间范围保留"
+            },
+            "keep_yearly": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "在最近 n 年内每年保留一次。",
+              "title": "每年保留"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "服务器数据目录内的可选路径。",
+              "title": "备份路径"
+            },
+            "prune": {
+              "default": true,
+              "description": "是否在 forget 后运行 restic prune。",
+              "title": "运行 prune",
+              "type": "boolean"
+            },
+            "server_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选要备份的服务器；留空表示备份所有服务器。",
+              "title": "服务器 ID"
+            },
+            "uptimekuma_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Uptime Kuma 推送监控 URL，可选。",
+              "title": "Uptime Kuma 推送 URL"
+            }
+          },
+          "title": "备份任务参数",
+          "type": "object"
+        },
         "Body_login_for_access_token_auth_token_post": {
           "properties": {
             "client_id": {
@@ -2671,6 +3001,56 @@
             "password"
           ],
           "title": "Body_login_for_access_token_auth_token_post",
+          "type": "object"
+        },
+        "BoolVariableDefinition": {
+          "properties": {
+            "default": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "display_name": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Display Name",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 50,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "const": "bool",
+              "default": "bool",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "display_name"
+          ],
+          "title": "BoolVariableDefinition",
           "type": "object"
         },
         "ByteCounters": {
@@ -2898,6 +3278,281 @@
           "title": "CreateSnapshotRequest",
           "type": "object"
         },
+        "CronJobResponse": {
+          "description": "Response model for cron job information.",
+          "properties": {
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "cron": {
+              "title": "Cron",
+              "type": "string"
+            },
+            "cronjob_id": {
+              "title": "Cronjob Id",
+              "type": "string"
+            },
+            "execution_count": {
+              "title": "Execution Count",
+              "type": "integer"
+            },
+            "identifier": {
+              "title": "Identifier",
+              "type": "string"
+            },
+            "is_system": {
+              "title": "Is System",
+              "type": "boolean"
+            },
+            "managed_purpose": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Managed Purpose"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "params": {
+              "additionalProperties": true,
+              "title": "Params",
+              "type": "object"
+            },
+            "registration_error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Registration Error"
+            },
+            "registration_status": {
+              "default": "pending",
+              "enum": [
+                "registered",
+                "pending",
+                "failed",
+                "inactive"
+              ],
+              "title": "Registration Status",
+              "type": "string"
+            },
+            "second": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Second"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cronjob_id",
+            "identifier",
+            "name",
+            "cron",
+            "params",
+            "execution_count",
+            "is_system",
+            "status",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "CronJobResponse",
+          "type": "object"
+        },
+        "CronJobStatus": {
+          "enum": [
+            "active",
+            "paused",
+            "cancelled"
+          ],
+          "title": "CronJobStatus",
+          "type": "string"
+        },
+        "DNSManagerConfig": {
+          "properties": {
+            "addresses": {
+              "description": "手动地址配置列表。",
+              "items": {
+                "$ref": "#/components/schemas/Manual"
+              },
+              "title": "地址配置列表",
+              "type": "array"
+            },
+            "dns": {
+              "default": {
+                "ak": "id",
+                "domain": "example.com",
+                "region": "cn-south-1",
+                "sk": "key",
+                "type": "huawei"
+              },
+              "description": "DNS 提供商配置。",
+              "discriminator": {
+                "mapping": {
+                  "dnspod": "#/components/schemas/DNSPod",
+                  "huawei": "#/components/schemas/Huawei"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Huawei"
+                },
+                {
+                  "$ref": "#/components/schemas/DNSPod"
+                }
+              ],
+              "title": "DNS 提供商配置"
+            },
+            "dns_ttl": {
+              "default": 15,
+              "description": "DNS TTL（生存时间）值。",
+              "title": "DNS 生存时间",
+              "type": "integer"
+            },
+            "enabled": {
+              "default": false,
+              "description": "是否启用 DNS 管理器。",
+              "title": "启用 DNS 管理",
+              "type": "boolean"
+            },
+            "managed_sub_domain": {
+              "default": "mc",
+              "description": "由 MC Admin 管理的子域名。",
+              "title": "托管子域名",
+              "type": "string"
+            },
+            "mc_router_base_url": {
+              "default": "http://127.0.0.1:26666",
+              "description": "mc-router 的基础 URL。",
+              "title": "mc-router 基础 URL",
+              "type": "string"
+            }
+          },
+          "title": "DNS 管理配置",
+          "type": "object"
+        },
+        "DNSPod": {
+          "properties": {
+            "domain": {
+              "default": "example.com",
+              "description": "要管理的域名。",
+              "title": "域名",
+              "type": "string"
+            },
+            "id": {
+              "default": "id",
+              "description": "用于访问 DNSPod API 的 ID。",
+              "title": "DNSPod API 标识",
+              "type": "string"
+            },
+            "key": {
+              "default": "key",
+              "description": "DNSPod API 密钥。",
+              "title": "DNSPod API 密钥",
+              "type": "string"
+            },
+            "type": {
+              "const": "dnspod",
+              "default": "dnspod",
+              "description": "DNS 提供商的类型。",
+              "title": "DNS 提供商类型",
+              "type": "string"
+            }
+          },
+          "title": "DNSPod 配置",
+          "type": "object"
+        },
+        "DNSSettingsUpdate": {
+          "additionalProperties": false,
+          "properties": {
+            "addresses": {
+              "description": "手动地址配置列表。",
+              "items": {
+                "$ref": "#/components/schemas/Manual"
+              },
+              "title": "地址配置列表",
+              "type": "array"
+            },
+            "dns": {
+              "default": {
+                "ak": "id",
+                "domain": "example.com",
+                "region": "cn-south-1",
+                "sk": "key",
+                "type": "huawei"
+              },
+              "description": "DNS 提供商配置。",
+              "discriminator": {
+                "mapping": {
+                  "dnspod": "#/components/schemas/DNSPod",
+                  "huawei": "#/components/schemas/Huawei"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Huawei"
+                },
+                {
+                  "$ref": "#/components/schemas/DNSPod"
+                }
+              ],
+              "title": "DNS 提供商配置"
+            },
+            "dns_ttl": {
+              "default": 15,
+              "description": "DNS TTL（生存时间）值。",
+              "title": "DNS 生存时间",
+              "type": "integer"
+            },
+            "enabled": {
+              "default": false,
+              "description": "是否启用 DNS 管理器。",
+              "title": "启用 DNS 管理",
+              "type": "boolean"
+            },
+            "managed_sub_domain": {
+              "default": "mc",
+              "description": "由 MC Admin 管理的子域名。",
+              "title": "托管子域名",
+              "type": "string"
+            },
+            "mc_router_base_url": {
+              "default": "http://127.0.0.1:26666",
+              "description": "mc-router 的基础 URL。",
+              "title": "mc-router 基础 URL",
+              "type": "string"
+            }
+          },
+          "title": "DNS 管理配置",
+          "type": "object"
+        },
         "DiskUsage": {
           "properties": {
             "available": {
@@ -2995,6 +3650,151 @@
           "title": "DownloadManifestResponse",
           "type": "object"
         },
+        "EnumVariableDefinition": {
+          "properties": {
+            "default": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "display_name": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Display Name",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 50,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "options": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Options",
+              "type": "array"
+            },
+            "type": {
+              "const": "enum",
+              "default": "enum",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "display_name",
+            "options"
+          ],
+          "title": "EnumVariableDefinition",
+          "type": "object"
+        },
+        "ExtractVariablesRequest": {
+          "description": "Request model for extracting variables.",
+          "properties": {
+            "template_id": {
+              "title": "Template Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "template_id"
+          ],
+          "title": "ExtractVariablesRequest",
+          "type": "object"
+        },
+        "ExtractVariablesResponse": {
+          "description": "Response model for extracted variables.",
+          "properties": {
+            "current_compose": {
+              "title": "Current Compose",
+              "type": "string"
+            },
+            "extracted_values": {
+              "additionalProperties": true,
+              "title": "Extracted Values",
+              "type": "object"
+            },
+            "rendered_compose": {
+              "title": "Rendered Compose",
+              "type": "string"
+            },
+            "variable_definitions": {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "bool": "#/components/schemas/BoolVariableDefinition",
+                    "enum": "#/components/schemas/EnumVariableDefinition",
+                    "float": "#/components/schemas/FloatVariableDefinition",
+                    "int": "#/components/schemas/IntVariableDefinition",
+                    "string": "#/components/schemas/StringVariableDefinition"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/IntVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FloatVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StringVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/EnumVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BoolVariableDefinition"
+                  }
+                ]
+              },
+              "title": "Variable Definitions",
+              "type": "array"
+            },
+            "version": {
+              "title": "Version",
+              "type": "string"
+            },
+            "warnings": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Warnings",
+              "type": "array"
+            }
+          },
+          "required": [
+            "extracted_values",
+            "warnings",
+            "variable_definitions",
+            "current_compose",
+            "rendered_compose",
+            "version"
+          ],
+          "title": "ExtractVariablesResponse",
+          "type": "object"
+        },
         "FileContent": {
           "properties": {
             "content": {
@@ -3083,6 +3883,78 @@
           "title": "FilePathsRequest",
           "type": "object"
         },
+        "FloatVariableDefinition": {
+          "properties": {
+            "default": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "display_name": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Display Name",
+              "type": "string"
+            },
+            "max_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Value"
+            },
+            "min_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Value"
+            },
+            "name": {
+              "maxLength": 50,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "const": "float",
+              "default": "float",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "display_name"
+          ],
+          "title": "FloatVariableDefinition",
+          "type": "object"
+        },
         "GlobalScope": {
           "additionalProperties": false,
           "properties": {
@@ -3107,6 +3979,137 @@
             }
           },
           "title": "HTTPValidationError",
+          "type": "object"
+        },
+        "HeartbeatConfig": {
+          "description": "Heartbeat and crash recovery configuration.",
+          "properties": {
+            "crash_threshold_minutes": {
+              "default": 5,
+              "description": "系统崩溃检测阈值（分钟）。如果最后心跳超过此时间则认为系统崩溃",
+              "maximum": 60.0,
+              "minimum": 1.0,
+              "title": "崩溃检测阈值",
+              "type": "integer"
+            },
+            "heartbeat_interval_seconds": {
+              "default": 60,
+              "description": "心跳更新间隔（秒）",
+              "minimum": 10.0,
+              "title": "心跳更新间隔",
+              "type": "integer"
+            }
+          },
+          "title": "心跳与崩溃恢复配置",
+          "type": "object"
+        },
+        "Huawei": {
+          "properties": {
+            "ak": {
+              "default": "id",
+              "description": "华为云访问密钥 ID。",
+              "title": "访问密钥 ID",
+              "type": "string"
+            },
+            "domain": {
+              "default": "example.com",
+              "description": "要管理的域名。",
+              "title": "域名",
+              "type": "string"
+            },
+            "region": {
+              "default": "cn-south-1",
+              "description": "华为云 DNS 区域。",
+              "title": "DNS 区域",
+              "type": "string"
+            },
+            "sk": {
+              "default": "key",
+              "description": "华为云秘密访问密钥。",
+              "title": "秘密访问密钥",
+              "type": "string"
+            },
+            "type": {
+              "const": "huawei",
+              "default": "huawei",
+              "description": "DNS 提供商的类型。",
+              "title": "DNS 提供商类型",
+              "type": "string"
+            }
+          },
+          "title": "华为云 DNS 配置",
+          "type": "object"
+        },
+        "IntVariableDefinition": {
+          "properties": {
+            "default": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "display_name": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Display Name",
+              "type": "string"
+            },
+            "max_value": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Value"
+            },
+            "min_value": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Value"
+            },
+            "name": {
+              "maxLength": 50,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "const": "int",
+              "default": "int",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "display_name"
+          ],
+          "title": "IntVariableDefinition",
           "type": "object"
         },
         "ListRestorationsResponse": {
@@ -3162,6 +4165,100 @@
           "title": "ListSnapshotsResponse",
           "type": "object"
         },
+        "LogParserConfig": {
+          "description": "Configuration for Minecraft server log parsing patterns.",
+          "properties": {
+            "achievement_patterns": {
+              "description": "正则表达式模式列表，用于解析玩家获得成就事件",
+              "items": {
+                "type": "string"
+              },
+              "title": "成就解析规则",
+              "type": "array"
+            },
+            "chat_pattern": {
+              "default": "^(?:\\[(?:[^\\[\\]\\r\\n]|\\[[^\\[\\]\\r\\n]*\\])*\\][ \\t]*)+:[ \\t]*(\\[Not Secure\\] )?<(\\S+)> (.*)$",
+              "description": "正则表达式模式；第 1 组为可选前缀，第 2 组为玩家名，第 3 组为消息",
+              "title": "聊天消息解析规则",
+              "type": "string"
+            },
+            "join_pattern": {
+              "default": "^(?!.*<)(?:\\[(?:[^\\[\\]\\r\\n]|\\[[^\\[\\]\\r\\n]*\\])*\\][ \\t]*)+:[ \\t]*([^\\s()[\\]{}:/<>]+)\\[(?:/[^\\r\\n]*|IP hidden|local)\\] logged in with entity id -?\\d+(?: in (?:world|DIM-?\\d+)\\(-?\\d+\\))?(?: at \\(.+\\))?$",
+              "description": "正则表达式模式，用于解析玩家加入事件",
+              "title": "玩家加入解析规则",
+              "type": "string"
+            },
+            "leave_pattern": {
+              "default": "^(?!.*<)(?:\\[[^\\]\\r\\n]*\\][ \\t]*)+:[ \\t]*(?!\\d{1,3}(?:\\.\\d{1,3}){3} lost connection: )([^\\s()[\\]{}:/]+) lost connection: (.*)$",
+              "description": "正则表达式模式，用于解析玩家离开事件",
+              "title": "玩家离开解析规则",
+              "type": "string"
+            },
+            "server_stop_pattern": {
+              "default": "^(?!.*<)(?:\\[(?:[^\\[\\]\\r\\n]|\\[[^\\[\\]\\r\\n]*\\])*\\][ \\t]*)+:[ \\t]*(?:Stopping server(?:\\ \\(Ignore\\ any\\ thread\\ death\\ message\\ you\\ see!\\ \\-\\ DO\\ NOT\\ REPORT\\ THREAD\\ DEATH\\ TO\\ PAPER\\))?|Startup script '[^'\\r\\n]+' does not exist! Stopping server\\.)$",
+              "description": "正则表达式模式，用于检测服务器停止事件",
+              "title": "服务器停止解析规则",
+              "type": "string"
+            },
+            "uuid_patterns": {
+              "description": "正则表达式模式列表，用于解析玩家UUID信息",
+              "items": {
+                "type": "string"
+              },
+              "title": "UUID 解析规则",
+              "type": "array"
+            }
+          },
+          "title": "日志解析配置",
+          "type": "object"
+        },
+        "LogParserSettingsUpdate": {
+          "additionalProperties": false,
+          "properties": {
+            "achievement_patterns": {
+              "description": "正则表达式模式列表，用于解析玩家获得成就事件",
+              "items": {
+                "type": "string"
+              },
+              "title": "成就解析规则",
+              "type": "array"
+            },
+            "chat_pattern": {
+              "default": "^(?:\\[(?:[^\\[\\]\\r\\n]|\\[[^\\[\\]\\r\\n]*\\])*\\][ \\t]*)+:[ \\t]*(\\[Not Secure\\] )?<(\\S+)> (.*)$",
+              "description": "正则表达式模式；第 1 组为可选前缀，第 2 组为玩家名，第 3 组为消息",
+              "title": "聊天消息解析规则",
+              "type": "string"
+            },
+            "join_pattern": {
+              "default": "^(?!.*<)(?:\\[(?:[^\\[\\]\\r\\n]|\\[[^\\[\\]\\r\\n]*\\])*\\][ \\t]*)+:[ \\t]*([^\\s()[\\]{}:/<>]+)\\[(?:/[^\\r\\n]*|IP hidden|local)\\] logged in with entity id -?\\d+(?: in (?:world|DIM-?\\d+)\\(-?\\d+\\))?(?: at \\(.+\\))?$",
+              "description": "正则表达式模式，用于解析玩家加入事件",
+              "title": "玩家加入解析规则",
+              "type": "string"
+            },
+            "leave_pattern": {
+              "default": "^(?!.*<)(?:\\[[^\\]\\r\\n]*\\][ \\t]*)+:[ \\t]*(?!\\d{1,3}(?:\\.\\d{1,3}){3} lost connection: )([^\\s()[\\]{}:/]+) lost connection: (.*)$",
+              "description": "正则表达式模式，用于解析玩家离开事件",
+              "title": "玩家离开解析规则",
+              "type": "string"
+            },
+            "server_stop_pattern": {
+              "default": "^(?!.*<)(?:\\[(?:[^\\[\\]\\r\\n]|\\[[^\\[\\]\\r\\n]*\\])*\\][ \\t]*)+:[ \\t]*(?:Stopping server(?:\\ \\(Ignore\\ any\\ thread\\ death\\ message\\ you\\ see!\\ \\-\\ DO\\ NOT\\ REPORT\\ THREAD\\ DEATH\\ TO\\ PAPER\\))?|Startup script '[^'\\r\\n]+' does not exist! Stopping server\\.)$",
+              "description": "正则表达式模式，用于检测服务器停止事件",
+              "title": "服务器停止解析规则",
+              "type": "string"
+            },
+            "uuid_patterns": {
+              "description": "正则表达式模式列表，用于解析玩家UUID信息",
+              "items": {
+                "type": "string"
+              },
+              "title": "UUID 解析规则",
+              "type": "array"
+            }
+          },
+          "title": "日志解析配置",
+          "type": "object"
+        },
         "LoginResponse": {
           "properties": {
             "user": {
@@ -3172,6 +4269,53 @@
             "user"
           ],
           "title": "LoginResponse",
+          "type": "object"
+        },
+        "MCMapConfig": {
+          "description": "Server map (mcmap) rendering configuration.",
+          "properties": {
+            "batch_size": {
+              "default": 16,
+              "description": "单次调用 mcmap 时最多渲染的 region 数量。",
+              "maximum": 256.0,
+              "minimum": 1.0,
+              "title": "单次渲染区域上限",
+              "type": "integer"
+            },
+            "prune_default_threshold_seconds": {
+              "default": 30,
+              "description": "区块清理页面默认使用的低活跃时间阈值，执行时会转换为 Minecraft tick。",
+              "maximum": 31536000.0,
+              "minimum": 0.0,
+              "title": "区块清理默认阈值",
+              "type": "integer"
+            },
+            "prune_preview_ttl_seconds": {
+              "default": 1800,
+              "description": "裁剪预览完成后可用于提交应用的最长秒数，过期需重新预览。",
+              "maximum": 86400.0,
+              "minimum": 1.0,
+              "title": "裁剪预览有效期",
+              "type": "integer"
+            },
+            "request_timeout_seconds": {
+              "default": 30,
+              "description": "瓦片 HTTP 请求等待渲染完成的最长秒数。",
+              "maximum": 600.0,
+              "minimum": 1.0,
+              "title": "瓦片请求超时时间",
+              "type": "integer"
+            },
+            "thread_count": {
+              "default": 4,
+              "description": "传递给 mcmap -j 参数的工作线程数量。",
+              "maximum": 64.0,
+              "minimum": 1.0,
+              "title": "渲染线程数",
+              "type": "integer"
+            }
+          },
+          "title": "地图渲染配置",
           "type": "object"
         },
         "MCServerStatus": {
@@ -3185,6 +4329,95 @@
           ],
           "title": "MCServerStatus",
           "type": "string"
+        },
+        "Manual": {
+          "properties": {
+            "name": {
+              "default": "*",
+              "description": "地址名称。",
+              "title": "地址名称",
+              "type": "string"
+            },
+            "port": {
+              "default": 25565,
+              "description": "服务器端口号。",
+              "title": "端口号",
+              "type": "integer"
+            },
+            "record_type": {
+              "default": "A",
+              "description": "DNS 记录的类型。",
+              "enum": [
+                "A",
+                "AAAA",
+                "CNAME"
+              ],
+              "title": "DNS 记录类型",
+              "type": "string"
+            },
+            "type": {
+              "const": "manual",
+              "default": "manual",
+              "description": "地址配置的类型。",
+              "title": "地址配置类型",
+              "type": "string"
+            },
+            "value": {
+              "default": "127.0.0.1",
+              "description": "IP 地址或 CNAME 目标。",
+              "title": "记录值",
+              "type": "string"
+            }
+          },
+          "title": "手动地址配置",
+          "type": "object"
+        },
+        "MapSettingsUpdate": {
+          "additionalProperties": false,
+          "properties": {
+            "batch_size": {
+              "default": 16,
+              "description": "单次调用 mcmap 时最多渲染的 region 数量。",
+              "maximum": 256.0,
+              "minimum": 1.0,
+              "title": "单次渲染区域上限",
+              "type": "integer"
+            },
+            "prune_default_threshold_seconds": {
+              "default": 30,
+              "description": "区块清理页面默认使用的低活跃时间阈值，执行时会转换为 Minecraft tick。",
+              "maximum": 31536000.0,
+              "minimum": 0.0,
+              "title": "区块清理默认阈值",
+              "type": "integer"
+            },
+            "prune_preview_ttl_seconds": {
+              "default": 1800,
+              "description": "裁剪预览完成后可用于提交应用的最长秒数，过期需重新预览。",
+              "maximum": 86400.0,
+              "minimum": 1.0,
+              "title": "裁剪预览有效期",
+              "type": "integer"
+            },
+            "request_timeout_seconds": {
+              "default": 30,
+              "description": "瓦片 HTTP 请求等待渲染完成的最长秒数。",
+              "maximum": 600.0,
+              "minimum": 1.0,
+              "title": "瓦片请求超时时间",
+              "type": "integer"
+            },
+            "thread_count": {
+              "default": 4,
+              "description": "传递给 mcmap -j 参数的工作线程数量。",
+              "maximum": 64.0,
+              "minimum": 1.0,
+              "title": "渲染线程数",
+              "type": "integer"
+            }
+          },
+          "title": "地图渲染配置",
+          "type": "object"
         },
         "MemoryUsage": {
           "properties": {
@@ -3349,6 +4582,143 @@
           "title": "PathsScope",
           "type": "object"
         },
+        "PlayerSettingsUpdate": {
+          "additionalProperties": false,
+          "properties": {
+            "heartbeat": {
+              "$ref": "#/components/schemas/HeartbeatConfig",
+              "default": {
+                "crash_threshold_minutes": 5,
+                "heartbeat_interval_seconds": 60
+              },
+              "description": "心跳和崩溃恢复配置",
+              "title": "心跳和崩溃恢复"
+            },
+            "ignored_name_prefixes": {
+              "default": [
+                "bot_"
+              ],
+              "description": "不写入玩家数据库的玩家名前缀列表，忽略大小写，默认包含 bot_",
+              "items": {
+                "type": "string"
+              },
+              "title": "忽略的玩家名前缀",
+              "type": "array"
+            },
+            "query": {
+              "$ref": "#/components/schemas/QueryConfig",
+              "default": {
+                "query_command": "exec 3<>/dev/udp/localhost/25565 && printf \"\\xfe\\xfd\\x09\\x00\\x00\\x00\\x01\" >&3 && c=$(dd bs=1024 count=1 <&3 2>/dev/null | tail -c +6 | tr -d \"\\0\") && b1=$(printf \"%02x\" $((c>>24&255))) && b2=$(printf \"%02x\" $((c>>16&255))) && b3=$(printf \"%02x\" $((c>>8&255))) && b4=$(printf \"%02x\" $((c&255))) && printf \"\\xfe\\xfd\\x00\\x00\\x00\\x00\\x01\\x$b1\\x$b2\\x$b3\\x$b4\\x00\\x00\\x00\\x00\" >&3 && dd bs=4096 count=1 <&3 2>/dev/null | tail -c +17 | tr \"\\0\" \"\\n\" | awk \"/player_/{f=1;next}f&&NF\" && exec 3>&-",
+                "timeout": 0.25
+              },
+              "description": "Query协议配置",
+              "title": "Query 协议"
+            },
+            "rcon_validation": {
+              "$ref": "#/components/schemas/RconValidationConfig",
+              "default": {
+                "validation_interval_seconds": 60
+              },
+              "description": "RCON玩家状态验证配置",
+              "title": "RCON 玩家状态验证"
+            },
+            "skin_fetcher": {
+              "$ref": "#/components/schemas/SkinFetcherConfig",
+              "default": {
+                "request_timeout_seconds": 10
+              },
+              "description": "玩家皮肤获取配置",
+              "title": "玩家皮肤获取"
+            }
+          },
+          "title": "玩家系统配置",
+          "type": "object"
+        },
+        "PlayersConfig": {
+          "description": "玩家系统配置。",
+          "properties": {
+            "heartbeat": {
+              "$ref": "#/components/schemas/HeartbeatConfig",
+              "default": {
+                "crash_threshold_minutes": 5,
+                "heartbeat_interval_seconds": 60
+              },
+              "description": "心跳和崩溃恢复配置",
+              "title": "心跳和崩溃恢复"
+            },
+            "ignored_name_prefixes": {
+              "default": [
+                "bot_"
+              ],
+              "description": "不写入玩家数据库的玩家名前缀列表，忽略大小写，默认包含 bot_",
+              "items": {
+                "type": "string"
+              },
+              "title": "忽略的玩家名前缀",
+              "type": "array"
+            },
+            "query": {
+              "$ref": "#/components/schemas/QueryConfig",
+              "default": {
+                "query_command": "exec 3<>/dev/udp/localhost/25565 && printf \"\\xfe\\xfd\\x09\\x00\\x00\\x00\\x01\" >&3 && c=$(dd bs=1024 count=1 <&3 2>/dev/null | tail -c +6 | tr -d \"\\0\") && b1=$(printf \"%02x\" $((c>>24&255))) && b2=$(printf \"%02x\" $((c>>16&255))) && b3=$(printf \"%02x\" $((c>>8&255))) && b4=$(printf \"%02x\" $((c&255))) && printf \"\\xfe\\xfd\\x00\\x00\\x00\\x00\\x01\\x$b1\\x$b2\\x$b3\\x$b4\\x00\\x00\\x00\\x00\" >&3 && dd bs=4096 count=1 <&3 2>/dev/null | tail -c +17 | tr \"\\0\" \"\\n\" | awk \"/player_/{f=1;next}f&&NF\" && exec 3>&-",
+                "timeout": 0.25
+              },
+              "description": "Query协议配置",
+              "title": "Query 协议"
+            },
+            "rcon_validation": {
+              "$ref": "#/components/schemas/RconValidationConfig",
+              "default": {
+                "validation_interval_seconds": 60
+              },
+              "description": "RCON玩家状态验证配置",
+              "title": "RCON 玩家状态验证"
+            },
+            "skin_fetcher": {
+              "$ref": "#/components/schemas/SkinFetcherConfig",
+              "default": {
+                "request_timeout_seconds": 10
+              },
+              "description": "玩家皮肤获取配置",
+              "title": "玩家皮肤获取"
+            }
+          },
+          "title": "玩家系统配置",
+          "type": "object"
+        },
+        "QueryConfig": {
+          "description": "Query 协议玩家列表配置。",
+          "properties": {
+            "query_command": {
+              "default": "exec 3<>/dev/udp/localhost/25565 && printf \"\\xfe\\xfd\\x09\\x00\\x00\\x00\\x01\" >&3 && c=$(dd bs=1024 count=1 <&3 2>/dev/null | tail -c +6 | tr -d \"\\0\") && b1=$(printf \"%02x\" $((c>>24&255))) && b2=$(printf \"%02x\" $((c>>16&255))) && b3=$(printf \"%02x\" $((c>>8&255))) && b4=$(printf \"%02x\" $((c&255))) && printf \"\\xfe\\xfd\\x00\\x00\\x00\\x00\\x01\\x$b1\\x$b2\\x$b3\\x$b4\\x00\\x00\\x00\\x00\" >&3 && dd bs=4096 count=1 <&3 2>/dev/null | tail -c +17 | tr \"\\0\" \"\\n\" | awk \"/player_/{f=1;next}f&&NF\" && exec 3>&-",
+              "description": "Query协议获取玩家列表的bash命令模板，其中25565会被替换为实际的query端口",
+              "title": "Query 命令模板",
+              "type": "string"
+            },
+            "timeout": {
+              "default": 0.25,
+              "description": "使用Query协议获取玩家列表的超时",
+              "title": "Query 请求超时",
+              "type": "number"
+            }
+          },
+          "title": "Query 协议配置",
+          "type": "object"
+        },
+        "RconValidationConfig": {
+          "description": "RCON 玩家状态验证配置。",
+          "properties": {
+            "validation_interval_seconds": {
+              "default": 60,
+              "description": "RCON验证间隔（秒）。定期通过RCON查询验证玩家在线状态",
+              "minimum": 30.0,
+              "title": "RCON 验证间隔",
+              "type": "integer"
+            }
+          },
+          "title": "RCON 玩家状态验证配置",
+          "type": "object"
+        },
         "RebuildResponse": {
           "properties": {
             "task_id": {
@@ -3360,6 +4730,75 @@
             "task_id"
           ],
           "title": "RebuildResponse",
+          "type": "object"
+        },
+        "RegisteredCronJobResponse": {
+          "description": "Response model for registered cron job information.",
+          "properties": {
+            "default_cron": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Cron"
+            },
+            "default_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Name"
+            },
+            "default_params": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Params"
+            },
+            "default_second": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default Second"
+            },
+            "description": {
+              "title": "Description",
+              "type": "string"
+            },
+            "identifier": {
+              "title": "Identifier",
+              "type": "string"
+            },
+            "is_system": {
+              "title": "Is System",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "identifier",
+            "description",
+            "is_system"
+          ],
+          "title": "RegisteredCronJobResponse",
           "type": "object"
         },
         "ResourcePublic": {
@@ -3402,6 +4841,62 @@
             "path"
           ],
           "title": "ResourcePublic",
+          "type": "object"
+        },
+        "RestartCronJobInput": {
+          "properties": {
+            "cron": {
+              "title": "Cron",
+              "type": "string"
+            },
+            "cronjob_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cronjob Id"
+            },
+            "identifier": {
+              "const": "restart_server",
+              "title": "Identifier",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "params": {
+              "$ref": "#/components/schemas/ServerRestartParams"
+            },
+            "second": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Second"
+            }
+          },
+          "required": [
+            "cron",
+            "identifier",
+            "params"
+          ],
+          "title": "RestartCronJobInput",
           "type": "object"
         },
         "RestartScheduleRequest": {
@@ -4257,6 +5752,333 @@
           "title": "Sample[tuple[float, float, float]]",
           "type": "object"
         },
+        "SelfCheckConfig": {
+          "properties": {
+            "backup_mod_ids": {
+              "description": "用于识别服务器内备份 Mod 或插件的 jar 元数据 ID，大小写不敏感。",
+              "items": {
+                "type": "string"
+              },
+              "title": "备份 Mod/插件 ID",
+              "type": "array"
+            },
+            "backup_repository_usage_percent": {
+              "default": 85.0,
+              "description": "Restic 备份仓库所在磁盘使用率达到该百分比时发出警告。",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "备份仓库磁盘使用率阈值",
+              "type": "number"
+            },
+            "checks": {
+              "$ref": "#/components/schemas/SelfCheckEnabledChecksConfig",
+              "description": "控制每一个系统自检项是否运行。"
+            },
+            "event_triggers": {
+              "$ref": "#/components/schemas/SelfCheckEventTriggerConfig",
+              "default": {
+                "after_server_created": true,
+                "after_server_populated": true,
+                "after_world_restored": true,
+                "after_world_rolled_back": true
+              },
+              "description": "控制哪些系统事件完成后自动运行自检。",
+              "title": "事件触发开关"
+            },
+            "permission_scan_max_entries": {
+              "default": 20000,
+              "description": "每台服务器最多记录的所有者 UID 异常文件数量。",
+              "minimum": 100.0,
+              "title": "所有者扫描最大异常数",
+              "type": "integer"
+            },
+            "retention_runs_keep_days": {
+              "default": 14,
+              "description": "自检运行历史在数据库中保留的天数。",
+              "minimum": 1.0,
+              "title": "自检历史保留天数",
+              "type": "integer"
+            },
+            "server_directory_usage_percent": {
+              "default": 85.0,
+              "description": "服务器目录所在磁盘使用率达到该百分比时发出警告。",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "服务器目录磁盘使用率阈值",
+              "type": "number"
+            },
+            "snapshot_freshness_minutes": {
+              "default": 30,
+              "description": "覆盖服务器的最新快照允许的最大年龄（分钟）。",
+              "minimum": 1.0,
+              "title": "快照新鲜度上限",
+              "type": "integer"
+            }
+          },
+          "title": "系统自检配置",
+          "type": "object"
+        },
+        "SelfCheckCronJobInput": {
+          "properties": {
+            "cron": {
+              "title": "Cron",
+              "type": "string"
+            },
+            "cronjob_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cronjob Id"
+            },
+            "identifier": {
+              "const": "self_check",
+              "title": "Identifier",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "params": {
+              "$ref": "#/components/schemas/SelfCheckJobParams"
+            },
+            "second": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Second"
+            }
+          },
+          "required": [
+            "cron",
+            "identifier",
+            "params"
+          ],
+          "title": "SelfCheckCronJobInput",
+          "type": "object"
+        },
+        "SelfCheckEnabledChecksConfig": {
+          "properties": {
+            "backup_restic_configured": {
+              "default": true,
+              "description": "是否检查 Restic 相关配置是否存在。",
+              "title": "Restic 配置",
+              "type": "boolean"
+            },
+            "backup_restic_reachable": {
+              "default": true,
+              "description": "是否检查 Restic 仓库是否可以查询。",
+              "title": "Restic 仓库连通性",
+              "type": "boolean"
+            },
+            "backup_server_snapshot_coverage": {
+              "default": true,
+              "description": "是否检查每台运行中服务器是否至少被一个快照覆盖。",
+              "title": "服务器快照覆盖",
+              "type": "boolean"
+            },
+            "backup_server_snapshot_freshness": {
+              "default": true,
+              "description": "是否检查已覆盖服务器的最新快照是否足够新。",
+              "title": "服务器快照新鲜度",
+              "type": "boolean"
+            },
+            "dependency_binaries": {
+              "default": true,
+              "description": "是否检查系统所需的命令行程序是否可用。",
+              "title": "命令行依赖",
+              "type": "boolean"
+            },
+            "dns_drift": {
+              "default": true,
+              "description": "是否检查 DNS 记录和 MC Router 路由是否与运行中服务器一致。",
+              "title": "DNS 状态漂移",
+              "type": "boolean"
+            },
+            "files_permission_consistency": {
+              "default": true,
+              "description": "是否检查服务器文件的所有者 UID 是否与服务器根目录一致。",
+              "title": "文件所有者一致性",
+              "type": "boolean"
+            },
+            "locks_python_restic_active": {
+              "default": true,
+              "description": "是否展示 Python 代码中当前活动的备份或恢复锁。",
+              "title": "Python Restic 操作锁",
+              "type": "boolean"
+            },
+            "locks_repo_restic_active": {
+              "default": true,
+              "description": "是否展示 Restic 仓库内部当前活动的锁条目。",
+              "title": "Restic 仓库锁",
+              "type": "boolean"
+            },
+            "log_monitor_active": {
+              "default": true,
+              "description": "是否检查运行中服务器是否都有活动的日志监控任务。",
+              "title": "日志监控状态",
+              "type": "boolean"
+            },
+            "server_backup_mod_removed": {
+              "default": true,
+              "description": "是否检查服务器 mods/plugins 目录中是否仍存在已知备份 Mod 或插件。",
+              "title": "备份 Mod 清理",
+              "type": "boolean"
+            },
+            "server_filesystem_db_sync": {
+              "default": true,
+              "description": "是否检查文件系统中的服务器目录是否与数据库中的活动服务器记录一致。",
+              "title": "文件系统与数据库同步",
+              "type": "boolean"
+            },
+            "server_game_port_consistency": {
+              "default": true,
+              "description": "是否比较 server.properties 的游戏端口与 Compose 容器目标端口。",
+              "title": "游戏端口一致性",
+              "type": "boolean"
+            },
+            "storage_backup_repository_usage": {
+              "default": true,
+              "description": "是否检查 Restic 备份仓库所在磁盘的使用率。",
+              "title": "备份仓库磁盘使用率",
+              "type": "boolean"
+            },
+            "storage_server_directory_usage": {
+              "default": true,
+              "description": "是否检查服务器目录所在磁盘的使用率。",
+              "title": "服务器目录磁盘使用率",
+              "type": "boolean"
+            }
+          },
+          "title": "自检项开关",
+          "type": "object"
+        },
+        "SelfCheckEventTriggerConfig": {
+          "properties": {
+            "after_server_created": {
+              "default": true,
+              "description": "服务器创建完成后自动运行系统自检。",
+              "title": "创建服务器后自检",
+              "type": "boolean"
+            },
+            "after_server_populated": {
+              "default": true,
+              "description": "服务器文件填充完成后自动运行系统自检。",
+              "title": "填充服务器文件后自检",
+              "type": "boolean"
+            },
+            "after_world_restored": {
+              "default": true,
+              "description": "世界恢复完成后自动运行系统自检。",
+              "title": "恢复世界后自检",
+              "type": "boolean"
+            },
+            "after_world_rolled_back": {
+              "default": true,
+              "description": "世界回档完成后自动运行系统自检。",
+              "title": "回档后自检",
+              "type": "boolean"
+            }
+          },
+          "title": "事件触发自检配置",
+          "type": "object"
+        },
+        "SelfCheckJobParams": {
+          "properties": {
+            "scope": {
+              "default": "global",
+              "description": "自动自检任务的检查范围；当前固定为全局自检。",
+              "title": "检查范围",
+              "type": "string"
+            }
+          },
+          "title": "系统自检任务参数",
+          "type": "object"
+        },
+        "SelfCheckSettingsUpdate": {
+          "additionalProperties": false,
+          "properties": {
+            "backup_mod_ids": {
+              "description": "用于识别服务器内备份 Mod 或插件的 jar 元数据 ID，大小写不敏感。",
+              "items": {
+                "type": "string"
+              },
+              "title": "备份 Mod/插件 ID",
+              "type": "array"
+            },
+            "backup_repository_usage_percent": {
+              "default": 85.0,
+              "description": "Restic 备份仓库所在磁盘使用率达到该百分比时发出警告。",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "备份仓库磁盘使用率阈值",
+              "type": "number"
+            },
+            "checks": {
+              "$ref": "#/components/schemas/SelfCheckEnabledChecksConfig",
+              "description": "控制每一个系统自检项是否运行。"
+            },
+            "event_triggers": {
+              "$ref": "#/components/schemas/SelfCheckEventTriggerConfig",
+              "default": {
+                "after_server_created": true,
+                "after_server_populated": true,
+                "after_world_restored": true,
+                "after_world_rolled_back": true
+              },
+              "description": "控制哪些系统事件完成后自动运行自检。",
+              "title": "事件触发开关"
+            },
+            "permission_scan_max_entries": {
+              "default": 20000,
+              "description": "每台服务器最多记录的所有者 UID 异常文件数量。",
+              "minimum": 100.0,
+              "title": "所有者扫描最大异常数",
+              "type": "integer"
+            },
+            "retention_runs_keep_days": {
+              "default": 14,
+              "description": "自检运行历史在数据库中保留的天数。",
+              "minimum": 1.0,
+              "title": "自检历史保留天数",
+              "type": "integer"
+            },
+            "server_directory_usage_percent": {
+              "default": 85.0,
+              "description": "服务器目录所在磁盘使用率达到该百分比时发出警告。",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "服务器目录磁盘使用率阈值",
+              "type": "number"
+            },
+            "snapshot_freshness_minutes": {
+              "default": 30,
+              "description": "覆盖服务器的最新快照允许的最大年龄（分钟）。",
+              "minimum": 1.0,
+              "title": "快照新鲜度上限",
+              "type": "integer"
+            }
+          },
+          "title": "系统自检配置",
+          "type": "object"
+        },
         "ServerInfo": {
           "properties": {
             "gamePort": {
@@ -4373,6 +6195,21 @@
           "title": "ServerOperation",
           "type": "object"
         },
+        "ServerRestartParams": {
+          "description": "服务器重启任务参数。",
+          "properties": {
+            "server_id": {
+              "description": "要重启的服务器 ID。",
+              "title": "服务器 ID",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id"
+          ],
+          "title": "服务器重启任务参数",
+          "type": "object"
+        },
         "ServerSamples": {
           "properties": {
             "cpu_percent": {
@@ -4436,6 +6273,20 @@
             "server_id"
           ],
           "title": "ServerScope",
+          "type": "object"
+        },
+        "SkinFetcherConfig": {
+          "description": "玩家皮肤获取配置。",
+          "properties": {
+            "request_timeout_seconds": {
+              "default": 10,
+              "description": "Mojang API请求超时时间（秒）",
+              "minimum": 5.0,
+              "title": "Mojang API 请求超时",
+              "type": "integer"
+            }
+          },
+          "title": "玩家皮肤获取配置",
           "type": "object"
         },
         "SnapshotRestoreSource": {
@@ -4524,6 +6375,44 @@
           "title": "SnapshotRestoreSource",
           "type": "object"
         },
+        "SnapshotSettingsUpdate": {
+          "additionalProperties": false,
+          "properties": {
+            "ignored_paths": {
+              "default": [
+                ".mcmap"
+              ],
+              "description": "相对于服务器数据目录的路径列表；普通备份时排除这些路径，文件恢复时不会覆盖或删除它们。地图快照及回档功能不应用此处的排除设置。支持 <LEVEL_NAME> 占位符（须为完整路径段），展开为 server.properties 中的 level-name。不支持通配符。",
+              "items": {
+                "type": "string"
+              },
+              "title": "忽略路径",
+              "type": "array"
+            },
+            "time_restriction": {
+              "$ref": "#/components/schemas/TimeRestrictionConfig",
+              "default": {
+                "after_seconds": 60,
+                "before_seconds": 30,
+                "enabled": true
+              },
+              "description": "快照创建时间限制配置",
+              "title": "时间限制"
+            },
+            "world_restore": {
+              "$ref": "#/components/schemas/WorldRestoreConfig",
+              "default": {
+                "preview_avg_region_bytes": 8388608,
+                "preview_janitor_interval_seconds": 60,
+                "preview_session_ttl_seconds": 1800
+              },
+              "description": "世界恢复临时目录与预览会话配置",
+              "title": "世界恢复预览"
+            }
+          },
+          "title": "快照管理配置",
+          "type": "object"
+        },
         "SnapshotTargetCheck": {
           "properties": {
             "allowed": {
@@ -4609,6 +6498,116 @@
             "task_id"
           ],
           "title": "SnapshotTaskAccepted",
+          "type": "object"
+        },
+        "SnapshotsConfig": {
+          "description": "快照管理系统配置",
+          "properties": {
+            "ignored_paths": {
+              "default": [
+                ".mcmap"
+              ],
+              "description": "相对于服务器数据目录的路径列表；普通备份时排除这些路径，文件恢复时不会覆盖或删除它们。地图快照及回档功能不应用此处的排除设置。支持 <LEVEL_NAME> 占位符（须为完整路径段），展开为 server.properties 中的 level-name。不支持通配符。",
+              "items": {
+                "type": "string"
+              },
+              "title": "忽略路径",
+              "type": "array"
+            },
+            "time_restriction": {
+              "$ref": "#/components/schemas/TimeRestrictionConfig",
+              "default": {
+                "after_seconds": 60,
+                "before_seconds": 30,
+                "enabled": true
+              },
+              "description": "快照创建时间限制配置",
+              "title": "时间限制"
+            },
+            "world_restore": {
+              "$ref": "#/components/schemas/WorldRestoreConfig",
+              "default": {
+                "preview_avg_region_bytes": 8388608,
+                "preview_janitor_interval_seconds": 60,
+                "preview_session_ttl_seconds": 1800
+              },
+              "description": "世界恢复临时目录与预览会话配置",
+              "title": "世界恢复预览"
+            }
+          },
+          "title": "快照管理配置",
+          "type": "object"
+        },
+        "StringVariableDefinition": {
+          "properties": {
+            "default": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Default"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "display_name": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Display Name",
+              "type": "string"
+            },
+            "max_length": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Length"
+            },
+            "name": {
+              "maxLength": 50,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "pattern": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pattern"
+            },
+            "type": {
+              "const": "string",
+              "default": "string",
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "display_name"
+          ],
+          "title": "StringVariableDefinition",
           "type": "object"
         },
         "SyncRequest": {
@@ -4703,6 +6702,327 @@
           "title": "TaskType",
           "type": "string"
         },
+        "TemplateConfigResponse": {
+          "description": "Response model for template configuration.",
+          "properties": {
+            "has_template_update": {
+              "default": false,
+              "title": "Has Template Update",
+              "type": "boolean"
+            },
+            "server_id": {
+              "title": "Server Id",
+              "type": "string"
+            },
+            "snapshot_time": {
+              "title": "Snapshot Time",
+              "type": "string"
+            },
+            "template_deleted": {
+              "default": false,
+              "title": "Template Deleted",
+              "type": "boolean"
+            },
+            "template_id": {
+              "title": "Template Id",
+              "type": "integer"
+            },
+            "template_name": {
+              "title": "Template Name",
+              "type": "string"
+            },
+            "variable_definitions": {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "bool": "#/components/schemas/BoolVariableDefinition",
+                    "enum": "#/components/schemas/EnumVariableDefinition",
+                    "float": "#/components/schemas/FloatVariableDefinition",
+                    "int": "#/components/schemas/IntVariableDefinition",
+                    "string": "#/components/schemas/StringVariableDefinition"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/IntVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FloatVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StringVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/EnumVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BoolVariableDefinition"
+                  }
+                ]
+              },
+              "title": "Variable Definitions",
+              "type": "array"
+            },
+            "variable_values": {
+              "additionalProperties": true,
+              "title": "Variable Values",
+              "type": "object"
+            },
+            "version": {
+              "title": "Version",
+              "type": "string"
+            },
+            "yaml_template": {
+              "title": "Yaml Template",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_id",
+            "template_id",
+            "template_name",
+            "yaml_template",
+            "variable_definitions",
+            "variable_values",
+            "snapshot_time",
+            "version"
+          ],
+          "title": "TemplateConfigResponse",
+          "type": "object"
+        },
+        "TemplateConfigUpdateRequest": {
+          "description": "Request model for updating template configuration.",
+          "properties": {
+            "expected_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Version"
+            },
+            "variable_values": {
+              "additionalProperties": true,
+              "title": "Variable Values",
+              "type": "object"
+            }
+          },
+          "required": [
+            "variable_values"
+          ],
+          "title": "TemplateConfigUpdateRequest",
+          "type": "object"
+        },
+        "TemplateConfigUpdateResponse": {
+          "description": "Response model for template configuration update.",
+          "properties": {
+            "task_id": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "title": "TemplateConfigUpdateResponse",
+          "type": "object"
+        },
+        "TemplateResponse": {
+          "properties": {
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            },
+            "variable_definitions": {
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "bool": "#/components/schemas/BoolVariableDefinition",
+                    "enum": "#/components/schemas/EnumVariableDefinition",
+                    "float": "#/components/schemas/FloatVariableDefinition",
+                    "int": "#/components/schemas/IntVariableDefinition",
+                    "string": "#/components/schemas/StringVariableDefinition"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/IntVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FloatVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StringVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/EnumVariableDefinition"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BoolVariableDefinition"
+                  }
+                ]
+              },
+              "title": "Variable Definitions",
+              "type": "array"
+            },
+            "yaml_template": {
+              "title": "Yaml Template",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "yaml_template",
+            "variable_definitions",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "TemplateResponse",
+          "type": "object"
+        },
+        "TemplateUpdateRequest": {
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "variable_definitions": {
+              "anyOf": [
+                {
+                  "items": {
+                    "discriminator": {
+                      "mapping": {
+                        "bool": "#/components/schemas/BoolVariableDefinition",
+                        "enum": "#/components/schemas/EnumVariableDefinition",
+                        "float": "#/components/schemas/FloatVariableDefinition",
+                        "int": "#/components/schemas/IntVariableDefinition",
+                        "string": "#/components/schemas/StringVariableDefinition"
+                      },
+                      "propertyName": "type"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/IntVariableDefinition"
+                      },
+                      {
+                        "$ref": "#/components/schemas/FloatVariableDefinition"
+                      },
+                      {
+                        "$ref": "#/components/schemas/StringVariableDefinition"
+                      },
+                      {
+                        "$ref": "#/components/schemas/EnumVariableDefinition"
+                      },
+                      {
+                        "$ref": "#/components/schemas/BoolVariableDefinition"
+                      }
+                    ]
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variable Definitions"
+            },
+            "yaml_template": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Yaml Template"
+            }
+          },
+          "title": "TemplateUpdateRequest",
+          "type": "object"
+        },
+        "TimeRestrictionConfig": {
+          "description": "快照创建时间限制配置。",
+          "properties": {
+            "after_seconds": {
+              "default": 60,
+              "description": "备份时间后多少秒禁止创建快照",
+              "maximum": 300.0,
+              "minimum": 0.0,
+              "title": "备份后禁止秒数",
+              "type": "integer"
+            },
+            "before_seconds": {
+              "default": 30,
+              "description": "备份时间前多少秒禁止创建快照",
+              "maximum": 300.0,
+              "minimum": 0.0,
+              "title": "备份前禁止秒数",
+              "type": "integer"
+            },
+            "enabled": {
+              "default": true,
+              "description": "是否启用快照创建时间限制",
+              "title": "启用时间限制",
+              "type": "boolean"
+            }
+          },
+          "title": "快照创建时间限制",
+          "type": "object"
+        },
         "UpdateSnapshotNoteRequest": {
           "additionalProperties": false,
           "properties": {
@@ -4794,6 +7114,65 @@
           "title": "ValidationError",
           "type": "object"
         },
+        "WorldConfig": {
+          "description": "世界目录识别与区域清单配置。",
+          "properties": {
+            "dimension_labels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "维度显示名称映射; 键为相对世界根目录的维度路径, 根维度使用 '.'",
+              "title": "维度显示名称",
+              "type": "object"
+            },
+            "dimension_max_depth_from_world_root": {
+              "default": 4,
+              "description": "扫描 region 目录时, 维度目录相对世界根目录的最大深度",
+              "maximum": 32.0,
+              "minimum": 0.0,
+              "title": "维度扫描最大深度",
+              "type": "integer"
+            },
+            "region_stat_workers": {
+              "default": 32,
+              "description": "生成区域清单时并发 stat MCA 文件的最大线程数",
+              "maximum": 256.0,
+              "minimum": 1.0,
+              "title": "区域清单扫描线程数",
+              "type": "integer"
+            }
+          },
+          "title": "世界数据配置",
+          "type": "object"
+        },
+        "WorldRestoreConfig": {
+          "description": "世界恢复(临时目录与预览会话)配置子模型",
+          "properties": {
+            "preview_avg_region_bytes": {
+              "default": 8388608,
+              "description": "预览磁盘空间估算中每个 MCA region 的平均字节数",
+              "minimum": 1.0,
+              "title": "预览平均 region 字节数",
+              "type": "integer"
+            },
+            "preview_janitor_interval_seconds": {
+              "default": 60,
+              "description": "预览清理任务的轮询间隔(秒)",
+              "minimum": 10.0,
+              "title": "预览清理轮询间隔",
+              "type": "integer"
+            },
+            "preview_session_ttl_seconds": {
+              "default": 1800,
+              "description": "预览会话存活时间(秒);超过此时间未心跳的会话会被清理",
+              "minimum": 60.0,
+              "title": "预览会话存活时间",
+              "type": "integer"
+            }
+          },
+          "title": "世界恢复预览配置",
+          "type": "object"
+        },
         "WorldScope": {
           "additionalProperties": false,
           "properties": {
@@ -4816,6 +7195,37 @@
             "selection"
           ],
           "title": "WorldScope",
+          "type": "object"
+        },
+        "WorldSettingsUpdate": {
+          "additionalProperties": false,
+          "properties": {
+            "dimension_labels": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "维度显示名称映射; 键为相对世界根目录的维度路径, 根维度使用 '.'",
+              "title": "维度显示名称",
+              "type": "object"
+            },
+            "dimension_max_depth_from_world_root": {
+              "default": 4,
+              "description": "扫描 region 目录时, 维度目录相对世界根目录的最大深度",
+              "maximum": 32.0,
+              "minimum": 0.0,
+              "title": "维度扫描最大深度",
+              "type": "integer"
+            },
+            "region_stat_workers": {
+              "default": 32,
+              "description": "生成区域清单时并发 stat MCA 文件的最大线程数",
+              "maximum": 256.0,
+              "minimum": 1.0,
+              "title": "区域清单扫描线程数",
+              "type": "integer"
+            }
+          },
+          "title": "世界数据配置",
           "type": "object"
         }
       }
@@ -5521,6 +7931,259 @@
           }
         }
       },
+      "/cron/": {
+        "get": {
+          "parameters": [
+            {
+              "description": "Filter by job type identifier",
+              "in": "query",
+              "name": "identifier",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Filter by job type identifier",
+                "title": "Identifier"
+              }
+            },
+            {
+              "description": "Filter by job status (default: active and paused jobs)",
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "schema": {
+                "default": [
+                  "active",
+                  "paused"
+                ],
+                "description": "Filter by job status (default: active and paused jobs)",
+                "items": {
+                  "$ref": "#/components/schemas/CronJobStatus"
+                },
+                "title": "Status",
+                "type": "array"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/CronJobResponse"
+                    },
+                    "title": "Response List Cronjobs Cron  Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "backup": "#/components/schemas/BackupCronJobInput",
+                      "restart_server": "#/components/schemas/RestartCronJobInput",
+                      "self_check": "#/components/schemas/SelfCheckCronJobInput"
+                    },
+                    "propertyName": "identifier"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RestartCronJobInput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BackupCronJobInput"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SelfCheckCronJobInput"
+                    }
+                  ],
+                  "title": "Request"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "additionalProperties": true,
+                    "title": "Response Create Cronjob Cron  Post",
+                    "type": "object"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/cron/registered": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/RegisteredCronJobResponse"
+                    },
+                    "title": "Response List Registered Cronjobs Cron Registered Get",
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
       "/dns/update": {
         "post": {
           "parameters": [
@@ -6199,6 +8862,85 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/RebuildResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/servers/{server_id}/extract-variables": {
+        "post": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractVariablesRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ExtractVariablesResponse"
                   }
                 }
               },
@@ -6924,6 +9666,1468 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/TaskAccepted"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/servers/{server_id}/template-config": {
+        "get": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TemplateConfigResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "server_id",
+              "required": true,
+              "schema": {
+                "title": "Server Id",
+                "type": "string"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateConfigUpdateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TemplateConfigUpdateResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/dns": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DNSManagerConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DNSSettingsUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DNSManagerConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/dns/reset": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DNSManagerConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/log-parser": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LogParserConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogParserSettingsUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LogParserConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/log-parser/reset": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LogParserConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/mcmap": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MCMapConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapSettingsUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MCMapConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/mcmap/reset": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MCMapConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/players": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlayersConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerSettingsUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlayersConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/players/reset": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlayersConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/self-check": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SelfCheckConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfCheckSettingsUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SelfCheckConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/self-check/reset": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SelfCheckConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/snapshots": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SnapshotsConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotSettingsUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SnapshotsConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/snapshots/reset": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SnapshotsConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/world": {
+        "get": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorldConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorldSettingsUpdate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorldConfig"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/settings/world/reset": {
+        "post": {
+          "parameters": [
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorldConfig"
                   }
                 }
               },
@@ -8209,6 +12413,212 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/BackgroundTaskResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        }
+      },
+      "/templates/{template_id}": {
+        "delete": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "required": true,
+              "schema": {
+                "title": "Template Id",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "get": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "required": true,
+              "schema": {
+                "title": "Template Id",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TemplateResponse"
+                  }
+                }
+              },
+              "description": "Successful Response"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              },
+              "description": "Validation Error"
+            }
+          }
+        },
+        "put": {
+          "parameters": [
+            {
+              "in": "path",
+              "name": "template_id",
+              "required": true,
+              "schema": {
+                "title": "Template Id",
+                "type": "integer"
+              }
+            },
+            {
+              "in": "header",
+              "name": "authorization",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Authorization"
+              }
+            },
+            {
+              "in": "cookie",
+              "name": "mc_admin_session",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mc Admin Session"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateUpdateRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TemplateResponse"
                   }
                 }
               },

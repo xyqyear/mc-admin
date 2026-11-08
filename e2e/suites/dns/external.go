@@ -65,7 +65,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 		primary := address("primary", "A", "192.0.2.10", 25565)
 		secondary := address("secondary", "AAAA", "2001:db8::10", 25566)
 		dynamic := map[string]any{"enabled": true, "dns": config.application(provider), "managed_sub_domain": scope, "mc_router_base_url": routerURL, "dns_ttl": config.TTL, "addresses": []any{primary, secondary}}
-		if err = client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": dynamic}, nil, 200); err != nil {
+		if err = client.JSON(ctx, "PUT", "/api/settings/dns", dynamic, nil, 200); err != nil {
 			return err
 		}
 		var enabled struct {
@@ -136,7 +136,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			primary["value"] = "192.0.2.20"
 			primary["port"] = 25567
 			dynamic["mc_router_base_url"] = "http://localhost:26666"
-			if err := client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": dynamic}, nil, 200); err != nil {
+			if err := client.JSON(ctx, "PUT", "/api/settings/dns", dynamic, nil, 200); err != nil {
 				return err
 			}
 			if _, err := routerRequest(ctx, t, "POST", "/routes", map[string]string{"serverAddress": route("primary"), "backend": "localhost:1"}); err != nil {
@@ -163,7 +163,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			primary["record_type"] = "CNAME"
 			primary["value"] = "example.com"
 			dynamic["addresses"] = []any{primary}
-			if err := client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": dynamic}, nil, 200); err != nil {
+			if err := client.JSON(ctx, "PUT", "/api/settings/dns", dynamic, nil, 200); err != nil {
 				return err
 			}
 			var current status
@@ -196,7 +196,7 @@ func external(provider string) func(context.Context, *engine.Scope) error {
 			retainedRecords := expectedRecords(primary)
 			dynamic["enabled"] = false
 			primary["value"] = "disabled.example.com"
-			if err := client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": dynamic}, nil, 200); err != nil {
+			if err := client.JSON(ctx, "PUT", "/api/settings/dns", dynamic, nil, 200); err != nil {
 				return err
 			}
 			if err := client.JSON(ctx, "GET", "/api/dns/enabled", nil, &enabled, 200); err != nil {

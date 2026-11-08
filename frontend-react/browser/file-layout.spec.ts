@@ -86,13 +86,13 @@ async function snapshotFeedback(page: Page, toolbar: Locator, reason: string) {
 
 test('file selection and delayed ignore feedback preserve table rows and batch toolbar geometry', isolated, async ({ page, api, owned }) => {
   const root = `browser-file-layout-${Date.now().toString(36)}`
-  const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/snapshots')
+  const config = await api.json<Record<string, unknown>>('/api/settings/snapshots')
   let created = false
   let rulesChanged = false
   let checks: Awaited<ReturnType<typeof holdTargetRules>> | undefined
   await withCleanup(async () => {
     await sourceFiles(api, root, () => { created = true })
-    await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), root + '/ignored'] } })
+    await api.json('/api/settings/snapshots', 'PUT', { ...config, ignored_paths: [...(config.ignored_paths as string[]), root + '/ignored'] })
     rulesChanged = true
     checks = await holdTargetRules(page)
     await login(page, owned)
@@ -138,7 +138,7 @@ test('file selection and delayed ignore feedback preserve table rows and batch t
     expect((await api.file(root + '/ignored/keep.txt')).content).toBe('protected layout bytes\n')
     await page.getByRole('link', { name: '系统自检', exact: true }).click()
     await expect(page).toHaveURL('/')
-    await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), root + '/allowed.txt'] } })
+    await api.json('/api/settings/snapshots', 'PUT', { ...config, ignored_paths: [...(config.ignored_paths as string[]), root + '/allowed.txt'] })
     await page.goBack()
     await expect(page.getByRole('button', { name: '为 allowed.txt 创建快照', exact: true })).toBeDisabled()
     await expect(page.getByRole('button', { name: '为 ignored 创建快照', exact: true })).toBeEnabled()
@@ -146,20 +146,20 @@ test('file selection and delayed ignore feedback preserve table rows and batch t
     expect(checks.posts()).toBe(0)
   },
   { label: 'target-rule transport', run: async () => { await checks?.close() } },
-  { label: 'snapshot rules', run: async () => { if (rulesChanged) await api.json('/api/config/modules/snapshots', 'PUT', config) } },
+  { label: 'snapshot rules', run: async () => { if (rulesChanged) await api.json('/api/settings/snapshots', 'PUT', config) } },
   { label: 'file layout source', run: async () => { if (created) await api.deleteFile(root) } },
   )
 })
 
 test('advanced search selection and delayed ignore feedback preserve result rows and batch toolbar geometry', isolated, async ({ page, api, owned }) => {
   const root = `browser-search-layout-${Date.now().toString(36)}`
-  const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/snapshots')
+  const config = await api.json<Record<string, unknown>>('/api/settings/snapshots')
   let created = false
   let rulesChanged = false
   let checks: Awaited<ReturnType<typeof holdTargetRules>> | undefined
   await withCleanup(async () => {
     await sourceFiles(api, root, () => { created = true })
-    await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), root + '/ignored'] } })
+    await api.json('/api/settings/snapshots', 'PUT', { ...config, ignored_paths: [...(config.ignored_paths as string[]), root + '/ignored'] })
     rulesChanged = true
     checks = await holdTargetRules(page)
     await login(page, owned)
@@ -209,7 +209,7 @@ test('advanced search selection and delayed ignore feedback preserve result rows
     expect((await api.file(root + '/ignored/keep.txt')).content).toBe('protected layout bytes\n')
   },
   { label: 'target-rule transport', run: async () => { await checks?.close() } },
-  { label: 'snapshot rules', run: async () => { if (rulesChanged) await api.json('/api/config/modules/snapshots', 'PUT', config) } },
+  { label: 'snapshot rules', run: async () => { if (rulesChanged) await api.json('/api/settings/snapshots', 'PUT', config) } },
   { label: 'search layout source', run: async () => { if (created) await api.deleteFile(root) } },
   )
 })

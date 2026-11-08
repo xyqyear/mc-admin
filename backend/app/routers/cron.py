@@ -4,7 +4,6 @@ Cron job management API endpoints.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
-from pydantic import ValidationError
 
 from app.auth.schemas import UserPublic
 from app.cron.models import CronJobStatus
@@ -20,7 +19,6 @@ from ..cron.api_models import (
 )
 from ..cron.errors import cron_error_message
 from ..dependencies import get_current_user
-from ..dynamic_config.schemas import BaseConfigSchema
 from ..errors import log_safe_error
 from ..logger import get_logger
 
@@ -43,45 +41,6 @@ def _cron_value_error_status(error: ValueError) -> int:
     return http_status.HTTP_400_BAD_REQUEST
 
 
-def _cron_validation_detail(error: Exception, schema: type[BaseConfigSchema]) -> str:
-    if not isinstance(error, ValidationError):
-        return "任务参数无效"
-    diagnostics = []
-    messages = {
-        "missing": "必填字段缺失", "int_parsing": "应为整数", "int_type": "应为整数",
-        "float_parsing": "应为数字", "float_type": "应为数字", "string_type": "应为字符串",
-        "bool_parsing": "应为布尔值", "bool_type": "应为布尔值", "list_type": "应为列表",
-        "literal_error": "应为允许的选项", "extra_forbidden": "存在不支持的字段",
-    }
-    bounds = {
-        "greater_than": ("exclusiveMinimum", "必须大于"),
-        "greater_than_equal": ("minimum", "必须大于或等于"),
-        "less_than": ("exclusiveMaximum", "必须小于"),
-        "less_than_equal": ("maximum", "必须小于或等于"),
-    }
-    properties = schema.model_json_schema().get("properties", {})
-    for entry in error.errors(include_input=False, include_url=False):
-        location = entry["loc"]
-        field = (
-            location[0]
-            if location and isinstance(location[0], str) and location[0] in schema.model_fields
-            else "参数"
-        )
-        field += "".join(f"[{index}]" for index in location[1:] if isinstance(index, int))
-        message = messages.get(entry["type"], "字段值无效")
-        context = entry.get("ctx", {})
-        if entry["type"] in bounds:
-            key, label = bounds[entry["type"]]
-            bound = properties.get(field, {}).get(key)
-            if isinstance(bound, (int, float)):
-                message = f"{label} {bound}"
-        cause = context.get("error")
-        if isinstance(cause, ValueError) and "cron_public_message" in vars(cause):
-            message = cron_error_message(cause)
-        diagnostics.append(f"{field}: {message}")
-    return "任务参数无效: " + "; ".join(diagnostics)
-
-
 @router.get("/registered", response_model=list[RegisteredCronJobResponse])
 async def list_registered_cronjobs(_: UserPublic = Depends(get_current_user)):
     """
@@ -97,7 +56,6 @@ async def list_registered_cronjobs(_: UserPublic = Depends(get_current_user)):
             RegisteredCronJobResponse(
                 identifier=identifier,
                 description=registration.description,
-                parameter_schema=registration.schema_cls.model_json_schema(),
                 is_system=registration.is_system,
                 default_cron=registration.default_cron,
                 default_second=registration.default_second,
@@ -181,15 +139,7 @@ async def create_cronjob(
             detail="定时任务类型未注册",
         )
 
-    # Validate parameters against schema
-    try:
-        params = schema_cls.model_validate(request.params)
-    except Exception as e:  # noqa: BLE001 - parameter validation failures retain the HTTP 400 contract
-        log_safe_error(e, "Cron parameter validation failed", logger=logger)
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=_cron_validation_detail(e, schema_cls),
-        )
+    params = request.params
 
     # Create the cron job
     try:
@@ -266,15 +216,7 @@ async def update_cronjob(
             detail="定时任务类型未注册",
         )
 
-    # Validate parameters against schema
-    try:
-        params = schema_cls.model_validate(request.params)
-    except Exception as e:  # noqa: BLE001 - parameter validation failures retain the HTTP 400 contract
-        log_safe_error(e, "Cron parameter validation failed", logger=logger)
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=_cron_validation_detail(e, schema_cls),
-        )
+    params = request.params
 
     # Update the cron job
     try:

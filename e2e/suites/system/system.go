@@ -70,24 +70,17 @@ func configurationCatalog(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	return t.Step("all dynamic modules expose readable configuration and schemas", func() error {
-		var response struct {
-			Modules map[string]any `json:"modules"`
-		}
-		if err := client.JSON(ctx, "GET", "/api/config/modules", nil, &response, 200); err != nil {
-			return err
-		}
-		for _, name := range []string{"dns", "snapshots", "players", "log_parser", "mcmap", "world", "self_check"} {
-			if _, ok := response.Modules[name]; !ok {
-				return fmt.Errorf("missing config module %s", name)
+	return t.Step("settings resources expose their concrete configuration", func() error {
+		for name, field := range map[string]string{"dns": "dns", "snapshots": "time_restriction", "players": "heartbeat", "log-parser": "chat_pattern", "mcmap": "batch_size", "world": "dimension_labels", "self-check": "checks"} {
+			var settings map[string]any
+			if err := client.JSON(ctx, "GET", "/api/settings/"+name, nil, &settings, 200); err != nil {
+				return err
 			}
-			for _, suffix := range []string{"", "/schema"} {
-				if err := client.JSON(ctx, "GET", "/api/config/modules/"+name+suffix, nil, nil, 200); err != nil {
-					return err
-				}
+			if _, ok := settings[field]; !ok {
+				return fmt.Errorf("settings %s omitted %s", name, field)
 			}
 		}
-		return client.JSON(ctx, "GET", "/api/config/modules/does-not-exist", nil, nil, 404)
+		return client.JSON(ctx, "GET", "/api/settings/does-not-exist", nil, nil, 404)
 	})
 }
 
@@ -96,16 +89,14 @@ func persistence(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	var module struct {
-		Data map[string]any `json:"config_data"`
-	}
-	path := "/api/config/modules/world"
+	var module map[string]any
+	path := "/api/settings/world"
 	if err = client.JSON(ctx, "GET", path, nil, &module, 200); err != nil {
 		return err
 	}
-	module.Data["dimension_labels"] = map[string]any{".": "E2E persisted label"}
+	module["dimension_labels"] = map[string]any{".": "E2E persisted label"}
 	if err = t.Step("configuration changes are readable immediately", func() error {
-		if err := client.JSON(ctx, "PUT", path, map[string]any{"config_data": module.Data}, nil, 200); err != nil {
+		if err := client.JSON(ctx, "PUT", path, module, nil, 200); err != nil {
 			return err
 		}
 		return checkLabel(ctx, t, path)
@@ -129,15 +120,13 @@ func checkLabel(ctx context.Context, t *engine.Scope, path string) error {
 		return err
 	}
 	var module struct {
-		Data struct {
-			Labels map[string]string `json:"dimension_labels"`
-		} `json:"config_data"`
+		Labels map[string]string `json:"dimension_labels"`
 	}
 	if err := client.JSON(ctx, "GET", path, nil, &module, 200); err != nil {
 		return err
 	}
-	if module.Data.Labels["."] != "E2E persisted label" {
-		return fmt.Errorf("configuration did not persist: %v", module.Data.Labels)
+	if module.Labels["."] != "E2E persisted label" {
+		return fmt.Errorf("configuration did not persist: %v", module.Labels)
 	}
 	return nil
 }

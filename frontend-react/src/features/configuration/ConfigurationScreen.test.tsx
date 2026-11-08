@@ -17,9 +17,6 @@ vi.mock('@/shared/editors/index', () => ({
   ComposeYamlEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => <textarea aria-label="Compose 内容" value={value} onChange={event => onChange(event.target.value)} />,
   MonacoDiffEditor: ({ original, modified, originalTitle, modifiedTitle }: { original: string; modified: string; originalTitle?: string; modifiedTitle?: string }) => <div aria-label="比较结果">{originalTitle}: {original} → {modifiedTitle}: {modified}</div>,
 }))
-vi.mock('@/shared/forms/rjsfTheme', () => ({ default: ({ formData, onChange }: {
-  formData: Record<string, string>; onChange: (event: { formData: Record<string, string> }) => void
-}) => <input aria-label="模板参数" value={formData.memory ?? ''} onChange={event => onChange({ formData: { memory: event.target.value } })} /> }))
 vi.mock('@/shared/editors/DockerComposeHelpDialog', () => ({ default: () => null }))
 
 const server = setupServer(taskEventsUnavailable)
@@ -30,7 +27,7 @@ let remote: string
 let version: string
 let templateMode: boolean
 let submissions: Record<string, unknown>[]
-const template = () => ({ version, template_id: 1, template_name: '模板', yaml_template: '{{ memory }}', variable_values: { memory: remote }, json_schema: {}, variable_definitions: [], has_template_update: true })
+const template = () => ({ version, template_id: 1, template_name: '模板', yaml_template: '{{ memory }}', variable_values: { memory: remote }, variable_definitions: [{ type: 'string', name: 'memory', display_name: '模板参数' }], has_template_update: true })
 beforeEach(() => {
   client = createTestClient(); remote = 'online v1'; version = 'v1'; templateMode = false; submissions = []; vi.clearAllMocks()
   server.use(
@@ -179,7 +176,7 @@ it('converts to direct mode with a version and retains the conversion dialog on 
 it('keeps conversion variables when a check detects a newer server configuration', async () => {
   templateMode = true
   server.use(
-    http.post('*/api/servers/alpha/extract-variables', () => HttpResponse.json({ version: 'v1', extracted_values: { memory: 'extracted' }, warnings: [], json_schema: {}, variable_definitions: [], current_compose: remote, rendered_compose: remote })),
+    http.post('*/api/servers/alpha/extract-variables', () => HttpResponse.json({ version: 'v1', extracted_values: { memory: 'extracted' }, warnings: [], variable_definitions: [{ type: 'string', name: 'memory', display_name: '模板参数' }], current_compose: remote, rendered_compose: remote })),
     http.post('*/api/templates/1/preview', () => HttpResponse.json({ rendered_yaml: 'rendered authored parameters' })),
     http.post('*/api/servers/alpha/check-conversion', () => HttpResponse.json({ version, requires_rebuild: true })),
     http.post('*/api/servers/alpha/convert-to-template', async ({ request }) => { submissions.push(await request.json() as Record<string, unknown>); return HttpResponse.json({ task_id: 'task', skipped_rebuild: false }) }),

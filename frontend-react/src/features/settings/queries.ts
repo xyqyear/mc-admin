@@ -1,33 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/shared/http/api'
-import * as configApi from '@/features/settings/api'
+import type { SettingsResource } from '@/features/settings/api'
 
-export const useConfigModules = () => {
-  return useQuery({
-    queryKey: queryKeys.config.modules(),
-    queryFn: configApi.listAllModules,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  })
-}
+export const settingsOptions = <T,>(resource: SettingsResource<T>) => ({
+  queryKey: queryKeys.settings.detail(resource.key),
+  queryFn: resource.read,
+  staleTime: 5 * 60 * 1000,
+})
 
-export const useModuleConfig = (moduleName: string | null) => {
-  return useQuery({
-    queryKey: queryKeys.config.moduleConfig(moduleName!),
-    queryFn: () => configApi.getModuleConfig(moduleName!),
-    enabled: !!moduleName,
-    staleTime: 2 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  })
-}
-
-export const useModuleSchema = (moduleName: string | null) => {
-  return useQuery({
-    queryKey: queryKeys.config.moduleSchema(moduleName!),
-    queryFn: () => configApi.getModuleSchema(moduleName!),
-    enabled: !!moduleName,
-    // Schemas rarely change.
-    staleTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  })
-}
+export const useSettings = <T,>(resource: SettingsResource<T>) => useQuery(settingsOptions(resource))

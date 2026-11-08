@@ -6,7 +6,8 @@ import { setupServer } from 'msw/node'
 import { createOperationFeed } from '@/test/operations'
 import { createTaskEvents } from '@/test/taskEvents'
 import { OperationObserver } from '@/app/operations/OperationObserver'
-import { useUpdateModuleConfig, useResetModuleConfig } from '@/features/settings/commands'
+import { snapshotSettings } from '@/features/settings/api'
+import { useSettingsCommands } from '@/features/settings/commands'
 import { useUpdateFile } from '@/features/files/commands'
 import { FileSnapshotRecovery } from '@/features/files/components/FileSnapshotRecovery'
 import FileSnapshotActions from '@/features/files/components/FileSnapshotActions'
@@ -124,13 +125,12 @@ it('refreshes once on reentry while remounting rows neither polls nor exposes a 
 
 it.each(['update', 'reset'] as const)('updates current file feedback after snapshot configuration %s', async action => {
   server.use(
-    http.put('*/api/config/modules/snapshots', async ({ request }) => { const body = await request.json() as { config_data: { ignored_paths: string[] } }; rules = body.config_data.ignored_paths; return HttpResponse.json({ success: true, message: '配置已保存' }) }),
-    http.post('*/api/config/modules/snapshots/reset', () => { rules = []; return HttpResponse.json({ success: true, message: '配置已重置' }) }),
+    http.put('*/api/settings/snapshots', async ({ request }) => { const body = await request.json() as { ignored_paths: string[] }; rules = body.ignored_paths; return HttpResponse.json(body) }),
+    http.post('*/api/settings/snapshots/reset', () => { rules = []; return HttpResponse.json({ ignored_paths: [] }) }),
   )
   function ConfigurationAction() {
-    const update = useUpdateModuleConfig()
-    const reset = useResetModuleConfig()
-    return <button onClick={() => action === 'update' ? update.mutate({ moduleName: 'snapshots', configData: { ignored_paths: [] } }) : reset.mutate('snapshots')}>修改规则</button>
+    const { save: update, reset } = useSettingsCommands(snapshotSettings)
+    return <button onClick={() => action === 'update' ? update.mutate({ ignored_paths: [], time_restriction: { enabled: true, before_seconds: 30, after_seconds: 60 }, world_restore: { preview_session_ttl_seconds: 1800, preview_janitor_interval_seconds: 60, preview_avg_region_bytes: 8388608 } }) : reset.mutate()}>修改规则</button>
   }
   render(<TestProviders client={client}><FileControls rows={['/config']} /><ConfigurationAction /></TestProviders>)
   await waitFor(() => expect(client.getQueryState(queryKeys.snapshots.rules('alpha'))?.status).toBe('success'))

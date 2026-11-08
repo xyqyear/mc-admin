@@ -45,23 +45,20 @@ human-readable display share the same weekday meaning.
 
 `CronExpressionDisplay.tsx` renders an expression as human-readable Chinese (`每天 0:00`). Used in the table and detail modal.
 
-## Schema-driven job params
+## Job parameters
 
-Each registered job type on the backend exports a Pydantic params schema (`BackupJobParams`, `ServerRestartParams`, `SelfCheckJobParams`). The backend's `/cron/registered` returns these schemas as JSON Schema plus system/default metadata. `CreateCronJobDialog.tsx` is multi-step:
+The registered-job endpoint supplies task identifiers, descriptions, system flags
+and scheduling defaults. The write contract associates each identifier with its
+concrete parameters. `CronJobParameters.tsx` owns the backup and restart controls;
+system self-check uses its global settings. Task name and schedule editing remain
+in `CreateCronJobDialog.tsx` and `CronExpressionBuilder`.
 
-1. Job name + identifier (registered job-type dropdown)
-2. **Schema form** — `<SchemaForm>` (rjsf) renders the params editor from the JSON Schema
-3. **Cron expression** — built via `CronExpressionBuilder`
-4. Submit → POST `/cron/`
-
-This means *adding a new backend job type only requires backend changes* — the frontend renders the params form automatically.
-
-`SchemaForm` exposes only schema, data and change handling. It uses the shared
-RJSF theme, AJV validation on change and field-local errors, and suppresses the
-renderer’s default submit button. Switching job type remounts the parameter
-form and clears the previous job's authored values. Defaults and input types
-come from the selected schema. Parameter-form submissions validate within that
-form; only submission of the dialog's outer form creates or updates a job.
+Switching task type initializes its own parameters and clears the previous draft.
+Optional backup values preserve empty/null semantics, zero and false retain their
+types, and enabled cleanup requires a retention policy. Enter in parameter inputs
+does not submit the surrounding task form. Saving is explicit; failures retain
+the editable values. Adding or changing a job type updates backend and frontend
+contracts, controls and behavior tests together.
 
 ## Detail modal
 
@@ -86,5 +83,5 @@ The server overview's `ServerRestartScheduleCard.tsx` creates a managed schedule
 - `features/schedules/CronManagementScreen.tsx`
 - `features/schedules/ui/CronJobFilters.tsx`, `CronJobStatusTag.tsx`, `CronExpressionDisplay.tsx`, `ExecutionStatusTag.tsx`, `NextRunTimeCell.tsx`
 - `features/schedules/ui/dialogs/CreateCronJobDialog.tsx`, `CronJobDetailDialog.tsx`
-- `features/schedules/ui/CronExpressionBuilder.tsx`, `CronFieldInput.tsx`, `shared/forms/SchemaForm.tsx`
+- `features/schedules/ui/CronExpressionBuilder.tsx`, `CronFieldInput.tsx`, `features/schedules/ui/CronJobParameters.tsx`
 - `features/schedules/api.ts`, `features/schedules/queries.ts`, `features/schedules/commands.ts`

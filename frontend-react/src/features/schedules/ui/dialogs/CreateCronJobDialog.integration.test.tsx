@@ -10,36 +10,40 @@ const server = setupServer()
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 let client: ReturnType<typeof createTestClient>
+let writes: unknown[]
 beforeEach(() => {
-  client = createTestClient()
+  client = createTestClient(); writes = []
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  server.use(
+    http.get('*/api/cron/registered', () => HttpResponse.json([
+      { identifier: 'backup', description: '备份任务', is_system: false },
+      { identifier: 'restart_server', description: '服务器重启', is_system: false },
+    ])),
+    http.post('*/api/cron/', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ cronjob_id: 'created' }) }),
+    http.put('*/api/cron/fixture', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ message: '已更新' }) }),
+  )
 })
 afterEach(() => { client.clear(); server.resetHandlers(); vi.unstubAllGlobals() })
 
 async function selectOption(trigger: HTMLElement, name: string) {
   await waitFor(() => expect(trigger.hasAttribute('disabled')).toBe(false))
   fireEvent.click(trigger)
-  const option = await screen.findByRole('option', { name })
-  fireEvent.pointerDown(option)
-  fireEvent.click(option)
+  const option = (await screen.findAllByRole('option', { name }))[0]
+  fireEvent.pointerDown(option); fireEvent.click(option)
 }
 
-it.each([false, true])('submits accepted zero-valued minute, hour, weekday and optional second through HTTP (edit=%s)', async (isEdit) => {
-  const writes: unknown[] = []
-  server.use(
-    http.get('*/api/cron/registered', () => HttpResponse.json([{ identifier: 'fixture_job', description: '测试任务', is_system: false, parameter_schema: { type: 'object', properties: {} } }])),
-    http.get('*/api/cron/fixture', () => HttpResponse.json({ cronjob_id: 'fixture', identifier: 'fixture_job', name: '测试任务', cron: '5 5 * * 5', second: '5', params: {}, status: 'active' })),
-    http.post('*/api/cron/', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ message: '已创建', cronjob_id: 'fixture' }) }),
-    http.put('*/api/cron/fixture', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ message: '已更新' }) }),
-  )
-  render(<TestProviders client={client}><CreateCronJobDialog open onCancel={() => {}} isEdit={isEdit} cronjobId={isEdit ? 'fixture' : undefined} /></TestProviders>)
-  await waitFor(() => expect(screen.getAllByRole('combobox')[0].hasAttribute('disabled')).toBe(isEdit))
+function show(isEdit = false) {
+  return render(<TestProviders client={client}><CreateCronJobDialog open onCancel={() => {}} isEdit={isEdit} cronjobId={isEdit ? 'fixture' : undefined} /></TestProviders>)
+}
+
+it.each([false, true])('submits zero-valued minute, hour, weekday and optional second through HTTP (edit=%s)', async isEdit => {
+  server.use(http.get('*/api/cron/fixture', () => HttpResponse.json({ cronjob_id: 'fixture', identifier: 'backup', name: '测试任务', cron: '10 2 * * 1', params: { enable_forget: false, prune: true } })))
+  show(isEdit)
   if (!isEdit) {
-    await selectOption(screen.getAllByRole('combobox')[0], '测试任务')
-    fireEvent.change(screen.getByLabelText('任务名称'), { target: { value: '测试任务' } })
-  } else {
-    await waitFor(() => expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe('测试任务'))
-  }
+    await selectOption(screen.getAllByRole('combobox')[0], '备份任务')
+    fireEvent.click(screen.getByRole('checkbox', { name: '备份后清理旧快照' }))
+  } else await screen.findByRole('checkbox', { name: '备份后清理旧快照' })
+  fireEvent.change(screen.getByLabelText('任务名称'), { target: { value: '测试任务' } })
   for (const label of ['分钟 (0-59)', '小时 (0-23)', '秒 (0-59)']) {
     const field = screen.getByText(label).parentElement!.parentElement!
     if (within(field).queryByRole('spinbutton') === null) await selectOption(within(field).getByRole('combobox'), '指定值')
@@ -49,24 +53,16 @@ it.each([false, true])('submits accepted zero-valued minute, hour, weekday and o
   const weekday = screen.getByText('星期 (0-7)').parentElement!.parentElement!
   if (within(weekday).getAllByRole('combobox').length === 1) await selectOption(within(weekday).getByRole('combobox'), '指定值')
   await selectOption(within(weekday).getAllByRole('combobox')[1], '周五')
-  fireEvent.click(within(weekday).getAllByRole('combobox')[1])
-  const sunday = (await screen.findAllByRole('option', { name: '周日' }))[0]
-  fireEvent.pointerDown(sunday)
-  fireEvent.click(sunday)
+  await selectOption(within(weekday).getAllByRole('combobox')[1], '周日')
   expect(writes).toEqual([])
   fireEvent.click(screen.getByRole('button', { name: isEdit ? '更新任务' : '创建任务' }))
-  await waitFor(() => expect(writes).toEqual([{ identifier: 'fixture_job', params: {}, cron: '0 0 * * 0', name: '测试任务', second: '0' }]))
+  await waitFor(() => expect(writes).toEqual([{ identifier: 'backup', params: { enable_forget: false, prune: true }, cron: '0 0 * * 0', name: '测试任务', second: '0' }]))
 })
 
-it('edits a managed restart target without deriving it from the display name', async () => {
-  const writes: unknown[] = []
-  server.use(
-    http.get('*/api/cron/registered', () => HttpResponse.json([{ identifier: 'restart_server', description: '服务器重启', parameter_schema: { type: 'object', required: ['server_id'], properties: { server_id: { type: 'string', title: '服务器 ID' } } } }])),
-    http.get('*/api/cron/restart-alpha', () => HttpResponse.json({ cronjob_id: 'restart-alpha', identifier: 'restart_server', name: '凌晨维护窗口', cron: '40 3 * * *', params: { server_id: 'alpha' }, managed_purpose: 'restart', status: 'active' })),
-    http.put('*/api/cron/restart-alpha', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ message: '已更新' }) }),
-  )
-  render(<TestProviders client={client}><CreateCronJobDialog open onCancel={() => {}} isEdit cronjobId="restart-alpha" /></TestProviders>)
-  const target = await screen.findByRole('textbox', { name: /服务器 ID/ })
+it('edits a managed restart target independently of the display name', async () => {
+  server.use(http.get('*/api/cron/fixture', () => HttpResponse.json({ cronjob_id: 'fixture', identifier: 'restart_server', name: '凌晨维护窗口', cron: '40 3 * * *', params: { server_id: 'alpha' }, managed_purpose: 'restart' })))
+  show(true)
+  const target = await screen.findByRole('textbox', { name: '服务器 ID' })
   expect((target as HTMLInputElement).value).toBe('alpha')
   expect((screen.getByLabelText('任务名称') as HTMLInputElement).value).toBe('凌晨维护窗口')
   fireEvent.change(target, { target: { value: 'beta' } })
@@ -74,58 +70,43 @@ it('edits a managed restart target without deriving it from the display name', a
   await waitFor(() => expect(writes).toEqual([{ identifier: 'restart_server', params: { server_id: 'beta' }, cron: '40 3 * * *', name: '凌晨维护窗口' }]))
 })
 
-it('renders dynamic parameter types and validation and discards the previous job draft before creating', async () => {
-  const writes: unknown[] = []
-  server.use(
-    http.get('*/api/cron/registered', () => HttpResponse.json([
-      { identifier: 'old-job', description: '旧任务', parameter_schema: { type: 'object', properties: {
-        count: { type: 'integer', title: '旧数量', default: 2, minimum: 1 }, note: { type: 'string', title: '旧备注', default: 'old' },
-      } } },
-      { identifier: 'new-job', description: '新任务', parameter_schema: { type: 'object', properties: {
-        limit: { type: 'integer', title: '新数量', default: 3 }, note: { type: 'string', title: '新备注', default: 'fresh' },
-        enabled: { type: 'boolean', title: '启用参数', default: true },
-      } } },
-    ])),
-    http.post('*/api/cron/', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ cronjob_id: 'created' }) }),
-  )
-  render(<TestProviders client={client}><CreateCronJobDialog open onCancel={() => {}} /></TestProviders>)
-  await selectOption(screen.getAllByRole('combobox')[0], '旧任务')
-  const count = await screen.findByLabelText('旧数量')
-  expect((count as HTMLInputElement).value).toBe('2')
-  fireEvent.change(count, { target: { value: '0' } })
-  await screen.findByText('must be >= 1')
-  fireEvent.change(screen.getByLabelText('旧备注'), { target: { value: 'authored old draft' } })
-  await selectOption(screen.getAllByRole('combobox')[0], '新任务')
-  expect(screen.queryByLabelText('旧数量')).toBeNull()
-  expect((screen.getByLabelText('新备注') as HTMLInputElement).value).toBe('fresh')
-  expect((screen.getByLabelText('新数量') as HTMLInputElement).value).toBe('3')
-  expect(screen.getByRole('checkbox', { name: '启用参数' }).getAttribute('aria-checked')).toBe('true')
-  fireEvent.change(screen.getByLabelText('新数量'), { target: { value: '5' } })
-  fireEvent.click(screen.getByRole('checkbox', { name: '启用参数' }))
-  fireEvent.change(screen.getByLabelText('任务名称'), { target: { value: '参数任务' } })
-  expect(writes).toEqual([])
+it('clears backup parameters when switching to restart and waits for a complete target', async () => {
+  show()
+  await selectOption(screen.getAllByRole('combobox')[0], '备份任务')
+  fireEvent.change(screen.getByLabelText('保留最近快照数'), { target: { value: '3' } })
+  fireEvent.change(screen.getByLabelText('服务器 ID'), { target: { value: 'old-target' } })
+  await selectOption(screen.getAllByRole('combobox')[0], '服务器重启')
+  expect(screen.queryByLabelText('保留最近快照数')).toBeNull()
+  expect((screen.getByLabelText('服务器 ID') as HTMLInputElement).value).toBe('')
+  expect(screen.getByRole('button', { name: '创建任务' }).hasAttribute('disabled')).toBe(true)
+  fireEvent.change(screen.getByLabelText('任务名称'), { target: { value: '重启测试' } })
+  fireEvent.change(screen.getByLabelText('服务器 ID'), { target: { value: 'new-target' } })
   fireEvent.click(screen.getByRole('button', { name: '创建任务' }))
-  await waitFor(() => expect(writes).toEqual([{ identifier: 'new-job', params: { limit: 5, note: 'fresh', enabled: false }, cron: '0 0 * * *', name: '参数任务' }]))
+  await waitFor(() => expect(writes).toEqual([{ identifier: 'restart_server', params: { server_id: 'new-target' }, cron: '0 0 * * *', name: '重启测试' }]))
 })
 
-it.each([false, true])('keeps an Enter-triggered parameter form submission from saving the outer job (edit=%s)', async isEdit => {
-  const writes: unknown[] = []
-  server.use(
-    http.get('*/api/cron/registered', () => HttpResponse.json([{ identifier: 'fixture_job', description: '参数任务', parameter_schema: { type: 'object', properties: { note: { type: 'string', title: '备注' } } } }])),
-    http.get('*/api/cron/fixture', () => HttpResponse.json({ cronjob_id: 'fixture', identifier: 'fixture_job', name: '参数任务', cron: '0 0 * * *', params: { note: 'old' }, status: 'active' })),
-    http.post('*/api/cron/', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ cronjob_id: 'created' }) }),
-    http.put('*/api/cron/fixture', async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({ message: '已更新' }) }),
-  )
-  render(<TestProviders client={client}><CreateCronJobDialog open onCancel={() => {}} isEdit={isEdit} cronjobId={isEdit ? 'fixture' : undefined} /></TestProviders>)
-  if (!isEdit) await selectOption(screen.getAllByRole('combobox')[0], '参数任务')
-  else await screen.findByLabelText('备注')
+it('validates backup retention while preserving zero and false in the submitted parameters', async () => {
+  show()
+  await selectOption(screen.getAllByRole('combobox')[0], '备份任务')
+  expect(screen.getByRole('button', { name: '创建任务' }).hasAttribute('disabled')).toBe(true)
+  fireEvent.change(screen.getByLabelText('任务名称'), { target: { value: '备份测试' } })
+  fireEvent.change(screen.getByLabelText('保留最近快照数'), { target: { value: '0' } })
+  fireEvent.click(screen.getByRole('checkbox', { name: '清理未使用的数据块' }))
+  fireEvent.click(screen.getByRole('button', { name: '创建任务' }))
+  await waitFor(() => expect(writes).toEqual([{ identifier: 'backup', params: { enable_forget: true, prune: false, keep_last: 0 }, cron: '0 0 * * *', name: '备份测试' }]))
+})
+
+it.each([false, true])('requires explicit save after Enter in a parameter field (edit=%s)', async isEdit => {
+  server.use(http.get('*/api/cron/fixture', () => HttpResponse.json({ cronjob_id: 'fixture', identifier: 'restart_server', name: '参数任务', cron: '0 0 * * *', params: { server_id: 'old' } })))
+  show(isEdit)
+  if (!isEdit) await selectOption(screen.getAllByRole('combobox')[0], '服务器重启')
+  else await screen.findByLabelText('服务器 ID')
   fireEvent.change(screen.getByLabelText('任务名称'), { target: { value: '参数任务' } })
-  const note = screen.getByLabelText('备注')
-  fireEvent.change(note, { target: { value: 'typed' } })
-  fireEvent.keyDown(note, { key: 'Enter' })
-  // JSDOM does not perform the browser's implicit Enter submission.
-  fireEvent.submit(note.closest('form')!)
-  fireEvent.change(note, { target: { value: 'explicit-save' } })
+  const target = screen.getByLabelText('服务器 ID')
+  fireEvent.change(target, { target: { value: 'typed' } })
+  fireEvent.keyDown(target, { key: 'Enter' })
+  expect(writes).toEqual([])
+  fireEvent.change(target, { target: { value: 'explicit-save' } })
   fireEvent.click(screen.getByRole('button', { name: isEdit ? '更新任务' : '创建任务' }))
-  await waitFor(() => expect(writes).toEqual([{ identifier: 'fixture_job', params: { note: 'explicit-save' }, cron: '0 0 * * *', name: '参数任务' }]))
+  await waitFor(() => expect(writes).toEqual([{ identifier: 'restart_server', params: { server_id: 'explicit-save' }, cron: '0 0 * * *', name: '参数任务' }]))
 })

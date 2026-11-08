@@ -30,9 +30,9 @@ import {
 import SortableVariableRow from "@/features/templates/ui/SortableVariableRow"
 import VariableEditDialog from "@/features/templates/ui/VariableEditDialog"
 import { useConfirm } from "@/shared/hooks/useConfirm"
-import type { VariableFormData } from "@/features/templates/ui/variableSchemas"
+import type { VariableFormData } from "@/features/templates/ui/variableFormData"
 
-export type { VariableFormData } from "@/features/templates/ui/variableSchemas"
+export type { VariableFormData } from "@/features/templates/ui/variableFormData"
 
 interface VariableDefinitionFormProps {
   value: VariableFormData[]

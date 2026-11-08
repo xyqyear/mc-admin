@@ -21,10 +21,8 @@ import {
 } from '@/shared/ui/dialog'
 
 import { SimpleEditor } from '@/shared/editors/index'
-import RjsfForm from '@/shared/forms/rjsfTheme'
-import validator from '@rjsf/validator-ajv8'
-import type { RJSFSchema } from '@rjsf/utils'
-import { useTemplates, useTemplateSchema } from '@/features/templates/queries'
+import TemplateVariablesForm from '@/features/templates/ui/TemplateVariablesForm'
+import { useTemplates, useTemplate } from '@/features/templates/queries'
 import { usePreviewRenderedYaml } from '@/features/templates/commands';
 
 interface TemplateCreationModeProps {
@@ -44,14 +42,8 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
   const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
 
   const { data: templates = [], isLoading: templatesLoading } = useTemplates()
-  const { data: templateSchema, isLoading: schemaLoading } = useTemplateSchema(selectedTemplateId)
+  const { data: template, isLoading: schemaLoading } = useTemplate(selectedTemplateId)
   const previewMutation = usePreviewRenderedYaml()
-
-  const handleTemplateFormChange = (data: { formData?: Record<string, unknown> }) => {
-    if (data.formData) {
-      setTemplateFormData(data.formData)
-    }
-  }
 
   const handlePreviewYaml = async () => {
     if (!selectedTemplateId || !templateFormData) return
@@ -72,7 +64,7 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
         </CardHeader>
         <CardContent>
           <Select
-            value={selectedTemplateId ? String(selectedTemplateId) : undefined}
+            value={selectedTemplateId ? String(selectedTemplateId) : null}
             onValueChange={(v) => setSelectedTemplateId(Number(v))}
             itemToStringLabel={(v) => {
               const t = templates.find(t => String(t.id) === v)
@@ -106,7 +98,7 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
         </CardContent>
       </Card>
 
-      {selectedTemplateId && templateSchema && (
+      {selectedTemplateId && template && (
         <Card>
           <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
             <CardTitle className="text-sm">配置参数</CardTitle>
@@ -124,16 +116,7 @@ const TemplateCreationMode: React.FC<TemplateCreationModeProps> = ({
             {schemaLoading ? (
               <div className="text-center py-4 text-muted-foreground">加载中...</div>
             ) : (
-              <RjsfForm
-                schema={templateSchema.json_schema as RJSFSchema}
-                formData={templateFormData}
-                validator={validator}
-                onChange={handleTemplateFormChange}
-                showErrorList={false}
-                liveValidate
-              >
-                <div />
-              </RjsfForm>
+              <TemplateVariablesForm definitions={template.variable_definitions} value={templateFormData} onChange={setTemplateFormData} />
             )}
           </CardContent>
         </Card>

@@ -205,14 +205,12 @@ func (s *scenario) managementWritesAfterDisconnect(ctx context.Context) error {
 		return err
 	}
 	var configuration struct {
-		Data struct {
-			TTL int `json:"prune_preview_ttl_seconds"`
-		} `json:"config_data"`
+		TTL int `json:"prune_preview_ttl_seconds"`
 	}
-	if err := s.client.JSON(ctx, "GET", "/api/config/modules/mcmap", nil, &configuration, 200); err != nil {
+	if err := s.client.JSON(ctx, "GET", "/api/settings/mcmap", nil, &configuration, 200); err != nil {
 		return err
 	}
-	if configuration.Data.TTL != 1801 {
+	if configuration.TTL != 1801 {
 		return fmt.Errorf("configuration write after disconnect was not persisted")
 	}
 	id := "safety-disconnect-" + s.id

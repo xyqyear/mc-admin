@@ -62,7 +62,7 @@ class TestBaseConfigSchema:
         assert version == TestConfigSchema.get_schema_version()
         assert version != ChangedDefaults.get_schema_version()
 
-    def test_json_schema_default_handling(self):
+    def test_nested_default_serialization(self):
         """Test new default handling logic with BaseModel instances."""
 
         class NestedTestConfig(BaseConfigSchema):
@@ -82,30 +82,12 @@ class TestBaseConfigSchema:
                 description="Direct nested",
             )
 
-        schema = DefaultTestConfig.model_json_schema()
-        properties = schema["properties"]
-
-        # Test simple defaults work
-        assert properties["simple_str"]["default"] == "test"
-        assert properties["simple_list"]["default"] == ["a", "b"]
-
-        # Test direct BaseModel default produces dict
-        nested_direct_default = properties["nested_direct"]["default"]
-        assert isinstance(nested_direct_default, dict)
-        assert nested_direct_default["nested_name"] == "direct"
-        assert nested_direct_default["nested_value"] == 200
-
-        # Ensure entire schema is JSON serializable
-        import json
-
-        json.dumps(schema)  # Should not raise exception
+        values = DefaultTestConfig().model_dump()
+        assert values == {"simple_str": "test", "simple_list": ["a", "b"], "nested_direct": {"nested_name": "direct", "nested_value": 200}}
 
     def test_players_config_default_ignored_prefixes(self):
         """Test player name filters default to Carpet bot prefixes."""
         assert PlayersConfig().ignored_name_prefixes == ["bot_"]
-        assert PlayersConfig.model_json_schema()["properties"][
-            "ignored_name_prefixes"
-        ]["default"] == ["bot_"]
 
 
 class TestConfigMigrator:
@@ -214,7 +196,6 @@ class TestConfigManager:
 
         # Should register successfully
         manager.register_config("test_module", TestConfigSchema)
-        assert manager.get_schema_info("test_module")["json_schema"]["properties"]["number_field"]["default"] == 42
 
         # Should raise error for duplicate registration
         with pytest.raises(ValueError, match="already registered"):
@@ -223,46 +204,6 @@ class TestConfigManager:
         # Should raise error for invalid schema
         with pytest.raises(ValueError, match="must inherit from BaseConfigSchema"):
             manager.register_config("invalid", str)  # type: ignore this is intentional
-
-    def test_get_schema_info(self):
-        """Test schema information retrieval."""
-        manager = ConfigManager()
-        manager.register_config("test_module", TestConfigSchema)
-
-        info = manager.get_schema_info("test_module")
-
-        assert info["module_name"] == "test_module"
-        assert info["schema_class"] == "TestConfigSchema"
-        assert "version" in info
-        assert "json_schema" in info
-
-        # Verify JSON Schema structure
-        json_schema = info["json_schema"]
-        assert json_schema["title"] == "TestConfigSchema"
-        assert json_schema["type"] == "object"
-        assert "properties" in json_schema
-
-        # Check that test fields are present in JSON Schema
-        properties = json_schema["properties"]
-        assert "simple_field" in properties
-        assert "number_field" in properties
-        assert "deprecated_field" in properties
-
-        # Should raise error for unknown module
-        with pytest.raises(ValueError, match="not registered"):
-            manager.get_schema_info("unknown_module")
-
-    def test_get_all_schema_info(self):
-        """Test retrieving all schema information."""
-        manager = ConfigManager()
-        manager.register_config("test1", TestConfigSchema)
-        manager.register_config("test2", ComplexConfigSchema)
-
-        all_info = manager.get_all_schema_info()
-
-        assert len(all_info) == 2
-        assert "test1" in all_info
-        assert "test2" in all_info
 
     def test_config_access_before_initialization(self):
         """Test that accessing config before initialization raises error."""

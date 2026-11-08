@@ -202,11 +202,9 @@ export const queryKeys = {
     files: (path: string) => [...queryKeys.archive.all, "files", path] as const,
   },
 
-  config: {
-    all: ["config"] as const,
-    modules: () => [...queryKeys.config.all, "modules"] as const,
-    moduleConfig: (moduleName: string) => [...queryKeys.config.all, "module", moduleName] as const,
-    moduleSchema: (moduleName: string) => [...queryKeys.config.all, "schema", moduleName] as const,
+  settings: {
+    all: ["settings"] as const,
+    detail: (resource: string) => [...queryKeys.settings.all, resource] as const,
   },
 
   cron: {
@@ -287,7 +285,6 @@ export const queryKeys = {
     all: ["templates"] as const,
     list: () => [...queryKeys.templates.all, "list"] as const,
     detail: (id: number) => [...queryKeys.templates.all, "detail", id] as const,
-    schema: (id: number) => [...queryKeys.templates.all, "schema", id] as const,
     availablePorts: () => [...queryKeys.templates.all, "available-ports"] as const,
     serverConfigs: () => [...queryKeys.templates.all, "server-config"] as const,
     serverConfig: (serverId: string) => [...queryKeys.templates.all, "server-config", serverId] as const,

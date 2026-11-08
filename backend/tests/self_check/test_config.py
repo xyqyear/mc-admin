@@ -23,15 +23,6 @@ def test_self_check_boolean_toggles_control_enabled_check_ids() -> None:
     }
 
 
-def test_self_check_schema_exposes_boolean_check_toggles() -> None:
-    schema = SelfCheckConfig.model_json_schema()
-    checks_schema = schema["$defs"]["SelfCheckEnabledChecksConfig"]
-
-    assert checks_schema["properties"]["dns_drift"]["type"] == "boolean"
-    assert checks_schema["properties"]["dns_drift"]["title"] == "DNS 状态漂移"
-    assert "enabled_checks" not in schema["properties"]
-
-
 def test_self_check_backup_mod_ids_are_normalized() -> None:
     config = SelfCheckConfig(backup_mod_ids=["FTBBackups3", " DriveBackupV2 ", ""])
 

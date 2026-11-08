@@ -1,11 +1,31 @@
 export type RegistrationStatus = 'registered' | 'pending' | 'failed' | 'inactive'
 
-import type { RJSFSchema } from '@rjsf/utils';
+export type JobIdentifier = 'restart_server' | 'backup' | 'self_check'
+
+export interface BackupParameters {
+  server_id?: string | null
+  path?: string | null
+  enable_forget: boolean
+  keep_last?: number | null
+  keep_hourly?: number | null
+  keep_daily?: number | null
+  keep_weekly?: number | null
+  keep_monthly?: number | null
+  keep_yearly?: number | null
+  keep_tag?: string[] | null
+  keep_within?: string | null
+  prune: boolean
+  uptimekuma_url?: string | null
+}
+
+export type JobParameters =
+  | { identifier: 'restart_server'; params: { server_id: string } }
+  | { identifier: 'backup'; params: BackupParameters }
+  | { identifier: 'self_check'; params: { scope: string } }
 
 export interface RegisteredCronJob {
-  identifier: string
+  identifier: JobIdentifier
   description: string
-  parameter_schema: RJSFSchema
   is_system: boolean
   default_cron?: string | null
   default_second?: string | null
@@ -44,22 +64,15 @@ export interface CronJobNextRunTime {
   next_run_time: string
 }
 
-export interface CreateCronJobRequest {
-  identifier: string
-  params: Record<string, any>
+interface ScheduleInput {
   cron: string
   cronjob_id?: string
   name?: string
   second?: string
 }
 
-export interface UpdateCronJobRequest {
-  identifier: string
-  params: Record<string, any>
-  cron: string
-  name?: string
-  second?: string
-}
+export type CreateCronJobRequest = ScheduleInput & JobParameters
+export type UpdateCronJobRequest = ScheduleInput & JobParameters
 
 export interface CreateCronJobResponse {
   cronjob_id: string

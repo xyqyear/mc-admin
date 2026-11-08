@@ -24,9 +24,8 @@ import ArchiveSelectionDialog from '@/features/archives/ui/ArchiveSelectionDialo
 import PopulateProgressDialog from '@/features/archives/ui/PopulateProgressDialog'
 import { TemplateCreationMode, TraditionalCreationMode } from '@/features/servers/ui/ServerNew/index'
 import { useCreateServer, usePopulateServer } from '@/features/servers/commands';
-import { useTemplateSchema, useAvailablePorts } from '@/features/templates/queries'
-import validator from '@rjsf/validator-ajv8'
-import type { RJSFSchema } from '@rjsf/utils'
+import { useTemplate, useAvailablePorts } from '@/features/templates/queries'
+import { templateDefaultValues, templateValuesValid } from '@/features/templates/variableValues'
 import { useEditorDraft } from '@/shared/hooks/useEditorDraft'
 
 type CreationMode = 'traditional' | 'template'
@@ -52,32 +51,22 @@ const ServerNew: React.FC = () => {
 
   const [enableRestartSchedule, setEnableRestartSchedule] = useState(true)
 
-  const { data: templateSchema } = useTemplateSchema(selectedTemplateId)
+  const { data: selectedTemplate } = useTemplate(selectedTemplateId)
   const { data: availablePorts } = useAvailablePorts(creationMode === 'template')
   const createServerMutation = useCreateServer()
   const populateServerMutation = usePopulateServer()
 
   const templateDefaults = useMemo(() => {
-    if (templateSchema?.json_schema) {
-      const schema = templateSchema.json_schema as RJSFSchema
-      const defaults: Record<string, unknown> = {}
-
-      if (schema.properties) {
-        Object.entries(schema.properties).forEach(([key, prop]) => {
-          if (typeof prop === 'object' && 'default' in prop) {
-            defaults[key] = prop.default
-          }
-        })
+    if (!selectedTemplate) return undefined
+    const defaults = templateDefaultValues(selectedTemplate.variable_definitions)
+    if (availablePorts) {
+      for (const variable of selectedTemplate.variable_definitions) {
+        if (variable.name === 'game_port') defaults.game_port = availablePorts.suggested_game_port
+        if (variable.name === 'rcon_port') defaults.rcon_port = availablePorts.suggested_rcon_port
       }
-
-      if (availablePorts) {
-        defaults.game_port = availablePorts.suggested_game_port
-        defaults.rcon_port = availablePorts.suggested_rcon_port
-      }
-
-      return defaults
     }
-  }, [templateSchema, availablePorts])
+    return defaults
+  }, [selectedTemplate, availablePorts])
   const templateDraft = useEditorDraft(selectedTemplateId === null ? null : String(selectedTemplateId), templateDefaults)
   const templateFormData = templateDraft.draft ?? {}
   const setTemplateFormData = templateDraft.setDraft
@@ -185,8 +174,8 @@ const ServerNew: React.FC = () => {
   const existingCreation = activeTasks.data?.find(task => task.taskType === 'server_create' && task.serverId === (creationMode === 'template' ? templateFormData.name : serverName))
   const isLoading = createServerMutation.isPending || populateServerMutation.isPending || Boolean(existingCreation)
 
-  const isTemplateFormValid = !!selectedTemplateId && !!templateSchema?.json_schema &&
-    validator.isValid(templateSchema.json_schema as RJSFSchema, templateFormData, templateSchema.json_schema as RJSFSchema)
+  const isTemplateFormValid = !!selectedTemplateId && !!selectedTemplate &&
+    templateValuesValid(selectedTemplate.variable_definitions, templateFormData)
 
   return (
     <div className="space-y-4">

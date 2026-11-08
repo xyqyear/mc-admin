@@ -42,7 +42,7 @@ func ownedReconciliation(ctx context.Context, t *engine.Scope) error {
 	third := address("third", "192.0.2.12")
 	configuration := map[string]any{"enabled": true, "dns": map[string]any{"type": "dnspod", "domain": "e2e.invalid", "id": "e2e-owned-id", "key": "e2e-owned-key"}, "managed_sub_domain": "mc", "mc_router_base_url": "http://127.0.0.1:26667", "dns_ttl": 60, "addresses": []any{primary}}
 	configure := func() error {
-		return client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": configuration}, nil, 200)
+		return client.JSON(ctx, "PUT", "/api/settings/dns", configuration, nil, 200)
 	}
 	observe := func(expected string, dnsKnown, routerKnown bool) error {
 		var result observedStatus

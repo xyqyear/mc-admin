@@ -79,7 +79,7 @@ func emptyDatabase(ctx context.Context, t *engine.Scope) error {
 		if len(users) != 2 {
 			return fmt.Errorf("fresh database bootstrap did not retain both API-created users")
 		}
-		for _, path := range []string{"/api/config/modules", "/api/cron/", "/api/self-check/status", "/api/self-check/runs"} {
+		for _, path := range []string{"/api/settings/world", "/api/cron/", "/api/self-check/status", "/api/self-check/runs"} {
 			if err := c.JSON(ctx, "GET", path, nil, nil, 200); err != nil {
 				return err
 			}
@@ -98,14 +98,12 @@ func versionedUpgrade(ctx context.Context, t *engine.Scope) error {
 	if err = c.JSON(ctx, "GET", "/api/admin/users", nil, &beforeUsers, 200); err != nil {
 		return err
 	}
-	var config struct {
-		Data map[string]any `json:"config_data"`
-	}
-	if err = c.JSON(ctx, "GET", "/api/config/modules/world", nil, &config, 200); err != nil {
+	var config map[string]any
+	if err = c.JSON(ctx, "GET", "/api/settings/world", nil, &config, 200); err != nil {
 		return err
 	}
-	config.Data["dimension_labels"] = map[string]any{".": "migration preserved world"}
-	if err = c.JSON(ctx, "PUT", "/api/config/modules/world", map[string]any{"config_data": config.Data}, nil, 200); err != nil {
+	config["dimension_labels"] = map[string]any{".": "migration preserved world"}
+	if err = c.JSON(ctx, "PUT", "/api/settings/world", config, nil, 200); err != nil {
 		return err
 	}
 	if err = t.Step("stop deployment and prepare the supported versioned baseline using shipped Alembic", func() error {
@@ -146,13 +144,11 @@ func versionedUpgrade(ctx context.Context, t *engine.Scope) error {
 		if !reflect.DeepEqual(beforeUsers, afterUsers) {
 			return fmt.Errorf("startup upgrade altered user records")
 		}
-		var persisted struct {
-			Data map[string]any `json:"config_data"`
-		}
-		if err := c.JSON(ctx, "GET", "/api/config/modules/world", nil, &persisted, 200); err != nil {
+		var persisted map[string]any
+		if err := c.JSON(ctx, "GET", "/api/settings/world", nil, &persisted, 200); err != nil {
 			return err
 		}
-		if !reflect.DeepEqual(config.Data, persisted.Data) {
+		if !reflect.DeepEqual(config, persisted) {
 			return fmt.Errorf("startup upgrade altered dynamic configuration")
 		}
 		if err := c.JSON(ctx, "GET", "/api/servers/"+fixtures.ServerOf(t.Env).ID, nil, nil, 200); err != nil {

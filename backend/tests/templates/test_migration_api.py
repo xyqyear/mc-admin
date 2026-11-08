@@ -288,7 +288,7 @@ class TestExtractVariables:
         assert data["extracted_values"]["game_port"] == 30000
         assert data["extracted_values"]["rcon_port"] == 30001
         assert data["extracted_values"]["game_version"] == "1.20.4"
-        assert isinstance(data["json_schema"], dict)
+        assert data["variable_definitions"][0]["name"] == "name"
         assert isinstance(data["variable_definitions"], list)
         assert len(data["variable_definitions"]) == 4
 

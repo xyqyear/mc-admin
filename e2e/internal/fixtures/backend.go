@@ -107,20 +107,12 @@ func (f *Factory) backendNetwork(ctx context.Context, env *environment.Environme
 			return err
 		}
 	}
-	var modules struct {
-		Modules map[string]any `json:"modules"`
-	}
-	if err = b.Admin.JSON(ctx, "GET", "/api/config/modules", nil, &modules, 200); err != nil {
-		return err
-	}
-	for name := range modules.Modules {
-		var module struct {
-			Data any `json:"config_data"`
-		}
-		if err = b.Admin.JSON(ctx, "GET", "/api/config/modules/"+name, nil, &module, 200); err != nil {
+	for _, name := range []string{"dns", "snapshots", "players", "log-parser", "mcmap", "world", "self-check"} {
+		var module any
+		if err = b.Admin.JSON(ctx, "GET", "/api/settings/"+name, nil, &module, 200); err != nil {
 			return err
 		}
-		b.Configs[name] = module.Data
+		b.Configs[name] = module
 	}
 	env.Recorder.Event("backend_ready", map[string]any{"url": b.URL, "container": container.ID, "image": container.Image})
 	var schema map[string]any
@@ -220,13 +212,11 @@ func verifyBackend(ctx context.Context, env *environment.Environment) error {
 		return fmt.Errorf("environment has %d active tasks", tasks.Total)
 	}
 	for name, initial := range b.Configs {
-		var module struct {
-			Data any `json:"config_data"`
-		}
-		if err := b.Admin.JSON(ctx, "GET", "/api/config/modules/"+name, nil, &module, 200); err != nil {
+		var module any
+		if err := b.Admin.JSON(ctx, "GET", "/api/settings/"+name, nil, &module, 200); err != nil {
 			return err
 		}
-		if !reflect.DeepEqual(module.Data, initial) {
+		if !reflect.DeepEqual(module, initial) {
 			return fmt.Errorf("dynamic config %s differs from baseline", name)
 		}
 	}

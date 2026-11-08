@@ -4,6 +4,7 @@ const entryFiles = new Set(['api', 'auth', 'authCommands', 'contracts', 'lifecyc
 const featureEntries = {
   health: ['useSelfCheckHealth'],
   servers: ['presentation'],
+  templates: ['variableValues'],
   tasks: ['downloads', 'uploads'],
   players: ['identity'],
 }
@@ -13,7 +14,10 @@ const screenEntries = new Set([
   'files/FileBrowserScreen', 'health/SelfCheckScreen',
   'players/PlayerManagementScreen', 'schedules/CronManagementScreen',
   'servers/ServerConsoleScreen', 'servers/ServerDetailScreen', 'servers/ServerNewScreen',
-  'settings/DynamicConfigScreen', 'templates/DefaultVariablesScreen',
+  'settings/DNSSettingsScreen', 'settings/SnapshotSettingsScreen',
+  'settings/LogParserSettingsScreen', 'settings/PlayerSettingsScreen',
+  'settings/MapSettingsScreen', 'settings/WorldSettingsScreen',
+  'settings/SelfCheckSettingsScreen', 'templates/DefaultVariablesScreen',
   'templates/TemplateEditScreen', 'templates/TemplateListScreen',
   'users/LoginScreen', 'users/UserManagementScreen',
   'world/prune/ChunkPruneScreen', 'world/restore/WorldRestoreScreen',

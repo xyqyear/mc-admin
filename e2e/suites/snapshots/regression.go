@@ -17,14 +17,12 @@ import (
 )
 
 func updateConfig(ctx context.Context, client *api.Client, mutate func(map[string]any)) error {
-	var config struct {
-		Data map[string]any `json:"config_data"`
-	}
-	if err := client.JSON(ctx, "GET", "/api/config/modules/snapshots", nil, &config, 200); err != nil {
+	var config map[string]any
+	if err := client.JSON(ctx, "GET", "/api/settings/snapshots", nil, &config, 200); err != nil {
 		return err
 	}
-	mutate(config.Data)
-	return client.JSON(ctx, "PUT", "/api/config/modules/snapshots", map[string]any{"config_data": config.Data}, nil, 200)
+	mutate(config)
+	return client.JSON(ctx, "PUT", "/api/settings/snapshots", config, nil, 200)
 }
 
 func checkSnapshotIDs(actual, expected []string) error {

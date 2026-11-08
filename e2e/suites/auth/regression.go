@@ -176,7 +176,7 @@ func codeLogin(ctx context.Context, t *engine.Scope) error {
 			return fmt.Errorf("cookie identity differs from completion")
 		}
 		browser.CSRF = false
-		response, err := browser.Do(ctx, "POST", "/api/config/modules/world/reset", nil, http.Header{"X-CSRF-Token": {"incorrect"}})
+		response, err := browser.Do(ctx, "POST", "/api/settings/world/reset", nil, http.Header{"X-CSRF-Token": {"incorrect"}})
 		browser.CSRF = true
 		if err != nil {
 			return err
@@ -184,7 +184,7 @@ func codeLogin(ctx context.Context, t *engine.Scope) error {
 		if err = browser.Expect(response, 403); err != nil {
 			return err
 		}
-		if err = browser.JSON(ctx, "POST", "/api/config/modules/world/reset", nil, nil, 200); err != nil {
+		if err = browser.JSON(ctx, "POST", "/api/settings/world/reset", nil, nil, 200); err != nil {
 			return err
 		}
 		response, err = browser.Do(ctx, "POST", "/api/auth/logout", nil, nil)

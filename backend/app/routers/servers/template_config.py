@@ -27,7 +27,6 @@ from ...templates import (
     TemplateSnapshot,
     get_template_by_id,
 )
-from ...templates.manager import TemplateManager
 from .admission import admit_server_write
 
 router = APIRouter(
@@ -57,9 +56,6 @@ async def get_template_config(
     snapshot = TemplateSnapshot.model_validate_json(server.template_snapshot_json)
     variable_values = json.loads(server.variable_values_json or "{}")
 
-    # Generate JSON Schema
-    json_schema = TemplateManager.generate_json_schema(snapshot.variable_definitions)
-
     # Check if live template has been updated since snapshot
     has_template_update = False
     template_deleted = False
@@ -81,7 +77,6 @@ async def get_template_config(
         yaml_template=snapshot.yaml_template,
         variable_definitions=snapshot.variable_definitions,
         variable_values=variable_values,
-        json_schema=json_schema,
         snapshot_time=snapshot.snapshot_time,
         has_template_update=has_template_update,
         template_deleted=template_deleted,

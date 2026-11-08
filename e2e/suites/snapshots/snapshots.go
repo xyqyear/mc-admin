@@ -39,14 +39,12 @@ func restore(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 	}
-	var config struct {
-		Data map[string]any `json:"config_data"`
-	}
-	if err = client.JSON(ctx, "GET", "/api/config/modules/snapshots", nil, &config, 200); err != nil {
+	var config map[string]any
+	if err = client.JSON(ctx, "GET", "/api/settings/snapshots", nil, &config, 200); err != nil {
 		return err
 	}
-	config.Data["ignored_paths"] = []string{".mcmap", "restore/keep.txt"}
-	if err = client.JSON(ctx, "PUT", "/api/config/modules/snapshots", map[string]any{"config_data": config.Data}, nil, 200); err != nil {
+	config["ignored_paths"] = []string{".mcmap", "restore/keep.txt"}
+	if err = client.JSON(ctx, "PUT", "/api/settings/snapshots", config, nil, 200); err != nil {
 		return err
 	}
 	if err = t.Step("shared logical rules are read without creating history and submissions protect excluded files", func() error {

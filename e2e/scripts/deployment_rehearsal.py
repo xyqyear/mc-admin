@@ -276,7 +276,7 @@ def copy_persistent(deployment, target, checkpoints):
     shutil.copytree(deployment.root, target, symlinks=True, ignore=lambda directory, names: [checkpoints.name] if Path(directory) == deployment.root else [])
 
 
-def check_retained(deployment, retained, *, upgraded=False):
+def check_retained(deployment, retained, *, upgraded=False, typed_settings=False):
     base = "/servers/" + deployment.server
     schedule = deployment.request("GET", base + "/restart-schedule")
     assert schedule["cronjob_id"] == retained["schedule"] and schedule["status"] == "paused"
@@ -285,7 +285,8 @@ def check_retained(deployment, retained, *, upgraded=False):
     users = {user["id"]: user for user in deployment.request("GET", "/admin/users")}
     for user in retained["users"]:
         assert {key: users[user["id"]][key] for key in user} == user
-    assert deployment.request("GET", "/config/modules/log_parser")["config_data"]["chat_pattern"] == retained["parser_pattern"]
+    parser = deployment.request("GET", "/settings/log-parser") if typed_settings else deployment.request("GET", "/config/modules/log_parser")["config_data"]
+    assert parser["chat_pattern"] == retained["parser_pattern"]
     player = retained["player"]
     detail = deployment.request("GET", "/players/uuid/" + player["uuid"])
     assert detail["player_db_id"] == player["id"]
@@ -346,9 +347,9 @@ def run(args, fixture):
         copy_persistent(deployment, checkpoints / "released", checkpoints)
         report["candidate_image"] = deployment.replace(args.candidate_image)
         report["candidate_application_sha256"] = deployment.application_source()
-        check_retained(deployment, retained)
+        check_retained(deployment, retained, typed_settings=True)
         report["legacy_recovery"] = verify_legacy_recovery(deployment, retained["legacy_restoration"], retained["ambiguous_restoration"])
-        check_retained(deployment, retained)
+        check_retained(deployment, retained, typed_settings=True)
         report["steps"].append("released restoration IDs, selection, generation and safety references survived upgrade; ambiguous rollback was rejected; eligible rollback and rollback-of-rollback changed the expected bytes")
         deployment.content("/new-after-upgrade.txt", "must survive code rollback", create=True)
         deployment.content("/world/release-marker.txt", "after upgrade")
@@ -359,7 +360,7 @@ def run(args, fixture):
         operations = deployment.request("GET", "/operations?limit=100")
         rows = operations if isinstance(operations, list) else operations["operations"]
         retained["operation"] = rows[0]["operation_id"]
-        check_retained(deployment, retained, upgraded=True)
+        check_retained(deployment, retained, upgraded=True, typed_settings=True)
         print("Upgrade and post-upgrade data verified through APIs", flush=True)
         deployment.stop()
         report["upgraded_database"] = database_evidence(deployment.root)
@@ -390,12 +391,12 @@ def run(args, fixture):
         check_retained(deployment, retained, upgraded=True)
         report["steps"].append("same-schema historical image replacement retained new files, users, cron, journal and snapshots; world remained after-upgrade content")
         deployment.replace(args.candidate_image)
-        check_retained(deployment, retained, upgraded=True)
+        check_retained(deployment, retained, upgraded=True, typed_settings=True)
         base = "/snapshots/restorations"
         restored = deployment.task(base, {"source_snapshot_id": retained["snapshot"], "scope": {"kind": "world", "server_id": deployment.server, "selection": {"type": "world"}}})
         assert deployment.content("/world/release-marker.txt") == "release world"
         rolled = deployment.task(base + "/" + restored["restoration_id"] + "/rollback")
-        check_retained(deployment, retained, upgraded=True)
+        check_retained(deployment, retained, upgraded=True, typed_settings=True)
         history = deployment.request("GET", base + "/" + rolled["restoration_id"])
         assert history["status"] == "succeeded" and history["is_rollback"] and history["safety_snapshot_exists"]
         report["world_recovery"] = {"restoration_id": restored["restoration_id"], "rollback_id": rolled["restoration_id"], "new_nonworld_data_retained": True, "explicit_safety_snapshot": True}

@@ -121,7 +121,6 @@ async def extract_variables(
     )
 
     # Generate JSON schema
-    json_schema = TemplateManager.generate_json_schema(variable_definitions)
 
     # Render compose with extracted values for preview
     try:
@@ -135,7 +134,6 @@ async def extract_variables(
         version=current.version,
         extracted_values=extracted_values,
         warnings=warnings,
-        json_schema=json_schema,
         variable_definitions=variable_definitions,
         current_compose=current_compose,
         rendered_compose=rendered_compose,

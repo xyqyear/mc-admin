@@ -43,18 +43,18 @@ func configuration(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	path := "/api/cron/e2e-calendar"
-	if err = t.Step("cron registries expose real job parameter schemas and protected system schedule", func() error {
+	if err = t.Step("cron registrations expose available jobs and protected system schedule", func() error {
 		var registrations []struct {
-			ID     string         `json:"identifier"`
-			Schema map[string]any `json:"parameter_schema"`
+			ID          string `json:"identifier"`
+			Description string `json:"description"`
 		}
 		if err := c.JSON(ctx, "GET", "/api/cron/registered", nil, &registrations, 200); err != nil {
 			return err
 		}
 		found := map[string]bool{}
 		for _, r := range registrations {
-			if len(r.Schema) == 0 {
-				return fmt.Errorf("job %s missing schema", r.ID)
+			if r.Description == "" {
+				return fmt.Errorf("job %s missing description", r.ID)
 			}
 			found[r.ID] = true
 		}
@@ -174,8 +174,12 @@ func configuration(ctx context.Context, t *engine.Scope) error {
 		if err := c.JSON(ctx, "DELETE", path, nil, nil, 200); err != nil {
 			return err
 		}
-		for _, bad := range []map[string]any{{"identifier": "missing", "params": map[string]any{}, "cron": "* * * * *"}, {"identifier": "restart_server", "params": map[string]any{}, "cron": "* * * * *"}, request("bad", "0 0 * * 8", "0"), request("bad", "invalid", "0")} {
-			if err := c.JSON(ctx, "POST", "/api/cron/", bad, nil, 400); err != nil {
+		for index, bad := range []map[string]any{{"identifier": "missing", "params": map[string]any{}, "cron": "* * * * *"}, {"identifier": "restart_server", "params": map[string]any{}, "cron": "* * * * *"}, request("bad", "0 0 * * 8", "0"), request("bad", "invalid", "0")} {
+			status := 400
+			if index < 2 {
+				status = 422
+			}
+			if err := c.JSON(ctx, "POST", "/api/cron/", bad, nil, status); err != nil {
 				return err
 			}
 		}

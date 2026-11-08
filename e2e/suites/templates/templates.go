@@ -40,7 +40,7 @@ func lifecycle(ctx context.Context, t *engine.Scope) error {
 		return client.JSON(ctx, "DELETE", path, nil, nil, 204)
 	})
 	if err = t.Step("render valid values and reject an out-of-range port", func() error {
-		if err := client.JSON(ctx, "GET", path+"/schema", nil, nil, 200); err != nil {
+		if err := client.JSON(ctx, "GET", path, nil, nil, 200); err != nil {
 			return err
 		}
 		var preview struct {

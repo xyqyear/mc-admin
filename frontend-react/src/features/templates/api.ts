@@ -1,5 +1,5 @@
 import { api } from "@/shared/http/api";
-import type { VariableDefinition, TemplateListItem, Template, TemplateSchema, AvailablePorts, TemplateCreateRequest, TemplateUpdateRequest, DefaultVariablesResponse } from '@/features/templates/contracts';
+import type { VariableDefinition, TemplateListItem, Template, AvailablePorts, TemplateCreateRequest, TemplateUpdateRequest, DefaultVariablesResponse } from '@/features/templates/contracts';
 
 
 export const templateApi = {
@@ -28,11 +28,6 @@ export const templateApi = {
 
   deleteTemplate: async (id: number): Promise<void> => {
     await api.delete(`/templates/${id}`);
-  },
-
-  getTemplateSchema: async (id: number): Promise<TemplateSchema> => {
-    const res = await api.get<TemplateSchema>(`/templates/${id}/schema`);
-    return res.data;
   },
 
   getAvailablePorts: async (): Promise<AvailablePorts> => {

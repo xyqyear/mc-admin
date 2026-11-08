@@ -1,31 +1,43 @@
 """HTTP contracts for scheduled jobs."""
 
 from datetime import datetime
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from ..self_check.job import SelfCheckJobParams
+from .jobs.backup import BackupJobParams
+from .jobs.restart import ServerRestartParams
 from .types import RegistrationStatus
 
 
-class CreateCronJobRequest(BaseModel):
-    """Request model for creating a cron job."""
-
-    identifier: str
-    params: dict  # Will be validated against the schema class
+class CronJobInput(BaseModel):
     cron: str
     cronjob_id: str | None = None
     name: str | None = None
     second: str | None = None
 
 
-class UpdateCronJobRequest(BaseModel):
-    """Request model for updating a cron job."""
+class RestartCronJobInput(CronJobInput):
+    identifier: Literal["restart_server"]
+    params: ServerRestartParams
 
-    identifier: str
-    params: dict  # Will be validated against the schema class
-    cron: str
-    name: str | None = None
-    second: str | None = None
+
+class BackupCronJobInput(CronJobInput):
+    identifier: Literal["backup"]
+    params: BackupJobParams
+
+
+class SelfCheckCronJobInput(CronJobInput):
+    identifier: Literal["self_check"]
+    params: SelfCheckJobParams
+
+
+CreateCronJobRequest = Annotated[
+    RestartCronJobInput | BackupCronJobInput | SelfCheckCronJobInput,
+    Field(discriminator="identifier"),
+]
+UpdateCronJobRequest = CreateCronJobRequest
 
 
 class CronJobResponse(BaseModel):
@@ -70,7 +82,6 @@ class RegisteredCronJobResponse(BaseModel):
 
     identifier: str
     description: str
-    parameter_schema: dict
     is_system: bool
     default_cron: str | None = None
     default_second: str | None = None

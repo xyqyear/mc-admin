@@ -269,18 +269,16 @@ func gamePort(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	return t.Step("disabled checks disappear from current state while retained failure evidence survives", func() error {
-		var config struct {
-			Data map[string]any `json:"config_data"`
-		}
-		if err := c.JSON(ctx, "GET", "/api/config/modules/self_check", nil, &config, 200); err != nil {
+		var config map[string]any
+		if err := c.JSON(ctx, "GET", "/api/settings/self-check", nil, &config, 200); err != nil {
 			return err
 		}
-		checks, ok := config.Data["checks"].(map[string]any)
+		checks, ok := config["checks"].(map[string]any)
 		if !ok {
 			return fmt.Errorf("self-check config omitted switches")
 		}
 		checks["server_game_port_consistency"] = false
-		if err := c.JSON(ctx, "PUT", "/api/config/modules/self_check", map[string]any{"config_data": config.Data}, nil, 200); err != nil {
+		if err := c.JSON(ctx, "PUT", "/api/settings/self-check", config, nil, 200); err != nil {
 			return err
 		}
 		var status struct {
@@ -483,14 +481,12 @@ func repositoryHealth(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	return t.Step("real Restic repository, snapshot coverage, freshness and idle locks report healthy", func() error {
-		var config struct {
-			Data map[string]any `json:"config_data"`
-		}
-		if err := c.JSON(ctx, "GET", "/api/config/modules/self_check", nil, &config, 200); err != nil {
+		var config map[string]any
+		if err := c.JSON(ctx, "GET", "/api/settings/self-check", nil, &config, 200); err != nil {
 			return err
 		}
-		config.Data["backup_repository_usage_percent"] = 100
-		if err := c.JSON(ctx, "PUT", "/api/config/modules/self_check", map[string]any{"config_data": config.Data}, nil, 200); err != nil {
+		config["backup_repository_usage_percent"] = 100
+		if err := c.JSON(ctx, "PUT", "/api/settings/self-check", config, nil, 200); err != nil {
 			return err
 		}
 		if err := c.RunTask(ctx, "POST", "/api/snapshots", map[string]any{"scope": map[string]any{"kind": "server", "server_id": fixtures.ServerOf(t.Env).ID}}, nil); err != nil {

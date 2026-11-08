@@ -64,6 +64,8 @@ export const getOpenKeysFromPath = (pathname: string): string[] => {
     } else {
       openKeys.push("服务器管理");
     }
+  } else if (pathname.startsWith("/settings/")) {
+    openKeys.push("系统设置");
   } else if (pathname.startsWith("/admin/")) {
     openKeys.push("超管");
   } else if (pathname === "/overview" || pathname === "/backups") {

@@ -87,6 +87,7 @@ consistent in both TypeScript configurations. Details belong to
 | Resource samples, status or maintenance observation | [Shared monitoring](docs/monitoring.md) |
 | Task completion or cache/map refresh | [Operation refresh](docs/operation-refresh.md), [task center](docs/task-center.md) |
 | Compose/template drafts or version conflicts | [Configuration editors](docs/configuration.md) |
+| Runtime settings contracts, pages or navigation | [Application settings](docs/settings.md) |
 | Files, bulk selection or directory export | [File management](docs/file-management.md), [file operations](docs/file-operations.md) |
 | Snapshot creation, preview, restore or history | [Common snapshot UI](docs/snapshot-recovery.md), [world page](docs/world-restore-page.md) |
 | Generated components or editor workers | [UI conventions](docs/ui-conventions.md), [Monaco](docs/monaco-editor.md) |

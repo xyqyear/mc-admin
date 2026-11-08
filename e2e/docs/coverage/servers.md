@@ -5,8 +5,8 @@
 
 | 功能域 | 稳定用例 ID | 已实现的验证内容 |
 | --- | --- | --- |
-| 模板生命周期 | `templates.lifecycle` | 验证带类型变量的模板增删改查、Schema、渲染结果、非法变量拒绝和删除效果。 |
-| 模板类型、默认值与端口 | `templates.types-defaults-and-boundaries` | 验证字符串、整数、浮点数、枚举、布尔值的 Schema 与替换；拒绝类型错误、越界值、缺少必填项、重复定义和未定义变量；模板和默认变量保存时拒绝非法正则、倒置范围及不符合约束的默认值，并保持原数据；默认值在重启后保留；建议端口避开现有游戏与 RCON 端口映射。 |
+| 模板生命周期 | `templates.lifecycle` | 验证带类型变量的模板增删改查、变量定义读取、渲染结果、非法变量拒绝和删除效果。 |
+| 模板类型、默认值与端口 | `templates.types-defaults-and-boundaries` | 验证字符串、整数、浮点数、枚举、布尔值的定义与替换；拒绝类型错误、越界值、缺少必填项、重复定义和未定义变量；模板和默认变量保存时拒绝非法正则、倒置范围及不符合约束的默认值，并保持原数据；默认值在重启后保留；建议端口避开现有游戏与 RCON 端口映射。 |
 | 直接创建与模板创建服务器 | `servers.template-snapshot` | 验证直接创建、重复冲突、删除后按模板重新创建；删除源模板后保留服务器的模板快照；最终删除服务器。 |
 | Compose 转换与重建 | `servers.compose-conversions-and-rebuild` | 验证 Compose 读取与编辑、变量提取、转换预览；内容相同的转换不触发重建，内容变化时重建任务达到终态且元数据立即一致；每次配置任务均核对停服状态及原运行意图；源模板修改或删除后，服务器快照预览与保存仍使用保留定义；显式升级采用新源模板，直接模式与模板模式转换及 Compose 持久化正确，未携带版本的既有请求仍可用。 |
 | Configuration versions | `servers.configuration-versions` | Independent editors receive the same baseline; an accepted write changes the version and stale writes receive `configuration_conflict` with the current version without overwriting content. External Compose changes invalidate a previously observed version. Legacy saves remain accepted. Extraction/conversion previews carry the observed version; mode changes version their source metadata, and stale template/direct conversions are rejected. |

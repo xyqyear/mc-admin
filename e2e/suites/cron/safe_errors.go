@@ -30,9 +30,11 @@ func safeValidationErrors(ctx context.Context, t *engine.Scope) error {
 		for _, parameterFailure := range []bool{true, false} {
 			body := request("e2e-rejected-cron", "0 0 1 1 *", "0")
 			expected := "服务器内部错误，请稍后重试"
+			status := 400
 			if parameterFailure {
 				body["params"] = map[string]any{"enable_forget": secret}
-				expected = "任务参数无效: enable_forget: 应为布尔值"
+				expected = "任务参数无效: backup.params.enable_forget: 请输入布尔值"
+				status = 422
 			} else {
 				body["second"] = secret
 			}
@@ -44,7 +46,7 @@ func safeValidationErrors(ctx context.Context, t *engine.Scope) error {
 			if err != nil {
 				return err
 			}
-			if err = c.Expect(response, 400); err != nil {
+			if err = c.Expect(response, status); err != nil {
 				return err
 			}
 			var failure struct {
@@ -78,7 +80,7 @@ func safeValidationErrors(ctx context.Context, t *engine.Scope) error {
 		return err
 	}
 	for _, output := range []string{logs, string(applicationLog)} {
-		if !strings.Contains(output, "Cron parameter validation failed: ValidationError") || strings.Contains(output, secret) {
+		if !strings.Contains(output, "Cron parameter validation failed: RequestValidationError") || strings.Contains(output, secret) {
 			return fmt.Errorf("cron validation logs lack safe diagnostics or expose submitted values")
 		}
 	}

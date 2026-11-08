@@ -39,9 +39,6 @@ export const useUpdateTemplate = () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.templates.detail(id),
       });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.templates.schema(id),
-      });
       // Refresh has_template_update on dependent server configs.
       queryClient.invalidateQueries({
         queryKey: queryKeys.templates.serverConfigs(),

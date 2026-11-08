@@ -34,7 +34,7 @@ func cloudTraffic(ctx context.Context, t *engine.Scope) error {
 	address := map[string]any{"type": "manual", "name": "primary", "record_type": "A", "value": "127.0.0.1", "port": ports[4]}
 	dynamic := map[string]any{"enabled": true, "dns": config.application("huawei"), "managed_sub_domain": scope, "mc_router_base_url": routerEndpoint(t), "dns_ttl": config.TTL, "addresses": []any{address}}
 	save := func() error {
-		return client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": dynamic}, nil, 200)
+		return client.JSON(ctx, "PUT", "/api/settings/dns", dynamic, nil, 200)
 	}
 	expected := func(ids ...string) (map[string]string, map[string]string) {
 		records := map[string]string{"*." + base + "|A": "127.0.0.1"}

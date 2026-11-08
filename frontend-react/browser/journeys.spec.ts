@@ -197,13 +197,13 @@ test.describe('owned administration journeys', () => {
   journey('mixed file snapshots skip ignored paths through preview, resumed restore and rollback', async ({ page, api, owned }) => {
     const filename = 'browser-recovery.txt'
     const ignored = 'browser-ignored'
-    const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/snapshots')
+    const config = await api.json<Record<string, unknown>>('/api/settings/snapshots')
     await api.json(api.server('/files/create'), 'POST', { path: '/', name: filename, type: 'file' })
     await api.json(api.server('/files/create'), 'POST', { path: '/', name: ignored, type: 'directory' })
     await api.json(api.server('/files/create'), 'POST', { path: '/' + ignored, name: 'keep.txt', type: 'file' })
     await api.writeFile(filename, 'file snapshot bytes\n')
     await api.writeFile(ignored + '/keep.txt', 'protected bytes\n')
-    await api.json('/api/config/modules/snapshots', 'PUT', { config_data: { ...config.config_data, ignored_paths: [...(config.config_data.ignored_paths as string[]), ignored] } })
+    await api.json('/api/settings/snapshots', 'PUT', { ...config, ignored_paths: [...(config.ignored_paths as string[]), ignored] })
     let worker: ReturnType<typeof holdSnapshotBackup> | undefined
     await withCleanup(async () => {
       await page.goto(`/server/${owned.server_id}/files?q=browser-`)
@@ -246,7 +246,7 @@ test.describe('owned administration journeys', () => {
       expect(await readFile(path.join(owned.server_path, 'data', filename), 'utf8')).toBe('file snapshot bytes\n')
       await resumed.getByRole('button', { name: '关闭', exact: true }).click()
       await api.writeFile(filename, 'later file edit\n')
-      await api.json('/api/config/modules/snapshots', 'PUT', config)
+      await api.json('/api/settings/snapshots', 'PUT', config)
       await api.writeFile(ignored + '/keep.txt', 'protected after rules change\n')
       await page.getByRole('button', { name: '恢复历史', exact: true }).click()
       const history = page.getByRole('dialog', { name: '恢复历史' })
@@ -262,7 +262,7 @@ test.describe('owned administration journeys', () => {
       expect((await api.file(ignored + '/keep.txt')).content).toBe('protected after rules change\n')
     },
     { label: 'snapshot worker', run: async () => { await worker?.release() } },
-    { label: 'snapshot rules', run: async () => { await api.json('/api/config/modules/snapshots', 'PUT', config) } },
+    { label: 'snapshot rules', run: async () => { await api.json('/api/settings/snapshots', 'PUT', config) } },
     { label: 'file recovery marker', run: () => api.deleteFile(filename) },
     { label: 'ignored recovery directory', run: () => api.deleteFile(ignored) },
     )
@@ -470,8 +470,8 @@ test.describe('owned administration journeys', () => {
   journey('an actual expired prune preview is rejected at confirmation and leaves region bytes intact', async ({ page, api, owned }) => {
     await api.stopped()
     await api.initializeMap()
-    const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/mcmap')
-    await api.json('/api/config/modules/mcmap', 'PUT', { config_data: { ...config.config_data, prune_preview_ttl_seconds: 8 } })
+    const config = await api.json<Record<string, unknown>>('/api/settings/mcmap')
+    await api.json('/api/settings/mcmap', 'PUT', { ...config, prune_preview_ttl_seconds: 8 })
     const region = path.join(owned.server_path, 'data/world/region')
     const hashes = async () => Object.fromEntries(await Promise.all((await readdir(region)).filter(name => name.endsWith('.mca')).sort().map(async name => [name, createHash('sha256').update(await readFile(path.join(region, name))).digest('hex')])))
     const before = await hashes()
@@ -504,7 +504,7 @@ test.describe('owned administration journeys', () => {
       expect(await hashes()).toEqual(before)
     } finally {
       page.off('request', observe)
-      await api.json('/api/config/modules/mcmap', 'PUT', config)
+      await api.json('/api/settings/mcmap', 'PUT', config)
     }
   })
   for (const { name, run } of process.env.BROWSER_REVERSE_ORDER === '1' ? [...journeys].reverse() : journeys) test(name, { annotation: { type: 'shard_isolation', description: 'independent' } }, run)

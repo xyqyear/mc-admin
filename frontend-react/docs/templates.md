@@ -45,6 +45,16 @@ All configuration writes and mode conversions send the accepted `expected_versio
 
 Rebuild submission announces task/operation discovery. The authenticated app's operation observer owns business-cache refresh through the feature resource registry after terminal outcomes, including failures with partial changes, regardless of the current page. `RebuildProgressDialog` reports task progress, completion and failure; async `configuration_conflict` failures reopen conflict resolution without losing the draft.
 
+## Variable values
+
+`TemplateVariablesForm.tsx` renders the five variable types directly from
+`variable_definitions`. Creation reads template detail, existing-server editing
+uses captured snapshot definitions, and conversion uses the extracted definitions.
+`variableValues.ts` handles default initialization and value checks. Server names
+remain read-only on existing servers while their values remain in the payload.
+`VariableEditDialog` owns type-specific definition controls and validates bounds,
+patterns, enum options and defaults before accepting a definition.
+
 ## Default variables
 
 `features/templates/DefaultVariablesScreen.tsx` edits a singleton `DefaultVariableConfig` row. Built-in defaults (loaded server-side):

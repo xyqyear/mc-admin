@@ -16,31 +16,38 @@ import (
 	"mc-admin/e2e/internal/fixtures"
 )
 
-type configuration struct {
-	Data map[string]any `json:"config_data"`
-}
-
 func persistedConfiguration(ctx context.Context, client *api.Client, name string, acknowledged map[string]any) (map[string]any, error) {
-	var persisted configuration
-	if err := client.JSON(ctx, "GET", "/api/config/modules/"+name, nil, &persisted, 200); err != nil {
+	var persisted map[string]any
+	if err := client.JSON(ctx, "GET", "/api/settings/"+name, nil, &persisted, 200); err != nil {
 		return nil, err
 	}
-	if !reflect.DeepEqual(persisted.Data, acknowledged) {
+	if !reflect.DeepEqual(persisted, acknowledged) {
 		return nil, fmt.Errorf("%s read differs from acknowledged update", name)
 	}
-	return persisted.Data, nil
+	return persisted, nil
 }
 
 func rejectConfigurationUpdate(ctx context.Context, client *api.Client, name string, invalid, baseline map[string]any) error {
-	path := "/api/config/modules/" + name
-	if err := client.JSON(ctx, "PUT", path, map[string]any{"config_data": invalid}, nil, 400); err != nil {
+	path := "/api/settings/" + name
+	draft := make(map[string]any, len(baseline))
+	for key, value := range baseline {
+		draft[key] = value
+	}
+	for key, value := range invalid {
+		draft[key] = value
+	}
+	status := 422
+	if name == "log-parser" {
+		status = 400
+	}
+	if err := client.JSON(ctx, "PUT", path, draft, nil, status); err != nil {
 		return err
 	}
-	var actual configuration
+	var actual map[string]any
 	if err := client.JSON(ctx, "GET", path, nil, &actual, 200); err != nil {
 		return err
 	}
-	if !reflect.DeepEqual(actual.Data, baseline) {
+	if !reflect.DeepEqual(actual, baseline) {
 		return fmt.Errorf("invalid %s update changed persistent configuration", name)
 	}
 	return nil
@@ -58,34 +65,28 @@ func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 		{"dns", map[string]any{"dns_ttl": 45, "managed_sub_domain": "e2e", "dns": map[string]any{"type": "dnspod", "domain": "e2e.invalid", "id": "id", "key": "unused"}}, map[string]any{"dns": map[string]any{"type": "unknown"}}},
 		{"snapshots", map[string]any{"ignored_paths": []any{".mcmap", "<LEVEL_NAME>/protected"}}, map[string]any{"ignored_paths": []any{"../escape"}}},
 		{"players", map[string]any{"ignored_name_prefixes": []any{"bot_", "e2e_ignore_"}}, map[string]any{"heartbeat": map[string]any{"crash_threshold_minutes": 0}}},
-		{"log_parser", map[string]any{"chat_pattern": `^(E2E: )?<(\S+)> (.*)$`}, map[string]any{"chat_pattern": `E2E: <(\S+)> (.*)`}},
+		{"log-parser", map[string]any{"chat_pattern": `^(E2E: )?<(\S+)> (.*)$`}, map[string]any{"chat_pattern": `E2E: <(\S+)> (.*)`}},
 		{"mcmap", map[string]any{"batch_size": 8, "thread_count": 2}, map[string]any{"batch_size": 0}},
 		{"world", map[string]any{"region_stat_workers": 4, "dimension_labels": map[string]any{".": "E2E 世界"}}, map[string]any{"dimension_max_depth_from_world_root": 33}},
-		{"self_check", map[string]any{"retention_runs_keep_days": 7, "backup_mod_ids": []any{"FTBBackups2"}}, map[string]any{"snapshot_freshness_minutes": 0}},
+		{"self-check", map[string]any{"retention_runs_keep_days": 7, "backup_mod_ids": []any{"FTBBackups2"}}, map[string]any{"snapshot_freshness_minutes": 0}},
 	}
 	stored := map[string]map[string]any{}
 	for _, change := range changes {
 		if err = t.Step("mutate and validate "+change.name+" without losing valid state", func() error {
-			path := "/api/config/modules/" + change.name
-			var draft configuration
+			path := "/api/settings/" + change.name
+			var draft map[string]any
 			if err := client.JSON(ctx, "GET", path, nil, &draft, 200); err != nil {
 				return err
 			}
 			for key, value := range change.valid {
-				draft.Data[key] = value
+				draft[key] = value
 			}
-			var updated struct {
-				Success bool           `json:"success"`
-				Data    map[string]any `json:"updated_config"`
-			}
-			if err := client.JSON(ctx, "PUT", path, map[string]any{"config_data": draft.Data}, &updated, 200); err != nil {
+			var updated map[string]any
+			if err := client.JSON(ctx, "PUT", path, draft, &updated, 200); err != nil {
 				return err
 			}
-			if !updated.Success {
-				return fmt.Errorf("%s update did not report success", change.name)
-			}
 			for key, value := range change.valid {
-				if change.name == "self_check" && key == "backup_mod_ids" {
+				if change.name == "self-check" && key == "backup_mod_ids" {
 					value = []any{"ftbbackups2"}
 				}
 				encoded, err := json.Marshal(value)
@@ -96,11 +97,11 @@ func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 				if err = json.Unmarshal(encoded, &expected); err != nil {
 					return err
 				}
-				if !reflect.DeepEqual(updated.Data[key], expected) {
+				if !reflect.DeepEqual(updated[key], expected) {
 					return fmt.Errorf("%s ignored requested field %s", change.name, key)
 				}
 			}
-			baseline, err := persistedConfiguration(ctx, client, change.name, updated.Data)
+			baseline, err := persistedConfiguration(ctx, client, change.name, updated)
 			if err != nil {
 				return err
 			}
@@ -115,22 +116,22 @@ func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 			return err
 		}
 		for name, expected := range stored {
-			path := "/api/config/modules/" + name
-			var restarted configuration
+			path := "/api/settings/" + name
+			var restarted map[string]any
 			if err := client.JSON(ctx, "GET", path, nil, &restarted, 200); err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(restarted.Data, expected) {
+			if !reflect.DeepEqual(restarted, expected) {
 				return fmt.Errorf("%s lost configuration on restart", name)
 			}
 			if err := client.JSON(ctx, "POST", path+"/reset", nil, nil, 200); err != nil {
 				return err
 			}
-			var reset configuration
+			var reset map[string]any
 			if err := client.JSON(ctx, "GET", path, nil, &reset, 200); err != nil {
 				return err
 			}
-			if !reflect.DeepEqual(reset.Data, fixtures.BackendOf(t.Env).Configs[name]) {
+			if !reflect.DeepEqual(reset, fixtures.BackendOf(t.Env).Configs[name]) {
 				return fmt.Errorf("%s reset differs from initial defaults", name)
 			}
 		}
@@ -141,8 +142,8 @@ func configurationRoundtrip(ctx context.Context, t *engine.Scope) error {
 	for _, request := range []struct {
 		method, suffix string
 		code           int
-	}{{"GET", "/schema", 404}, {"POST", "/reset", 404}, {"PUT", "", 400}} {
-		if err = client.JSON(ctx, request.method, "/api/config/modules/unknown"+request.suffix, map[string]any{"config_data": map[string]any{}}, nil, request.code); err != nil {
+	}{{"GET", "", 404}, {"POST", "/reset", 404}, {"PUT", "", 404}} {
+		if err = client.JSON(ctx, request.method, "/api/settings/unknown"+request.suffix, map[string]any{}, nil, request.code); err != nil {
 			return err
 		}
 	}
@@ -281,22 +282,20 @@ func auditRedaction(ctx context.Context, t *engine.Scope) error {
 	accessID := "e2e-audit-access-" + t.Env.ID
 	t.Recorder.Redactor.Add(accessID)
 	if err = t.Step("persist actual provider credential fields with DNS disabled", func() error {
-		var module struct {
-			Data map[string]any `json:"config_data"`
-		}
-		if err := client.JSON(ctx, "GET", "/api/config/modules/dns", nil, &module, 200); err != nil {
+		var module map[string]any
+		if err := client.JSON(ctx, "GET", "/api/settings/dns", nil, &module, 200); err != nil {
 			return err
 		}
-		module.Data["enabled"] = false
-		module.Data["dns"] = map[string]any{"type": "huawei", "domain": "audit.e2e.invalid", "ak": accessID, "sk": secret, "region": "cn-south-1"}
-		if err := client.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": module.Data}, nil, 200); err != nil {
+		module["enabled"] = false
+		module["dns"] = map[string]any{"type": "huawei", "domain": "audit.e2e.invalid", "ak": accessID, "sk": secret, "region": "cn-south-1"}
+		if err := client.JSON(ctx, "PUT", "/api/settings/dns", module, nil, 200); err != nil {
 			return err
 		}
-		if err := client.JSON(ctx, "GET", "/api/config/modules/dns", nil, &module, 200); err != nil {
+		if err := client.JSON(ctx, "GET", "/api/settings/dns", nil, &module, 200); err != nil {
 			return err
 		}
-		provider, ok := module.Data["dns"].(map[string]any)
-		if !ok || module.Data["enabled"] != false || provider["ak"] != accessID || provider["sk"] != secret {
+		provider, ok := module["dns"].(map[string]any)
+		if !ok || module["enabled"] != false || provider["ak"] != accessID || provider["sk"] != secret {
 			return fmt.Errorf("provider credentials did not persist while DNS remained disabled")
 		}
 		return nil
@@ -350,11 +349,8 @@ func auditRedaction(ctx context.Context, t *engine.Scope) error {
 				if !ok {
 					continue
 				}
-				if entry["path"] == "/api/config/modules/dns" && entry["method"] == "PUT" && entry["status_code"] == float64(200) {
-					config, ok := request["config_data"].(map[string]any)
-					if !ok {
-						return false, api.Permanent(fmt.Errorf("audit omitted submitted DNS configuration"))
-					}
+				if entry["path"] == "/api/settings/dns" && entry["method"] == "PUT" && entry["status_code"] == float64(200) {
+					config := request
 					provider, ok := config["dns"].(map[string]any)
 					if !ok || provider["ak"] != "***MASKED***" || provider["sk"] != "***MASKED***" || provider["type"] != "huawei" {
 						return false, api.Permanent(fmt.Errorf("audit did not mask actual provider credential fields"))

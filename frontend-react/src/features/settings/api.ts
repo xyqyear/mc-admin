@@ -1,37 +1,27 @@
-import api from '@/shared/http/api';
-import type { ConfigModuleInfo, ConfigModuleList, ConfigData, ConfigUpdateResponse } from '@/features/settings/contracts';
+import api from '@/shared/http/api'
+import type { DNSSettings, LogParserSettings, MapSettings, PlayerSettings, SelfCheckSettings, SnapshotSettings, WorldSettings } from '@/features/settings/contracts'
 
-
-export const listAllModules = async (): Promise<ConfigModuleList> => {
-  const response = await api.get('/config/modules')
-  return response.data
+export interface SettingsResource<T> {
+  key: string
+  read: () => Promise<T>
+  replace: (value: T) => Promise<T>
+  reset: () => Promise<T>
 }
 
-
-export const getModuleConfig = async (moduleName: string): Promise<ConfigData> => {
-  const response = await api.get(`/config/modules/${moduleName}`)
-  return response.data
+function resource<T>(key: string): SettingsResource<T> {
+  const path = `/settings/${key}`
+  return {
+    key,
+    read: async () => (await api.get<T>(path)).data,
+    replace: async value => (await api.put<T>(path, value)).data,
+    reset: async () => (await api.post<T>(`${path}/reset`)).data,
+  }
 }
 
-
-export const updateModuleConfig = async (
-  moduleName: string,
-  configData: Record<string, any>
-): Promise<ConfigUpdateResponse> => {
-  const response = await api.put(`/config/modules/${moduleName}`, {
-    config_data: configData
-  })
-  return response.data
-}
-
-
-export const getModuleSchema = async (moduleName: string): Promise<ConfigModuleInfo> => {
-  const response = await api.get(`/config/modules/${moduleName}/schema`)
-  return response.data
-}
-
-
-export const resetModuleConfig = async (moduleName: string): Promise<ConfigUpdateResponse> => {
-  const response = await api.post(`/config/modules/${moduleName}/reset`)
-  return response.data
-}
+export const dnsSettings = resource<DNSSettings>('dns')
+export const snapshotSettings = resource<SnapshotSettings>('snapshots')
+export const logParserSettings = resource<LogParserSettings>('log-parser')
+export const playerSettings = resource<PlayerSettings>('players')
+export const mapSettings = resource<MapSettings>('mcmap')
+export const worldSettings = resource<WorldSettings>('world')
+export const selfCheckSettings = resource<SelfCheckSettings>('self-check')

@@ -181,7 +181,7 @@ class ConfigManager:
             await crud.upsert_config(
                 session,
                 module_name,
-                new_data,
+                new_config_instance.model_dump(),
                 schema_cls.get_schema_version(),
             )
 
@@ -205,24 +205,6 @@ class ConfigManager:
             raise ValueError(f"Configuration for module '{module_name}' not found")
 
         return self._configs[module_name]
-
-    def get_schema_info(self, module_name: str) -> dict[str, Any]:
-        if module_name not in self._schemas:
-            raise ValueError(f"Module '{module_name}' not registered")
-
-        schema_cls = self._schemas[module_name]
-        return {
-            "module_name": module_name,
-            "schema_class": schema_cls.__name__,
-            "version": schema_cls.get_schema_version(),
-            "json_schema": schema_cls.model_json_schema(),
-        }
-
-    def get_all_schema_info(self) -> dict[str, dict[str, Any]]:
-        return {
-            module_name: self.get_schema_info(module_name)
-            for module_name in self._schemas
-        }
 
     async def reset_config(self, module_name: str) -> BaseConfigSchema:
         if module_name not in self._schemas:

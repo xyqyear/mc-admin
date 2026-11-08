@@ -1,17 +1,17 @@
 import type { VariableDefinition } from '@/features/templates/contracts';
-import type { VariableFormData } from "@/features/templates/ui/variableSchemas";
+import type { VariableFormData } from "@/features/templates/ui/variableFormData";
 
 export const convertToFormData = (variables: VariableDefinition[]): VariableFormData[] => {
   return variables.map((v) => ({
     type: v.type,
     name: v.name,
     display_name: v.display_name,
-    description: v.description,
-    default: v.default,
-    ...("min_value" in v ? { min_value: v.min_value } : {}),
-    ...("max_value" in v ? { max_value: v.max_value } : {}),
-    ...("max_length" in v ? { max_length: v.max_length } : {}),
-    ...("pattern" in v ? { pattern: v.pattern } : {}),
+    description: v.description ?? undefined,
+    default: v.default ?? undefined,
+    ...("min_value" in v ? { min_value: v.min_value ?? undefined } : {}),
+    ...("max_value" in v ? { max_value: v.max_value ?? undefined } : {}),
+    ...("max_length" in v ? { max_length: v.max_length ?? undefined } : {}),
+    ...("pattern" in v ? { pattern: v.pattern ?? undefined } : {}),
     ...("options" in v ? { options: v.options } : {}),
   })) as VariableFormData[];
 };

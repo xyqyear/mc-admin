@@ -40,18 +40,23 @@ func variables(ctx context.Context, t *engine.Scope) error {
 	if len(listed) != 1 || listed[0].ID != created.ID || listed[0].Count != len(defs) {
 		return fmt.Errorf("template listing differs from stored definition")
 	}
-	if err = t.Step("schema and preview preserve all five variable types", func() error {
-		var schema struct {
-			Schema struct {
-				Properties map[string]map[string]any `json:"properties"`
-			} `json:"json_schema"`
+	if err = t.Step("definitions and preview preserve all five variable types", func() error {
+		var template struct {
+			Variables []struct {
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"variable_definitions"`
 		}
-		if err := c.JSON(ctx, "GET", base+"/schema", nil, &schema, 200); err != nil {
+		if err := c.JSON(ctx, "GET", base, nil, &template, 200); err != nil {
 			return err
 		}
-		for name, kind := range map[string]string{"name": "string", "game_port": "integer", "ratio": "number", "mode": "string", "enabled": "boolean"} {
-			if schema.Schema.Properties[name]["type"] != kind {
-				return fmt.Errorf("schema type for %s is not %s", name, kind)
+		types := map[string]string{}
+		for _, variable := range template.Variables {
+			types[variable.Name] = variable.Type
+		}
+		for name, kind := range map[string]string{"name": "string", "game_port": "int", "ratio": "float", "mode": "enum", "enabled": "bool"} {
+			if types[name] != kind {
+				return fmt.Errorf("variable type for %s is not %s", name, kind)
 			}
 		}
 		values := map[string]any{"name": "typed", "game_port": 22001, "rcon_port": 22002, "ratio": 1.25, "mode": "hard", "enabled": true}
@@ -121,7 +126,7 @@ func variables(ctx context.Context, t *engine.Scope) error {
 		if !reflect.DeepEqual(savedTemplate, afterRejected) {
 			return fmt.Errorf("invalid definition update modified the saved template")
 		}
-		for _, route := range []string{"/api/templates/999999", "/api/templates/999999/schema"} {
+		for _, route := range []string{"/api/templates/999999"} {
 			if err := c.JSON(ctx, "GET", route, nil, nil, 404); err != nil {
 				return err
 			}

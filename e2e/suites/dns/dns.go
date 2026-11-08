@@ -48,7 +48,7 @@ func disabled(ctx context.Context, t *engine.Scope) error {
 			{"addresses": []any{map[string]any{"name": "same"}, map[string]any{"name": "same"}}},
 			{"addresses": []any{map[string]any{"record_type": "TXT"}}},
 		} {
-			if err := c.JSON(ctx, "PUT", "/api/config/modules/dns", map[string]any{"config_data": invalid}, nil, 400); err != nil {
+			if err := c.JSON(ctx, "PUT", "/api/settings/dns", invalid, nil, 422); err != nil {
 				return err
 			}
 		}

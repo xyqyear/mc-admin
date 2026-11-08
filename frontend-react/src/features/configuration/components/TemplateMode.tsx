@@ -16,9 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/alert'
 import { Spinner } from '@/shared/ui/spinner'
 
-import RjsfForm from '@/shared/forms/rjsfTheme'
-import validator from '@rjsf/validator-ajv8'
-import type { RJSFSchema, UiSchema } from '@rjsf/utils'
+import { templateDefaultValues } from '@/features/templates/variableValues'
+import TemplateVariablesForm from '@/features/templates/ui/TemplateVariablesForm'
 import { ComposeDiffDialog } from '@/shared/editors/compose/index'
 import RebuildProgressDialog from '@/features/configuration/components/RebuildProgressDialog'
 import ConvertModeDialog from '@/features/configuration/components/ConvertModeDialog'
@@ -76,7 +75,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
   const snapshot = (config: TemplateConfigResponse, readAt?: number) => ({ version: config.version, value: config, description: JSON.stringify(config, null, 2), readAt })
   const session = useConfigurationSession(snapshot(templateConfig, templateReadAt), true)
   const submittedDraft = useRef<TemplateConfigResponse | null>(null)
-  const templateFormData = session.draft.variable_values
+  const templateFormData = { ...templateDefaultValues(session.baseline.value.variable_definitions), ...session.draft.variable_values }
   const setTemplateFormData = (variable_values: Record<string, unknown>) => session.setDraft({ ...session.draft, variable_values })
   const refresh = async () => {
     const result = await refetchTemplateConfig({ throwOnError: true })
@@ -90,19 +89,6 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
   const [isTemplateDiffVisible, setIsTemplateDiffVisible] = useState(false)
   const [templateDiffLoading, setTemplateDiffLoading] = useState(false)
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false)
-
-  const templateUiSchema: UiSchema = {
-    name: {
-      "ui:disabled": true,
-      "ui:help": "服务器名称不可修改",
-    },
-  }
-
-  const handleTemplateFormChange = (data: { formData?: Record<string, unknown> }) => {
-    if (data.formData) {
-      setTemplateFormData(data.formData)
-    }
-  }
 
   const handleTemplateDiff = async () => {
     if (!templateConfig?.template_id || !templateFormData) return
@@ -237,17 +223,7 @@ const TemplateMode: React.FC<TemplateModeProps> = ({
           <CardTitle>配置参数</CardTitle>
         </CardHeader>
         <CardContent className="overflow-y-auto min-h-0">
-          <RjsfForm
-            schema={session.baseline.value.json_schema as RJSFSchema}
-            uiSchema={templateUiSchema}
-            formData={templateFormData}
-            validator={validator}
-            onChange={handleTemplateFormChange}
-            showErrorList={false}
-            liveValidate
-          >
-            <div />
-          </RjsfForm>
+          <TemplateVariablesForm definitions={session.baseline.value.variable_definitions} value={templateFormData} onChange={setTemplateFormData} readOnlyName />
         </CardContent>
       </Card>
 

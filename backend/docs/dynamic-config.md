@@ -50,7 +50,7 @@ if config.snapshots.time_restriction.enabled:
     cutoff = config.snapshots.time_restriction.before_seconds
 ```
 
-Updates flow through `get_config_manager().update_config(module_name, new_data)` which validates, persists, and refreshes the cache. The frontend's dynamic-config UI calls this through `/api/config/`.
+Updates flow through `get_config_manager().update_config(module_name, new_data)` which validates, persists, and refreshes the cache. Dedicated settings pages use the typed `/api/settings/*` resources.
 
 The view has seven explicit properties: `dns`, `snapshots`, `log_parser`,
 `players`, `mcmap`, `world` and `self_check`. A held view observes a successfully
@@ -80,9 +80,21 @@ In `dynamic_config/configs/`:
 - `world.py` — region stat workers, dimension scan depth, dimension labels
 - `self_check.py` — per-check toggles, thresholds, retained-run retention, event-trigger switches
 
-## JSON schema → frontend forms
+## Settings HTTP resources
 
-`get_config_manager().get_schema_info(module_name)` returns the Pydantic JSON Schema for the module. The frontend's rjsf form renders the editor from that schema; domain validation remains at the server's save boundary.
+The settings router declares a concrete GET, PUT and POST-reset contract for each
+resource: `/settings/dns`, `/settings/snapshots`, `/settings/log-parser`,
+`/settings/players`, `/settings/mcmap`, `/settings/world` and
+`/settings/self-check` under `/api`. Responses contain effective settings directly.
+PUT receives the complete resource; update DTOs reject unknown top-level fields.
+The manager persists normalized validated values and updates its runtime cache
+only after successful persistence. Log-parser domain checks run at the save boundary.
+
+The persisted module keys retain their underscores. Structure-version metadata
+remains internal to loading and migration; it is not an edit concurrency token.
+The frontend's [settings pages](../../frontend-react/docs/settings.md) own controls
+and presentation. Field changes update backend contracts, defaults and validation,
+frontend contracts and controls, and related behavior coverage together.
 
 ## Lifespan wiring
 
@@ -92,7 +104,8 @@ In `dynamic_config/configs/`:
 
 - `manager.py` — `ConfigManager`, its explicit session factory and runtime accessor
 - `models.py` — the persisted `DynamicConfig` table
-- `api_models.py` — configuration HTTP request and response DTOs
+- `requests.py` — typed settings replacement requests
+- `routers/settings.py` — explicit settings read, replace and reset resources
 - `__init__.py` — the typed view and `get_config()`
 - `migration.py` — `ConfigMigrator`
 - `schemas.py` — `BaseConfigSchema` (version handling)

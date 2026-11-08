@@ -34,9 +34,10 @@ it('preserves authored values through port refresh and initializes a newly selec
   server.use(
     http.get('*/api/tasks', () => HttpResponse.json({ tasks: [], total: 0 })),
     http.get('*/api/templates/ports/available', () => HttpResponse.json({ suggested_game_port: suggestedPort, suggested_rcon_port: 25575 })),
-    http.get('*/api/templates/:id/schema', ({ params }) => HttpResponse.json({ json_schema: {
-      type: 'object', properties: { name: { type: 'string', default: `server-${params.id}` }, game_port: { type: 'number' } },
-    } })),
+    http.get('*/api/templates/:id', ({ params }) => HttpResponse.json({ id: Number(params.id), variable_definitions: [
+      { type: 'string', name: 'name', display_name: '服务器名称', default: `server-${params.id}` },
+      { type: 'int', name: 'game_port', display_name: '游戏端口' },
+    ] })),
   )
   const view = render(<StrictMode><TestProviders client={client}><ServerNewScreen /></TestProviders></StrictMode>)
   fireEvent.click(screen.getByText('模板一'))

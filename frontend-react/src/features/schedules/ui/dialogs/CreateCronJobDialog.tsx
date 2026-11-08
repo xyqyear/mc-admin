@@ -26,11 +26,12 @@ import {
 } from '@/shared/ui/select'
 import { Field, FieldLabel, FieldError } from '@/shared/ui/field'
 
-import SchemaForm from '@/shared/forms/SchemaForm'
+import CronJobParameters from '@/features/schedules/ui/CronJobParameters'
+import { jobParameters, jobParameterError } from '@/features/schedules/parameters'
 import CronExpressionBuilder from '@/features/schedules/ui/CronExpressionBuilder'
 import { useRegisteredCronJobs, useCronJob } from '@/features/schedules/queries'
 import { useCreateCronJob, useUpdateCronJob } from '@/features/schedules/commands';
-import type { CreateCronJobRequest, UpdateCronJobRequest } from '@/features/schedules/contracts';
+import type { CreateCronJobRequest, UpdateCronJobRequest, JobParameters } from '@/features/schedules/contracts';
 
 const nameSchema = z.object({
   name: z
@@ -56,9 +57,8 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
   isEdit = false,
   cronjobId,
 }) => {
-  const [selectedJobType, setSelectedJobType] = useState<string | null>(null)
-  const [jobParams, setJobParams] = useState<any>({})
-  const [schemaFormKey, setSchemaFormKey] = useState(0)
+  const [parameters, setParameters] = useState<JobParameters | null>(null)
+  const selectedJobType = parameters?.identifier ?? null
   const [cronExpression, setCronExpression] = useState('0 0 * * *')
   const [secondField, setSecondField] = useState('')
 
@@ -76,16 +76,12 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
     if (open) {
       if (isEdit && cronJobData) {
         form.setValue('name', cronJobData.name)
-        setSelectedJobType(cronJobData.identifier)
-        setJobParams(cronJobData.params)
+        setParameters(jobParameters(cronJobData.identifier, cronJobData.params))
         setCronExpression(cronJobData.cron)
         setSecondField(cronJobData.second || '')
-        setSchemaFormKey(prev => prev + 1)
       } else if (!isEdit) {
         form.reset()
-        setSelectedJobType(null)
-        setJobParams({})
-        setSchemaFormKey(prev => prev + 1)
+        setParameters(null)
         setCronExpression('0 0 * * *')
         setSecondField('')
       }
@@ -94,19 +90,16 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
 
   const handleJobTypeChange = (value: string | null) => {
     if (!value) return
-    setSelectedJobType(value)
-    setJobParams({})
-    setSchemaFormKey(prev => prev + 1)
+    setParameters(jobParameters(value))
   }
 
   const handleSubmit = async (values: NameFormData) => {
-    if (!selectedJobType) return
+    if (!parameters || jobParameterError(parameters)) return
 
     try {
       if (isEdit && cronjobId) {
         const updateRequest: UpdateCronJobRequest = {
-          identifier: selectedJobType,
-          params: jobParams,
+          ...parameters,
           cron: cronExpression,
           name: values.name,
           second: secondField || undefined,
@@ -114,8 +107,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
         await updateMutation.mutateAsync({ cronjobId, request: updateRequest })
       } else {
         const createRequest: CreateCronJobRequest = {
-          identifier: selectedJobType,
-          params: jobParams,
+          ...parameters,
           cron: cronExpression,
           name: values.name,
           second: secondField || undefined,
@@ -124,8 +116,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
       }
 
       form.reset()
-      setSelectedJobType(null)
-      setJobParams({})
+      setParameters(null)
       setCronExpression('0 0 * * *')
       setSecondField('')
       onCancel()
@@ -135,7 +126,6 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
     }
   }
 
-  const selectedJobSchema = registeredJobs?.find(job => job.identifier === selectedJobType)
   const selectableJobs = isEdit
     ? registeredJobs
     : registeredJobs?.filter(job => !job.is_system)
@@ -164,7 +154,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
             </CardHeader>
             <CardContent>
               <Select
-                value={selectedJobType || undefined}
+                value={selectedJobType}
                 onValueChange={handleJobTypeChange}
                 disabled={isEdit || jobsLoading}
                 itemToStringLabel={(v) => {
@@ -244,7 +234,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
             </CardContent>
           </Card>
 
-          {selectedJobSchema && (
+          {parameters && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">任务参数</CardTitle>
@@ -253,12 +243,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
                 <p className="text-sm text-muted-foreground mb-4">
                   请根据任务类型配置相应的参数
                 </p>
-                <SchemaForm
-                  key={schemaFormKey}
-                  schema={selectedJobSchema.parameter_schema}
-                  formData={jobParams}
-                  onChange={setJobParams}
-                />
+                <CronJobParameters key={parameters.identifier} value={parameters} onChange={setParameters} />
               </CardContent>
             </Card>
           )}
@@ -276,7 +261,7 @@ const CreateCronJobDialog: React.FC<CreateCronJobDialogProps> = ({
             <Button type="button" variant="outline" onClick={onCancel}>
               取消
             </Button>
-            <Button type="submit" disabled={!selectedJobType || isPending}>
+            <Button type="submit" disabled={!parameters || Boolean(jobParameterError(parameters)) || isPending}>
               {isPending && <Spinner className="mr-2 size-4" />}
               {isEdit ? '更新任务' : '创建任务'}
             </Button>

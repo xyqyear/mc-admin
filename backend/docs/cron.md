@@ -276,9 +276,10 @@ values. Unknown adapter exceptions use the standard internal-error message in
 history and responses. An adapter `HTTPException.detail` is not trusted for cron
 history or Uptime Kuma messages.
 
-Invalid parameters retain HTTP 400 with a string detail. Diagnostics include known
-schema field names, numeric indexes, error categories and authored constraints;
-they omit raw input, mapping keys, validator messages and exception context.
+Create and replace requests associate each task identifier with its concrete
+parameter model. Invalid request parameters return HTTP 422 with a Chinese string
+detail identifying fields and error categories. Invalid scheduling expressions
+retain HTTP 400. Diagnostics omit raw input and exception values.
 Unexpected create/update failures retain HTTP 500. Safe logs record exception type
 and stack locations without exception values, causes or locals.
 

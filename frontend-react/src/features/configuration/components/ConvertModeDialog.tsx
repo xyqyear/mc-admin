@@ -27,9 +27,8 @@ import {
 } from '@/shared/ui/select'
 
 import { MonacoDiffEditor } from '@/shared/editors/index'
-import RjsfForm from '@/shared/forms/rjsfTheme'
-import validator from '@rjsf/validator-ajv8'
-import type { RJSFSchema } from '@rjsf/utils'
+import { templateDefaultValues } from '@/features/templates/variableValues'
+import TemplateVariablesForm from '@/features/templates/ui/TemplateVariablesForm'
 import { useTemplates } from '@/features/templates/queries'
 import { usePreviewRenderedYaml } from '@/features/templates/commands';
 import type { ExtractVariablesResponse } from '@/features/configuration/contracts'
@@ -126,7 +125,7 @@ const ConvertModeEditor: React.FC<ConvertModeDialogProps> = ({
 
   useEffect(() => {
     if (extractResult) {
-      setFormData(extractResult.extracted_values)
+      setFormData({ ...templateDefaultValues(extractResult.variable_definitions), ...extractResult.extracted_values })
     }
   }, [extractResult])
 
@@ -288,16 +287,7 @@ const ConvertModeEditor: React.FC<ConvertModeDialogProps> = ({
               </AlertDescription>
             </Alert>
           )}
-          <RjsfForm
-            schema={extractResult.json_schema as RJSFSchema}
-            formData={formData}
-            validator={validator}
-            onChange={({ formData: data }) => data && setFormData(data)}
-            showErrorList={false}
-            liveValidate
-          >
-            <div />
-          </RjsfForm>
+          <TemplateVariablesForm definitions={extractResult.variable_definitions} value={formData} onChange={setFormData} />
         </div>
       )
     }

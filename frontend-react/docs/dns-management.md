@@ -20,7 +20,7 @@ Two-column page:
 
 The page renders different shells depending on what the backend reports:
 
-- **Disabled** → alert with "Go to settings" button (links to `/config?module=dns`).
+- **Disabled** → alert with "Go to settings" button (links to `/settings/dns`).
 - **Not initialized** → alert with explanation and the same settings link. Happens when the provider hasn't been configured yet.
 - **Pending changes** → diff display above the tables: add list (green), update list (yellow), remove list (red). Each entry shows record key + values.
 - **Healthy** → just the tables, only after both provider comparisons are known.

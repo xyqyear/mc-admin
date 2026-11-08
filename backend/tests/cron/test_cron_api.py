@@ -10,13 +10,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.cron.models import CronJobExecution, ExecutionStatus
+from app.cron.registry import create_cron_registry
 from app.main import create_api_app
 from app.runtime_resources import current_runtime
+from tests.support.runtime import patch_runtime_resource
 
 
 @pytest.fixture(scope="function")
 async def test_db(db_session_factory, fresh_cron_manager):
-    return db_session_factory
+    registry = create_cron_registry()
+    fresh_cron_manager.registry = registry
+    with patch_runtime_resource("cron_registry", registry):
+        yield db_session_factory
 
 
 @pytest.fixture
@@ -43,26 +48,21 @@ class TestCronJobAPI:
         assert len(data) >= 1
 
         test_cronjob = next(
-            (cronjob for cronjob in data if cronjob["identifier"] == "test_cronjob"),
+            (cronjob for cronjob in data if cronjob["identifier"] == "backup"),
             None,
         )
         assert test_cronjob is not None
 
-        assert test_cronjob["description"] == "Simple test cron job"
-        assert "parameter_schema" in test_cronjob
-        assert isinstance(test_cronjob["parameter_schema"], dict)
-
-        schema = test_cronjob["parameter_schema"]
-        assert "properties" in schema
-        assert "message" in schema["properties"]
-        assert "delay_seconds" in schema["properties"]
+        assert test_cronjob["description"] == "创建备份快照并清理旧快照"
+        assert test_cronjob["is_system"] is False
+        assert any(job["identifier"] == "self_check" and job["is_system"] for job in data)
 
     def test_create_cronjob_success(self, test_db, client, authenticated_headers):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "API Test CronJob",
             "cron": "0 0 * * *",
-            "params": {"message": "API created cronjob", "delay_seconds": 5},
+            "params": {"enable_forget": False, "server_id": "API created cronjob", "keep_last": 5},
         }
 
         response = client.post(
@@ -77,7 +77,7 @@ class TestCronJobAPI:
         assert data["message"] == "定时任务创建成功"
 
         created_cronjob_id = data["cronjob_id"]
-        assert created_cronjob_id.startswith("test_cronjob_")
+        assert created_cronjob_id.startswith("backup_")
 
     def test_create_cronjob_with_custom_id(
         self, test_db, client, authenticated_headers
@@ -85,11 +85,11 @@ class TestCronJobAPI:
         custom_cronjob_id = "my_custom_api_cronjob"
 
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "cronjob_id": custom_cronjob_id,
             "name": "Custom ID API CronJob",
             "cron": "*/5 * * * *",
-            "params": {"message": "Custom ID cronjob", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "Custom ID cronjob", "keep_last": 0},
         }
 
         response = client.post(
@@ -106,42 +106,39 @@ class TestCronJobAPI:
         cronjob_data = {
             "identifier": "nonexistent_cronjob",
             "cron": "0 0 * * *",
-            "params": {},
+            "params": {"enable_forget": False},
         }
 
         response = client.post(
             "/api/cron/", json=cronjob_data, headers=authenticated_headers
         )
 
-        assert response.status_code == 400
-        assert "未注册" in response.json()["detail"]
+        assert response.status_code == 422
+        assert "identifier" in response.json()["detail"]
 
     def test_create_cronjob_invalid_params(
         self, test_db, client, authenticated_headers
     ):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "cron": "0 0 * * *",
-            "params": {
-                "message": "Valid message",
-                "delay_seconds": "invalid_number",
-            },
+            "params": {"enable_forget": False, "server_id": "Valid message", "keep_last": "invalid_number"},
         }
 
         response = client.post(
             "/api/cron/", json=cronjob_data, headers=authenticated_headers
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "任务参数无效" in response.json()["detail"]
 
     def test_get_cronjob_success(self, test_db, client, authenticated_headers):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Get Test CronJob",
             "cron": "0 12 * * 1-5",
             "second": "30",
-            "params": {"message": "Get cronjob test", "delay_seconds": 10},
+            "params": {"enable_forget": False, "server_id": "Get cronjob test", "keep_last": 10},
         }
 
         create_response = client.post(
@@ -155,13 +152,13 @@ class TestCronJobAPI:
         data = response.json()
 
         assert data["cronjob_id"] == cronjob_id
-        assert data["identifier"] == "test_cronjob"
+        assert data["identifier"] == "backup"
         assert data["name"] == "Get Test CronJob"
         assert data["cron"] == "0 12 * * 1-5"
         assert data["second"] == "30"
         assert data["status"] == "active"
-        assert data["params"]["message"] == "Get cronjob test"
-        assert data["params"]["delay_seconds"] == 10
+        assert data["params"]["server_id"] == "Get cronjob test"
+        assert data["params"]["keep_last"] == 10
         assert "created_at" in data
         assert "updated_at" in data
         assert "execution_count" in data
@@ -176,10 +173,10 @@ class TestCronJobAPI:
 
     def test_pause_cronjob(self, test_db, client, authenticated_headers):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Pause Test CronJob",
             "cron": "* * * * *",
-            "params": {"message": "Pause test", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "Pause test", "keep_last": 0},
         }
 
         create_response = client.post(
@@ -201,10 +198,10 @@ class TestCronJobAPI:
 
     def test_resume_cronjob(self, test_db, client, authenticated_headers):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Resume Test CronJob",
             "cron": "0 0 * * *",
-            "params": {"message": "Resume test", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "Resume test", "keep_last": 0},
         }
 
         create_response = client.post(
@@ -228,10 +225,10 @@ class TestCronJobAPI:
 
     def test_cancel_cronjob(self, test_db, client, authenticated_headers):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Cancel Test CronJob",
             "cron": "0 0 * * *",
-            "params": {"message": "Cancel test", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "Cancel test", "keep_last": 0},
         }
 
         create_response = client.post(
@@ -253,10 +250,10 @@ class TestCronJobAPI:
 
     def test_get_cronjob_executions_empty(self, test_db, client, authenticated_headers):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Execution History Test",
             "cron": "0 0 1 1 *",
-            "params": {"message": "History test", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "History test", "keep_last": 0},
         }
 
         create_response = client.post(
@@ -276,10 +273,10 @@ class TestCronJobAPI:
         self, test_db, client, authenticated_headers
     ):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Execution Limit Test",
             "cron": "0 0 1 1 *",
-            "params": {"message": "Limit test", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "Limit test", "keep_last": 0},
         }
 
         create_response = client.post(
@@ -364,11 +361,11 @@ class TestCronJobAPI:
         self, test_db, client, authenticated_headers
     ):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Second Field Test",
             "cron": "* * * * *",
             "second": "*/10",
-            "params": {"message": "Second field test", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "Second field test", "keep_last": 0},
         }
 
         response = client.post(
@@ -387,11 +384,11 @@ class TestCronJobAPI:
         self, test_db, client, authenticated_headers
     ):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "cronjob_id": "lifecycle_test_cronjob",
             "name": "Lifecycle Test CronJob",
             "cron": "*/30 * * * *",
-            "params": {"message": "Lifecycle test cronjob", "delay_seconds": 1},
+            "params": {"enable_forget": False, "server_id": "Lifecycle test cronjob", "keep_last": 1},
         }
 
         create_response = client.post(
@@ -458,8 +455,8 @@ class TestCronJobAPI:
         response1 = client.post(
             "/api/cron/",
             json={
-                "identifier": "test_cronjob",
-                "params": {},
+                "identifier": "backup",
+                "params": {"enable_forget": False},
                 "cron": "0 0 * * *",
                 "name": "Test Job 1",
             },
@@ -474,8 +471,8 @@ class TestCronJobAPI:
         response2 = client.post(
             "/api/cron/",
             json={
-                "identifier": "test_cronjob",
-                "params": {},
+                "identifier": "backup",
+                "params": {"enable_forget": False},
                 "cron": "0 1 * * *",
                 "name": "Test Job 2",
             },
@@ -487,8 +484,8 @@ class TestCronJobAPI:
         response3 = client.post(
             "/api/cron/",
             json={
-                "identifier": "test_cronjob",
-                "params": {},
+                "identifier": "backup",
+                "params": {"enable_forget": False},
                 "cron": "0 2 * * *",
                 "name": "Test Job 3",
             },
@@ -517,13 +514,13 @@ class TestCronJobAPI:
         assert cronjob_id3 not in job_ids
 
         response = client.get(
-            "/api/cron/?identifier=test_cronjob", headers=authenticated_headers
+            "/api/cron/?identifier=backup", headers=authenticated_headers
         )
         assert response.status_code == 200
         jobs = response.json()
         assert len(jobs) == 2
         for job in jobs:
-            assert job["identifier"] == "test_cronjob"
+            assert job["identifier"] == "backup"
 
         response = client.get("/api/cron/?status=active", headers=authenticated_headers)
         assert response.status_code == 200
@@ -560,14 +557,14 @@ class TestCronJobAPI:
         assert cronjob_id2 not in job_ids
 
         response = client.get(
-            "/api/cron/?identifier=test_cronjob&status=active",
+            "/api/cron/?identifier=backup&status=active",
             headers=authenticated_headers,
         )
         assert response.status_code == 200
         jobs = response.json()
         assert len(jobs) == 1
         assert jobs[0]["cronjob_id"] == cronjob_id1
-        assert jobs[0]["identifier"] == "test_cronjob"
+        assert jobs[0]["identifier"] == "backup"
         assert jobs[0]["status"] == "active"
 
     def test_resume_cronjob_status_validation(
@@ -576,8 +573,8 @@ class TestCronJobAPI:
         response = client.post(
             "/api/cron/",
             json={
-                "identifier": "test_cronjob",
-                "params": {},
+                "identifier": "backup",
+                "params": {"enable_forget": False},
                 "cron": "0 0 * * *",
                 "name": "Test Job",
             },
@@ -621,10 +618,10 @@ class TestCronJobAPI:
 
     def test_update_cronjob_success(self, test_db, client, authenticated_headers):
         create_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Original Test Job",
             "cron": "0 0 * * *",
-            "params": {"message": "Original message", "delay_seconds": 5},
+            "params": {"enable_forget": False, "server_id": "Original message", "keep_last": 5},
         }
 
         create_response = client.post(
@@ -634,10 +631,10 @@ class TestCronJobAPI:
         cronjob_id = create_response.json()["cronjob_id"]
 
         update_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "cron": "0 12 * * *",
             "second": "30",
-            "params": {"message": "Updated message", "delay_seconds": 10},
+            "params": {"enable_forget": False, "server_id": "Updated message", "keep_last": 10},
         }
 
         update_response = client.put(
@@ -653,19 +650,19 @@ class TestCronJobAPI:
 
         updated_job = get_response.json()
         assert updated_job["cronjob_id"] == cronjob_id
-        assert updated_job["identifier"] == "test_cronjob"
+        assert updated_job["identifier"] == "backup"
         assert updated_job["name"] == "Original Test Job"
         assert updated_job["cron"] == "0 12 * * *"
         assert updated_job["second"] == "30"
-        assert updated_job["params"]["message"] == "Updated message"
-        assert updated_job["params"]["delay_seconds"] == 10
+        assert updated_job["params"]["server_id"] == "Updated message"
+        assert updated_job["params"]["keep_last"] == 10
         assert updated_job["status"] == "active"
 
     def test_update_cronjob_not_found(self, test_db, client, authenticated_headers):
         update_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "cron": "0 12 * * *",
-            "params": {"message": "Test", "delay_seconds": 5},
+            "params": {"enable_forget": False, "server_id": "Test", "keep_last": 5},
         }
 
         response = client.put(
@@ -680,10 +677,10 @@ class TestCronJobAPI:
         self, test_db, client, authenticated_headers
     ):
         create_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Test Job",
             "cron": "0 0 * * *",
-            "params": {"message": "Test", "delay_seconds": 5},
+            "params": {"enable_forget": False, "server_id": "Test", "keep_last": 5},
         }
 
         create_response = client.post(
@@ -694,23 +691,23 @@ class TestCronJobAPI:
         update_data = {
             "identifier": "nonexistent_cronjob",
             "cron": "0 12 * * *",
-            "params": {},
+            "params": {"enable_forget": False},
         }
 
         response = client.put(
             f"/api/cron/{cronjob_id}", json=update_data, headers=authenticated_headers
         )
-        assert response.status_code == 400
-        assert "未注册" in response.json()["detail"]
+        assert response.status_code == 422
+        assert "identifier" in response.json()["detail"]
 
     def test_update_cronjob_invalid_params(
         self, test_db, client, authenticated_headers
     ):
         create_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Test Job",
             "cron": "0 0 * * *",
-            "params": {"message": "Test", "delay_seconds": 5},
+            "params": {"enable_forget": False, "server_id": "Test", "keep_last": 5},
         }
 
         create_response = client.post(
@@ -719,28 +716,25 @@ class TestCronJobAPI:
         cronjob_id = create_response.json()["cronjob_id"]
 
         update_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "cron": "0 12 * * *",
-            "params": {
-                "message": "Valid message",
-                "delay_seconds": "invalid_number",
-            },
+            "params": {"enable_forget": False, "server_id": "Valid message", "keep_last": "invalid_number"},
         }
 
         response = client.put(
             f"/api/cron/{cronjob_id}", json=update_data, headers=authenticated_headers
         )
-        assert response.status_code == 400
+        assert response.status_code == 422
         assert "任务参数无效" in response.json()["detail"]
 
     def test_update_cronjob_scheduler_integration(
         self, test_db, client, authenticated_headers
     ):
         create_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Scheduler Test Job",
             "cron": "0 0 * * *",
-            "params": {"message": "Original", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "Original", "keep_last": 0},
         }
 
         create_response = client.post(
@@ -749,9 +743,9 @@ class TestCronJobAPI:
         cronjob_id = create_response.json()["cronjob_id"]
 
         update_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "cron": "0 6 * * *",
-            "params": {"message": "Updated", "delay_seconds": 0},
+            "params": {"enable_forget": False, "server_id": "Updated", "keep_last": 0},
         }
 
         response = client.put(
@@ -767,7 +761,7 @@ class TestCronJobAPI:
         job = get_response.json()
         assert job["status"] == "active"
         assert job["cron"] == "0 6 * * *"
-        assert job["params"]["message"] == "Updated"
+        assert job["params"]["server_id"] == "Updated"
 
 
 class TestCronJobAPIAuthentication:

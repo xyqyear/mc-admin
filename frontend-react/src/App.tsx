@@ -23,7 +23,13 @@ const SelfCheck = React.lazy(() => import('@/features/health/SelfCheckScreen'))
 const Overview = React.lazy(() => import('@/app/overview/Overview'))
 const Snapshots = React.lazy(() => import('@/features/backups/SnapshotsScreen'))
 const ArchiveManagement = React.lazy(() => import('@/features/archives/ArchiveManagementScreen'))
-const DynamicConfig = React.lazy(() => import('@/features/settings/DynamicConfigScreen'))
+const DNSSettings = React.lazy(() => import('@/features/settings/DNSSettingsScreen'))
+const SnapshotSettings = React.lazy(() => import('@/features/settings/SnapshotSettingsScreen'))
+const LogParserSettings = React.lazy(() => import('@/features/settings/LogParserSettingsScreen'))
+const PlayerSettings = React.lazy(() => import('@/features/settings/PlayerSettingsScreen'))
+const MapSettings = React.lazy(() => import('@/features/settings/MapSettingsScreen'))
+const WorldSettings = React.lazy(() => import('@/features/settings/WorldSettingsScreen'))
+const SelfCheckSettings = React.lazy(() => import('@/features/settings/SelfCheckSettingsScreen'))
 const CronManagement = React.lazy(() => import('@/features/schedules/CronManagementScreen'))
 const DnsManagement = React.lazy(() => import('@/features/dns/DnsManagementScreen'))
 const PlayerManagement = React.lazy(() => import('@/features/players/PlayerManagementScreen'))
@@ -136,7 +142,13 @@ function App() {
           <Route path="/overview" element={<Overview />} />
           <Route path="/snapshots" element={<Snapshots />} />
           <Route path="/archives" element={<ArchiveManagement />} />
-          <Route path="/config" element={<DynamicConfig />} />
+          <Route path="/settings/dns" element={<DNSSettings />} />
+          <Route path="/settings/snapshots" element={<SnapshotSettings />} />
+          <Route path="/settings/log-parser" element={<LogParserSettings />} />
+          <Route path="/settings/players" element={<PlayerSettings />} />
+          <Route path="/settings/mcmap" element={<MapSettings />} />
+          <Route path="/settings/world" element={<WorldSettings />} />
+          <Route path="/settings/self-check" element={<SelfCheckSettings />} />
           <Route path="/cron" element={<CronManagement />} />
           <Route path="/dns" element={<DnsManagement />} />
           <Route path="/players" element={<PlayerManagement />} />

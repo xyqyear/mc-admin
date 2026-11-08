@@ -11,7 +11,7 @@ test('overview player cards open details by keyboard and retain the dialog after
   const logPath = path.join(owned.server_path, 'data', 'logs', 'latest.log')
   const cacheBytes = await readFile(cachePath)
   const cache = JSON.parse(cacheBytes.toString()) as Array<{ name: string; uuid: string }>
-  const config = await api.json<{ config_data: Record<string, unknown> }>('/api/config/modules/players')
+  const config = await api.json<Record<string, unknown>>('/api/settings/players')
   await withCleanup(async () => {
     await writeFile(cachePath, JSON.stringify([...cache.filter(item => item.name !== name), { name, uuid }]))
     await expect.poll(async () => {
@@ -26,7 +26,7 @@ test('overview player cards open details by keyboard and retain the dialog after
       return (await api.json<Array<{ uuid: string }>>(api.server('/online-players'))).some(player => player.uuid === uuid.replaceAll('-', ''))
     }).toBe(true)
     // Observing reconciliation gives the injected session a stable RCON interval for UI assertions.
-    await api.json('/api/config/modules/players', 'PUT', { config_data: { ...config.config_data, rcon_validation: { ...(config.config_data.rcon_validation as Record<string, unknown>), validation_interval_seconds: 3600 } } })
+    await api.json('/api/settings/players', 'PUT', { ...config, rcon_validation: { ...(config.rcon_validation as Record<string, unknown>), validation_interval_seconds: 3600 } })
     await expect.poll(async () => (await api.json<Array<{ uuid: string }>>(api.server('/online-players'))).some(player => player.uuid === uuid.replaceAll('-', '')), { timeout: 90_000 }).toBe(false)
     await appendFile(logPath, `[12:00:02] [Server thread/INFO]: ${name}[/127.0.0.1:42] logged in with entity id 3\n`)
     await expect.poll(async () => (await api.json<Array<{ uuid: string }>>(api.server('/online-players'))).some(player => player.uuid === uuid.replaceAll('-', ''))).toBe(true)
@@ -49,8 +49,8 @@ test('overview player cards open details by keyboard and retain the dialog after
   } },
   { label: 'player cache', run: () => writeFile(cachePath, cacheBytes) },
   { label: 'owned player record', run: async () => {
-    await api.json('/api/config/modules/players', 'PUT', { config_data: { ...config.config_data, ignored_name_prefixes: [name] } })
+    await api.json('/api/settings/players', 'PUT', { ...config, ignored_name_prefixes: [name] })
     await api.json('/api/players/cleanup/ignored_name_prefix', 'DELETE')
   } },
-  { label: 'player configuration', run: async () => { await api.json('/api/config/modules/players', 'PUT', config) } })
+  { label: 'player configuration', run: async () => { await api.json('/api/settings/players', 'PUT', config) } })
 })

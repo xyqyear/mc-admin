@@ -6,6 +6,15 @@ from pathlib import Path
 from typing import Any
 
 REPRESENTATIVE_PATHS = {
+    "/settings/dns", "/settings/dns/reset",
+    "/settings/snapshots", "/settings/snapshots/reset",
+    "/settings/log-parser", "/settings/log-parser/reset",
+    "/settings/players", "/settings/players/reset",
+    "/settings/mcmap", "/settings/mcmap/reset",
+    "/settings/world", "/settings/world/reset",
+    "/settings/self-check", "/settings/self-check/reset",
+    "/templates/{template_id}", "/servers/{server_id}/template-config",
+    "/servers/{server_id}/extract-variables", "/cron/", "/cron/registered",
     "/auth/token",
     "/auth/code/complete",
     "/user/me",

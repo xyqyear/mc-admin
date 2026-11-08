@@ -1,3 +1,3 @@
 export { default as VariableDefinitionForm } from "@/features/templates/ui/VariableDefinitionForm";
-export type { VariableFormData } from "@/features/templates/ui/variableSchemas";
+export type { VariableFormData } from "@/features/templates/ui/variableFormData";
 export { convertToFormData, convertToApiFormat } from "@/features/templates/ui/variableUtils";

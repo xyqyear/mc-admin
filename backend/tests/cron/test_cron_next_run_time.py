@@ -3,14 +3,18 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from app.cron.registry import create_cron_registry
 from app.main import create_api_app
 from app.runtime_resources import current_runtime
-from tests.support.runtime import patch_settings
+from tests.support.runtime import patch_runtime_resource, patch_settings
 
 
 @pytest.fixture(scope="function")
 async def test_db(db_session_factory, fresh_cron_manager):
-    return db_session_factory
+    registry = create_cron_registry()
+    fresh_cron_manager.registry = registry
+    with patch_runtime_resource("cron_registry", registry):
+        yield db_session_factory
 
 
 @pytest.fixture
@@ -31,10 +35,10 @@ class TestCronJobNextRunTime:
         self, test_db, client, authenticated_headers
     ):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Daily Noon Job",
             "cron": "0 12 * * *",
-            "params": {"message": "Daily job", "delay_seconds": 0},
+            "params": {"enable_forget": False},
         }
 
         create_response = client.post(
@@ -68,11 +72,11 @@ class TestCronJobNextRunTime:
         self, test_db, client, authenticated_headers
     ):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Hourly Job with Seconds",
             "cron": "30 * * * *",
             "second": "15",
-            "params": {"message": "Hourly with seconds", "delay_seconds": 0},
+            "params": {"enable_forget": False},
         }
 
         create_response = client.post(
@@ -113,10 +117,10 @@ class TestCronJobNextRunTime:
 
     def test_get_next_run_time_paused_job(self, test_db, client, authenticated_headers):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Paused Job",
             "cron": "0 * * * *",
-            "params": {"message": "Paused job", "delay_seconds": 0},
+            "params": {"enable_forget": False},
         }
 
         create_response = client.post(
@@ -141,10 +145,10 @@ class TestCronJobNextRunTime:
         self, test_db, client, authenticated_headers
     ):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Cancelled Job",
             "cron": "0 * * * *",
-            "params": {"message": "Cancelled job", "delay_seconds": 0},
+            "params": {"enable_forget": False},
         }
 
         create_response = client.post(
@@ -167,10 +171,10 @@ class TestCronJobNextRunTime:
 
     def test_multiple_cron_expressions(self, test_db, client, authenticated_headers):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Daily at 6 PM",
             "cron": "0 18 * * *",
-            "params": {"message": "Should run daily at 6 PM", "delay_seconds": 0},
+            "params": {"enable_forget": False},
         }
 
         create_response = client.post(
@@ -202,10 +206,10 @@ class TestCronJobNextRunTime:
         self, test_db, client, authenticated_headers
     ):
         cronjob_data = {
-            "identifier": "test_cronjob",
+            "identifier": "backup",
             "name": "Resume Test Job",
             "cron": "0 18 * * *",
-            "params": {"message": "Resume test", "delay_seconds": 0},
+            "params": {"enable_forget": False},
         }
 
         create_response = client.post(

@@ -417,7 +417,7 @@ const DnsManagement: React.FC = () => {
             </Button>
             <ButtonLink
               variant="outline"
-              to="/config?module=dns"
+              to="/settings/dns"
               title="跳转到DNS配置页面"
             >
               <Settings className="mr-2 h-4 w-4" />
@@ -459,7 +459,7 @@ const DnsManagement: React.FC = () => {
                   <AlertTitle>DNS管理未启用</AlertTitle>
                   <AlertDescription className="flex items-center justify-between">
                     <span>请前往设置页面启用DNS管理功能</span>
-                    <ButtonLink size="sm" to="/config?module=dns">
+                    <ButtonLink size="sm" to="/settings/dns">
                       前往设置
                     </ButtonLink>
                   </AlertDescription>
@@ -497,7 +497,7 @@ const DnsManagement: React.FC = () => {
                   <AlertTitle>DNS管理未启用</AlertTitle>
                   <AlertDescription className="flex items-center justify-between">
                     <span>请前往设置页面启用DNS管理功能</span>
-                    <ButtonLink size="sm" to="/config?module=dns">
+                    <ButtonLink size="sm" to="/settings/dns">
                       前往设置
                     </ButtonLink>
                   </AlertDescription>

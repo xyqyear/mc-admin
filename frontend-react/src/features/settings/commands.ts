@@ -1,104 +1,45 @@
-import { getErrorMessage, type ApiError } from '@/shared/http/api'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { queryKeys } from '@/shared/http/api'
-import * as configApi from '@/features/settings/api'
+import { getErrorMessage, queryKeys } from '@/shared/http/api'
+import type { SettingsResource } from '@/features/settings/api'
 import * as dnsApi from '@/features/dns/api'
 
-// Hooks invoked after a successful module config update; each is responsible
-// for its own gating (e.g. DNS only triggers a sync if it is enabled).
-const MODULE_POST_UPDATE_ACTIONS: Record<string, () => Promise<void>> = {
-  dns: async () => {
-    try {
-      const enabledResponse = await dnsApi.getDNSEnabled()
-      if (enabledResponse.enabled) {
-        await dnsApi.updateDNS()
-        toast.success('DNS配置已更新，DNS记录同步成功')
-      } else {
-        toast.info('DNS配置已更新，但DNS管理器未启用，跳过记录同步')
-      }
-    } catch (error: any) {
-      toast.warning(`DNS配置已更新，但记录同步失败: ${error.message}`)
+export function useSettingsCommands<T>(resource: SettingsResource<T>) {
+  const client = useQueryClient()
+  const settled = (value: T) => {
+    client.setQueryData(queryKeys.settings.detail(resource.key), value)
+    if (resource.key === 'snapshots') {
+      void client.invalidateQueries({ queryKey: queryKeys.snapshots.rulesAll() })
+      void client.invalidateQueries({ queryKey: queryKeys.snapshots.all })
     }
-  },
+    if (resource.key === 'dns') {
+      void client.invalidateQueries({ queryKey: queryKeys.dns.all })
+    }
+    if (resource.key === 'self-check') {
+      void client.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
+    }
+  }
+  const onError = (error: unknown) => toast.error(getErrorMessage(error) || '配置保存失败')
+  return {
+    save: useMutation({ mutationFn: resource.replace, onSuccess: settled, onError }),
+    reset: useMutation({ mutationFn: resource.reset, onSuccess: settled, onError }),
+  }
 }
 
-export const useUpdateModuleConfig = () => {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: ({ moduleName, configData }: { moduleName: string; configData: Record<string, any> }) =>
-      configApi.updateModuleConfig(moduleName, configData),
-    onSuccess: async (data, variables) => {
-      toast.success(data.message || '配置更新成功')
-
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.config.moduleConfig(variables.moduleName)
-      })
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.config.modules()
-      })
-      if (variables.moduleName === 'snapshots') {
-        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.rulesAll() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.all })
+export function useDNSSettingsSync() {
+  const client = useQueryClient()
+  return async () => {
+    try {
+      if ((await dnsApi.getDNSEnabled()).enabled) {
+        await dnsApi.updateDNS()
+        toast.success('DNS 记录同步成功')
+      } else {
+        toast.info('DNS 管理未启用，已保存配置')
       }
-
-      const postUpdateAction = MODULE_POST_UPDATE_ACTIONS[variables.moduleName]
-      if (postUpdateAction) {
-        await postUpdateAction()
-      }
-
-      if (variables.moduleName === 'dns') {
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.enabled() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
-      }
-
-      if (variables.moduleName === 'self_check') {
-        queryClient.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
-      }
-    },
-    onError: (error: ApiError) => {
-      const errorMessage = getErrorMessage(error) || '配置更新失败'
-      toast.error(`更新失败: ${errorMessage}`)
-    },
-  })
-}
-
-export const useResetModuleConfig = () => {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (moduleName: string) => configApi.resetModuleConfig(moduleName),
-    onSuccess: (data, moduleName) => {
-      toast.success(data.message || '配置重置成功')
-
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.config.moduleConfig(moduleName)
-      })
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.config.modules()
-      })
-      if (moduleName === 'snapshots') {
-        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.rulesAll() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.snapshots.all })
-      }
-
-      if (moduleName === 'dns') {
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.enabled() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.status() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.records() })
-        queryClient.invalidateQueries({ queryKey: queryKeys.dns.routes() })
-      }
-
-      if (moduleName === 'self_check') {
-        queryClient.invalidateQueries({ queryKey: queryKeys.selfCheck.all })
-      }
-    },
-    onError: (error: ApiError) => {
-      const errorMessage = getErrorMessage(error) || '配置重置失败'
-      toast.error(`重置失败: ${errorMessage}`)
-    },
-  })
+    } catch (error) {
+      toast.warning(`配置已保存，但 DNS 同步失败：${getErrorMessage(error)}`)
+    } finally {
+      void client.invalidateQueries({ queryKey: queryKeys.dns.all })
+    }
+  }
 }

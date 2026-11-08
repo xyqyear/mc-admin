@@ -333,14 +333,12 @@ func identity(ctx context.Context, t *engine.Scope) error {
 	if err != nil {
 		return err
 	}
-	var module struct {
-		Data map[string]any `json:"config_data"`
-	}
-	if err = client.JSON(ctx, "GET", "/api/config/modules/log_parser", nil, &module, 200); err != nil {
+	var module map[string]any
+	if err = client.JSON(ctx, "GET", "/api/settings/log-parser", nil, &module, 200); err != nil {
 		return err
 	}
-	module.Data["chat_pattern"] = `^(E2E: )?<(\S+)> (.*)$`
-	if err = client.JSON(ctx, "PUT", "/api/config/modules/log_parser", map[string]any{"config_data": module.Data}, nil, 200); err != nil {
+	module["chat_pattern"] = `^(E2E: )?<(\S+)> (.*)$`
+	if err = client.JSON(ctx, "PUT", "/api/settings/log-parser", module, nil, 200); err != nil {
 		return err
 	}
 	if err = s.append(ctx, "E2E: <E2EPlayer> runtime parser configuration"); err != nil {
@@ -391,11 +389,11 @@ func identity(ctx context.Context, t *engine.Scope) error {
 		return fmt.Errorf("missing chat cursor before cleanup")
 	}
 	cursor := newest[0].ID
-	if err = client.JSON(ctx, "GET", "/api/config/modules/players", nil, &module, 200); err != nil {
+	if err = client.JSON(ctx, "GET", "/api/settings/players", nil, &module, 200); err != nil {
 		return err
 	}
-	module.Data["ignored_name_prefixes"] = []string{"e2e"}
-	if err = client.JSON(ctx, "PUT", "/api/config/modules/players", map[string]any{"config_data": module.Data}, nil, 200); err != nil {
+	module["ignored_name_prefixes"] = []string{"e2e"}
+	if err = client.JSON(ctx, "PUT", "/api/settings/players", module, nil, 200); err != nil {
 		return err
 	}
 	if err = t.Step("cleanup previews and deletes only matching players and dependent history", func() error {

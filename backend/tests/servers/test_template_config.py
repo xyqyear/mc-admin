@@ -150,7 +150,9 @@ class TestGetTemplateConfig:
         data = response.json()
         assert data["server_id"] == "config-server"
         assert data["template_id"] == template_id
-        assert "json_schema" in data
+        definitions = {variable["name"]: variable for variable in data["variable_definitions"]}
+        assert definitions["game_port"]["type"] == "int"
+        assert definitions["game_version"]["type"] == "string"
         assert data["variable_values"]["game_port"] == 25565
 
     def test_get_config_non_template_server(self, test_client):
