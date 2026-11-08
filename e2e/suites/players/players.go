@@ -389,11 +389,12 @@ func identity(ctx context.Context, t *engine.Scope) error {
 		return fmt.Errorf("missing chat cursor before cleanup")
 	}
 	cursor := newest[0].ID
-	if err = client.JSON(ctx, "GET", "/api/settings/players", nil, &module, 200); err != nil {
+	var playerSettings map[string]any
+	if err = client.JSON(ctx, "GET", "/api/settings/players", nil, &playerSettings, 200); err != nil {
 		return err
 	}
-	module["ignored_name_prefixes"] = []string{"e2e"}
-	if err = client.JSON(ctx, "PUT", "/api/settings/players", module, nil, 200); err != nil {
+	playerSettings["ignored_name_prefixes"] = []string{"e2e"}
+	if err = client.JSON(ctx, "PUT", "/api/settings/players", playerSettings, nil, 200); err != nil {
 		return err
 	}
 	if err = t.Step("cleanup previews and deletes only matching players and dependent history", func() error {
