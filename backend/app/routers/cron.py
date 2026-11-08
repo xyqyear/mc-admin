@@ -10,19 +10,54 @@ from app.cron.models import CronJobStatus
 
 from ..cron import get_cron_manager, get_cron_registry
 from ..cron.api_models import (
+    BackupCronJobInput,
     CreateCronJobRequest,
     CronJobExecutionResponse,
     CronJobNextRunTimeResponse,
     CronJobResponse,
     RegisteredCronJobResponse,
+    RestartCronJobInput,
+    SelfCheckCronJobInput,
     UpdateCronJobRequest,
 )
 from ..cron.errors import cron_error_message
 from ..dependencies import get_current_user
 from ..errors import log_safe_error
+from ..http_validation import ValidationIssue, ValidationRoute
 from ..logger import get_logger
 
-router = APIRouter(prefix="/cron", tags=["cron"])
+_CRON_REQUESTS = {"backup": BackupCronJobInput, "restart_server": RestartCronJobInput, "self_check": SelfCheckCronJobInput}
+
+
+class CronRoute(ValidationRoute):
+    validation_prefix = "任务参数无效"
+    validation_log_context = "Cron parameter validation failed"
+
+    def validation_location(self, error: ValidationIssue) -> str:
+        if error["type"] in {"union_tag_invalid", "union_tag_not_found"}:
+            return "identifier"
+        location = error["loc"]
+        if len(location) < 2 or location[0] != "body":
+            return super().validation_location(error)
+        model = _CRON_REQUESTS.get(location[1])
+        if model is None:
+            return super().validation_location(error)
+        parts = [location[1]]
+        if len(location) > 2 and location[2] in model.model_fields:
+            parts.append(location[2])
+            params_type = model.model_fields["params"].annotation
+            if location[2] == "params" and len(location) > 3 and location[3] in getattr(params_type, "model_fields", {}):
+                parts.append(location[3])
+        return ".".join(parts)
+
+    def validation_message(self, error: ValidationIssue) -> str:
+        cause = error.get("ctx", {}).get("error")
+        if isinstance(cause, ValueError) and "cron_public_message" in vars(cause):
+            return cron_error_message(cause)
+        return super().validation_message(error)
+
+
+router = APIRouter(prefix="/cron", tags=["cron"], route_class=CronRoute)
 
 
 def _cron_value_error_status(error: ValueError) -> int:

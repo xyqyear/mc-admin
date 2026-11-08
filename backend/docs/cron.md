@@ -280,6 +280,9 @@ Create and replace requests associate each task identifier with its concrete
 parameter model. Invalid request parameters return HTTP 422 with a Chinese string
 detail identifying fields and error categories. Invalid scheduling expressions
 retain HTTP 400. Diagnostics omit raw input and exception values.
+The router selects `CronRoute` for request validation; it shares the
+[HTTP validation wrapper](administration-contracts.md#request-validation-ownership)
+and owns task-specific field locations, public constraints and log context.
 Unexpected create/update failures retain HTTP 500. Safe logs record exception type
 and stack locations without exception values, causes or locals.
 

@@ -8,6 +8,23 @@ The browser uses a signed, HttpOnly session cookie and CSRF protection for mutat
 
 前后端同步部署，以当前 OpenAPI 和功能契约为准。耗时的非快照执行接口返回 202 和任务 ID，弃用的执行 SSE 接口不再提供；认证 cookie、公共服务器 ID 和业务结果语义保持一致。 Expected errors retain `detail` as either a string or a structured object, including resumable upload offsets. Validation failures retain a string `detail` with status 422. Unexpected request errors return a generic Chinese 500 message; logs retain the exception type and stack locations without exception values, query strings or headers. Frontend consumers use the normalized `ApiError` fields and retain structured `detail`.
 
+## Request validation ownership
+
+Settings and cron routers select their request-validation policy with
+`APIRouter(route_class=...)`. The shared `ValidationRoute` in
+`app/http_validation.py` wraps FastAPI's handler after route selection, catches
+`RequestValidationError`, and returns safe Chinese field diagnostics with HTTP
+422. Only declared field names are displayed. `SettingsRoute` supplies settings
+wording; `CronRoute` owns task parameter locations, authored public constraints
+and safe validation logging. These policies follow the selected routes through
+router inclusion and application mounts. Application assembly registers the
+default validation handler for other routes.
+
+`tests/test_http_validation.py` covers mounted routing, default fallback,
+malformed JSON, unchanged business errors and safe unexpected failures.
+Settings and cron API tests also exercise relocated router prefixes and verify
+that rejected writes preserve the stored state.
+
 ## Journeys and regression owners
 
 All paths below are relative to `/api`; the fixture includes individual methods and routes.

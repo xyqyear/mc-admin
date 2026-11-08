@@ -21,8 +21,16 @@ from ..dynamic_config.requests import (
     WorldSettingsUpdate,
 )
 from ..dynamic_config.schemas import BaseConfigSchema
+from ..http_validation import ValidationRoute
 
-router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(get_current_user)])
+
+class SettingsRoute(ValidationRoute):
+    validation_prefix = "配置参数无效"
+
+
+router = APIRouter(
+    prefix="/settings", tags=["settings"], dependencies=[Depends(get_current_user)], route_class=SettingsRoute,
+)
 
 
 async def _replace(module: str, settings: BaseConfigSchema) -> BaseConfigSchema:

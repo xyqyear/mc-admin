@@ -13,6 +13,7 @@ Use explicit resource contracts and business controls. Keep persisted module key
 - Add an expanded settings sidebar group and explicit `/settings/*` routes. Keep DNS operational management separate from DNS settings. DNS save retains its synchronization outcome handling in the DNS-specific command.
 - Render template values from the existing VariableDefinition union. Use snapshot definitions on existing servers and template detail on creation. Variable authoring uses ordinary controlled inputs with type-specific validation.
 - Give scheduled-job writes an identifier-discriminated parameter contract. Keep registration metadata required for availability/system schedules. Use explicit backup/restart controls, preserving null/empty semantics and explicit-save behavior.
+- Select request validation handling through each router's `route_class`. Share the `APIRoute` wrapper and safe basic diagnostics; keep settings wording and cron-specific public errors in their owning routers. Application assembly registers the default fallback without inspecting request paths.
 - Remove unused wrappers, derived form fields/endpoints, runtime description generation and the four form-engine dependencies. Keep standard API documentation and editor language assistance.
 
 ## Risks / Trade-offs

@@ -87,6 +87,7 @@ resource: `/settings/dns`, `/settings/snapshots`, `/settings/log-parser`,
 `/settings/players`, `/settings/mcmap`, `/settings/world` and
 `/settings/self-check` under `/api`. Responses contain effective settings directly.
 PUT receives the complete resource; update DTOs reject unknown top-level fields.
+`SettingsRoute` selects the shared [request validation policy](administration-contracts.md#request-validation-ownership).
 The manager persists normalized validated values and updates its runtime cache
 only after successful persistence. Log-parser domain checks run at the save boundary.
 

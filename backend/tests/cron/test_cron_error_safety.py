@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock
 
 import httpx2
 import pytest
+from fastapi import APIRouter
 from pydantic import Field, field_validator
 from pydantic_core import PydanticCustomError
 
@@ -12,6 +13,7 @@ from app.dependencies import get_current_user
 from app.dynamic_config.schemas import BaseConfigSchema
 from app.errors import INTERNAL_ERROR_MESSAGE
 from app.main import create_api_app
+from app.routers.cron import CronRoute, router
 from tests.support.runtime import replace_runtime_resource
 
 
@@ -38,12 +40,15 @@ async def cron_api(isolated_runtime, setup_test_db):
     replace_runtime_resource(isolated_runtime, "cron_manager", manager)
     app = create_api_app(isolated_runtime)
     app.dependency_overrides[get_current_user] = lambda: None
+    app.include_router(router, prefix="/relocated")
+    probes = APIRouter(route_class=CronRoute)
 
-    @app.post("/cron/validation-probe/params")
-    @app.put("/cron/validation-probe/params")
+    @probes.post("/validation-probe/params")
+    @probes.put("/validation-probe/params")
     async def validate_params(params: SafetyParams):
         return params.model_dump()
 
+    app.include_router(probes)
     async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://test") as client:
         yield client, manager
     await manager.shutdown()
@@ -62,7 +67,7 @@ async def cron_api(isolated_runtime, setup_test_db):
 )
 async def test_parameter_errors_keep_safe_field_diagnostics(cron_api, method, params, diagnostic, caplog):
     client, _manager = cron_api
-    response = await client.request(method, "/api/cron/validation-probe/params", json=params)
+    response = await client.request(method, "/api/validation-probe/params", json=params)
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert isinstance(detail, str) and diagnostic in detail
@@ -80,6 +85,22 @@ async def test_backup_parameter_errors_keep_declared_field_without_input_values(
     })
     assert response.status_code == 422
     assert response.json() == {"detail": "任务参数无效: backup.params.keep_tag: 请输入字符串"}
+    assert "private-" not in response.text + caplog.text
+    assert (await client.get("/api/cron/")).json() == []
+
+
+@pytest.mark.parametrize("identifier,params,diagnostic", [
+    ("backup", {"enable_forget": "private-input-secret"}, "backup.params.enable_forget: 请输入布尔值"),
+    ("restart_server", {"server_id": ["private-input-secret"]}, "restart_server.params.server_id: 请输入字符串"),
+    ("self_check", {"scope": ["private-input-secret"]}, "self_check.params.scope: 请输入字符串"),
+])
+async def test_cron_validation_follows_router_under_another_prefix(cron_api, identifier, params, diagnostic, caplog):
+    client, _manager = cron_api
+    response = await client.post("/api/relocated/cron/", json={
+        "identifier": identifier, "cron": "0 0 * * *", "params": params,
+    })
+    assert response.status_code == 422
+    assert response.json() == {"detail": "任务参数无效: " + diagnostic}
     assert "private-" not in response.text + caplog.text
     assert (await client.get("/api/cron/")).json() == []
 

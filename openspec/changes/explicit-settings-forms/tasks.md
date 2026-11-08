@@ -2,6 +2,7 @@
 
 - [x] 1.1 Replace settings discovery with concrete read/replace/reset resources, preserve normalized persistence and runtime notifications; verify targeted settings API tests.
 - [x] 1.2 Remove derived template descriptions and declare scheduled-job parameter contracts; verify selected template and cron tests.
+- [x] 1.3 Scope validation handling through reusable APIRoute wrappers selected by settings and cron routers; preserve safe diagnostics, business errors and fallback behavior across mounted and relocated routers.
 
 ## 2. Business forms
 

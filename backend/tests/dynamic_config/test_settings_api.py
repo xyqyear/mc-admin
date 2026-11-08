@@ -3,7 +3,8 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.dynamic_config.manager import create_config_manager
-from app.main import app
+from app.main import app, create_api_app
+from app.routers.settings import router
 from app.runtime_resources import current_runtime
 
 
@@ -87,6 +88,20 @@ async def test_settings_errors_do_not_echo_mapping_keys_or_unrecognized_fields(s
         assert response.status_code == 422
         assert "private-" not in response.text + caplog.text
         assert settings_client.get(path, headers=HEADERS).json() == original
+
+
+async def test_settings_validation_follows_router_under_another_prefix(settings_manager, settings_client):
+    application = create_api_app(current_runtime())
+    application.include_router(router, prefix="/relocated")
+    with TestClient(application) as client:
+        original = client.get("/api/settings/world", headers=HEADERS).json()
+        response = client.put("/api/relocated/settings/world", headers=HEADERS, json={
+            **original, "region_stat_workers": "private-input-secret",
+        })
+        assert response.status_code == 422
+        assert response.json() == {"detail": "配置参数无效: region_stat_workers: 请输入整数"}
+        assert "private-input-secret" not in response.text
+        assert client.get("/api/settings/world", headers=HEADERS).json() == original
 
 
 @pytest.mark.parametrize("provider", [

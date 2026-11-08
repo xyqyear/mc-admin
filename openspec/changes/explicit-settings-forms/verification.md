@@ -24,6 +24,27 @@
   16 by 16 pixels, with labels beside the controls.
 - OpenSpec strict validation and whitespace checks passed.
 
+## Router validation refinement
+
+The shared validation wrapper and settings/cron policies passed targeted tests
+through real router inclusion, relocated prefixes and a mounted application.
+Coverage retains safe field diagnostics for all three job types, malformed JSON,
+rejected writes, ordinary HTTP statuses/headers, unexpected failures and the
+default policy for unselected routes. Import-boundary and API contract snapshot
+checks passed; the published HTTP shapes remain unchanged.
+
+The first qualification attempt, run `42494972416`, rejected
+`players.identity-config-and-cleanup`: the test decoded player settings into a
+map already holding log-parser fields, then submitted those unrelated fields.
+The caller now uses a separate player-settings map; the original player/history,
+cleanup and replay assertions are retained.
+
+Backend Ruff and Pyright passed after the refinement. The application image was
+rebuilt. `system.configuration-roundtrip`, `cron.safe-validation-errors` and
+`players.identity-config-and-cleanup` passed with the current application; the
+three-case `--no-reuse` run also passed (`e2e-90431060d9a2`). The player case's
+normal run used the rebuilt runner (`e2e-aec070276907`).
+
 ## Delivery qualification
 
 Latest-commit qualification is recorded after the push-triggered workflow

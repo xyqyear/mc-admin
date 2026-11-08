@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 import aiofiles
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.cors import CORSMiddleware
@@ -13,7 +12,8 @@ from .api_schema import preserve_public_schema_names
 from .audit import OperationAuditMiddleware
 from .auth.session import CSRFMiddleware
 from .config import Settings
-from .errors import SafeErrorMiddleware, log_safe_error
+from .errors import SafeErrorMiddleware
+from .http_validation import default_validation_handler
 from .routers import (
     admin,
     archive,
@@ -129,53 +129,7 @@ def create_api_app(runtime: Runtime) -> FastAPI:
         api_app.include_router(server_world_restore.router)
 
 
-        # Flatten Pydantic's verbose error array into a single "detail" string for
-        # response-format parity with HTTPException.
-        @api_app.exception_handler(RequestValidationError)
-        async def validation_exception_handler(request: Request, exc: RequestValidationError):
-            errors = exc.errors()
-            if request.url.path.startswith(("/api/settings/", "/settings/", "/api/cron/", "/cron/")):
-                if "/cron/" in request.url.path:
-                    log_safe_error(exc, "Cron parameter validation failed")
-                labels = {
-                    "missing": "必填字段缺失", "int_parsing": "请输入整数", "int_type": "请输入整数",
-                    "float_parsing": "请输入数字", "float_type": "请输入数字", "string_type": "请输入字符串",
-                    "bool_parsing": "请输入布尔值", "bool_type": "请输入布尔值", "list_type": "请输入列表",
-                    "literal_error": "请选择有效选项", "extra_forbidden": "存在不支持的字段",
-                    "union_tag_invalid": "类型无效", "union_tag_not_found": "缺少类型",
-                    "greater_than": "数值过小", "greater_than_equal": "数值过小",
-                    "less_than": "数值过大", "less_than_equal": "数值过大",
-                }
-                messages = []
-                for error in errors:
-                    parts = [part for part in error["loc"] if part != "body"]
-                    if parts and parts[0] in {"backup", "restart_server", "self_check"}:
-                        parts = parts[:3] if parts[1:2] == ["params"] else parts[:2]
-                        if error["type"] == "extra_forbidden":
-                            parts = parts[:2]
-                    else:
-                        parts = [] if error["type"] == "extra_forbidden" else parts[:1]
-                    # Dictionary keys and unrecognized fields can contain credentials.
-                    location = ".".join(str(part) for part in parts) or "参数"
-                    if error["type"] in {"union_tag_invalid", "union_tag_not_found"}:
-                        location = "identifier" if "/cron/" in request.url.path else location
-                    cause = error.get("ctx", {}).get("error")
-                    message = labels.get(error["type"], "字段值无效")
-                    if isinstance(cause, ValueError) and "cron_public_message" in vars(cause):
-                        message = vars(cause)["cron_public_message"]
-                    messages.append(f"{location}: {message}")
-                prefix = "任务参数无效" if "/cron/" in request.url.path else "配置参数无效"
-                return JSONResponse(status_code=422, content={"detail": prefix + ": " + "; ".join(messages)})
-            messages = []
-            for error in errors:
-                loc = ".".join(str(x) for x in error["loc"] if x != "body")
-                msg = error["msg"]
-                if loc:
-                    messages.append(f"{loc}: {msg}")
-                else:
-                    messages.append(msg)
-            detail = "; ".join(messages) if messages else "请求参数验证失败"
-            return JSONResponse(status_code=422, content={"detail": detail})
+        api_app.exception_handler(RequestValidationError)(default_validation_handler)
         api_app.add_middleware(RuntimeMiddleware, runtime=runtime)
         preserve_public_schema_names(api_app)
         return api_app
